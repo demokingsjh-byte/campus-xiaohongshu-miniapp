@@ -24,7 +24,7 @@
 
 ### 校区租户
 
-系统底层继续复用 Yudao / RuoYi 的 `system_tenant` 作为 SaaS 租户基础。校园业务自己的校区资料放在 `campus_tenant_profile`。
+系统底层继续复用 Yundian / 云点 的 `system_tenant` 作为 SaaS 租户基础。校园业务自己的校区资料放在 `campus_tenant_profile`。
 
 这样做的好处是：
 

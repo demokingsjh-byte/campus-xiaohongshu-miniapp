@@ -6,7 +6,7 @@
 
 区域校园综合服务小程序，定位为“按校区运营的小红书式校园生活平台”。项目当前已切换为成熟框架主线：
 
-- `campus-platform`：基于 RuoYi-Vue-Pro / Yudao 的后台与服务端底座
+- `campus-platform`：基于 云点后台底座 / Yundian 的后台与服务端底座
 - `campus-miniapp`：基于 Uni-app Vue3 / Vite / TypeScript 的小程序端
 
 详细需求、模块边界、租户设计和排期见：
@@ -29,7 +29,7 @@
 
 ```text
 campus-xiaohongshu-miniapp/
-├── campus-platform/      # 后台与服务端，基于 RuoYi-Vue-Pro
+├── campus-platform/      # 后台与服务端，基于 云点后台底座
 ├── campus-miniapp/       # 小程序端，基于 Uni-app Vue3 模板
 ├── docs/                 # 项目文档
 ├── .gitignore
@@ -38,7 +38,7 @@ campus-xiaohongshu-miniapp/
 
 ## 数据库初始化
 
-先执行 RuoYi 原始 SQL：
+先执行 云点 原始 SQL：
 
 ```text
 campus-platform/sql/mysql/ruoyi-vue-pro.sql
@@ -68,8 +68,8 @@ npm run build:mp-weixin
 
 ## 后续主线
 
-1. 初始化云数据库，执行 RuoYi SQL 和校园扩展 SQL。
-2. 使用 RuoYi 代码生成器生成 `campus_*` 后台 CRUD。
+1. 初始化云数据库，执行 云点 SQL 和校园扩展 SQL。
+2. 使用 云点 代码生成器生成 `campus_*` 后台 CRUD。
 3. 完成区域、校区、代理人、分润规则后台管理。
 4. 小程序端实现校区选择、登录、首页、发布闲置。
 5. 进入交易、支付、分润、裂变闭环。

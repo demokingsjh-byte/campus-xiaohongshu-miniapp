@@ -10,7 +10,7 @@
 
 ### 后台与服务端
 
-采用 RuoYi-Vue-Pro / Yudao 作为成熟后台底座，复用：
+采用 云点后台底座 / Yundian 作为成熟后台底座，复用：
 
 - 用户、角色、菜单、权限
 - 登录、JWT、Redis、Spring Security
@@ -56,7 +56,7 @@ campus-miniapp/
 -> 用户 / 商品 / 订单 / 内容 / 商家 / 分润
 ```
 
-RuoYi 自带的 `system_tenant` 作为 SaaS 租户底座。校园项目通过 `campus_tenant_profile` 给每个租户补充校区业务资料。
+云点 自带的 `system_tenant` 作为 SaaS 租户底座。校园项目通过 `campus_tenant_profile` 给每个租户补充校区业务资料。
 
 ### 3.2 校区代理
 
@@ -280,7 +280,7 @@ commission_rule_snapshot
 
 后台开发顺序：
 
-1. 跑通 RuoYi 原始系统。
+1. 跑通 云点 原始系统。
 2. 执行 `campus-extension.sql`。
 3. 使用代码生成器生成校园运营菜单。
 4. 完成区域管理。
@@ -316,9 +316,9 @@ commission_rule_snapshot
 
 交付：
 
-- RuoYi 后台启动
+- 云点 后台启动
 - 云数据库初始化
-- 执行 RuoYi 原始 SQL
+- 执行 云点 原始 SQL
 - 执行校园扩展 SQL
 - 小程序模板构建通过
 - 确认开发、测试、生产环境配置方式
@@ -338,7 +338,7 @@ commission_rule_snapshot
 - 区域管理 CRUD
 - 学校资料 CRUD
 - 校区租户资料 CRUD
-- 校区和 RuoYi 租户绑定逻辑
+- 校区和 云点 租户绑定逻辑
 
 验收：
 
@@ -457,7 +457,7 @@ commission_rule_snapshot
 
 ## 8. 当前已完成
 
-- 已确定使用 RuoYi-Vue-Pro 作为后台底座。
+- 已确定使用 云点后台底座 作为后台底座。
 - 已确定使用 Uni-app Vue3 模板作为小程序底座。
 - 已新增校园扩展 SQL：
 
@@ -479,7 +479,7 @@ campus-miniapp/src/stores/modules/tenant.ts
 
 1. 不要把校区只做成 `school_id` 字段，必须走租户模型。
 2. 历史订单必须固化代理人、邀请人和分润规则快照。
-3. RuoYi 底层模块名 `yudao-*` 暂时保留，避免破坏框架依赖。
+3. 云点 底层模块名 `yudao-*` 暂时保留，避免破坏框架依赖。
 4. 业务表使用 `campus_*` 命名，便于和框架表隔离。
 5. 微信支付、分账、提现涉及资金合规，必须先用测试环境验证。
 6. 后台菜单和代码生成优先，避免手写大量重复 CRUD。

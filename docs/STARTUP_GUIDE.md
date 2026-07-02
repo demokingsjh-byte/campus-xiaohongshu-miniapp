@@ -4,7 +4,7 @@
 
 ```text
 D:\campus-xiaohongshu-miniapp
-├── campus-platform   # 后台与服务端，基于 RuoYi-Vue-Pro
+├── campus-platform   # 后台与服务端，基于 云点后台底座
 ├── campus-miniapp    # 微信小程序端，基于 Uni-app Vue3
 └── docs              # 项目文档
 ```
@@ -23,7 +23,7 @@ D:\campus-xiaohongshu-miniapp
 
 说明：
 
-- 当前 RuoYi-Vue-Pro 版本使用 Java 8。
+- 当前 云点后台底座 版本使用 Java 8。
 - 如果本机没有 Maven，需要先安装 Maven，或者后续给项目补 Maven Wrapper。
 
 ### 2.2 小程序端
@@ -55,7 +55,7 @@ D:\campus-xiaohongshu-miniapp
 MySQL：5.7.44
 ```
 
-数据库 SQL 已执行完成，当前包含 RuoYi 基础表和校园扩展表。
+数据库 SQL 已执行完成，当前包含 云点 基础表和校园扩展表。
 
 ## 3. 启动前检查
 
@@ -65,7 +65,7 @@ MySQL：5.7.44
 java -version
 ```
 
-期望是 Java 8。如果本机是 Java 17，也可能能编译部分模块，但 RuoYi 当前配置是 Java 8，建议用 JDK 8 跑后台。
+期望是 Java 8。如果本机是 Java 17，也可能能编译部分模块，但 云点 当前配置是 Java 8，建议用 JDK 8 跑后台。
 
 ### 3.2 检查 Maven
 
@@ -355,7 +355,7 @@ mvn : The term 'mvn' is not recognized
 
 ### 9.2 Java 版本不对
 
-RuoYi 当前配置：
+云点 当前配置：
 
 ```text
 java.version = 1.8

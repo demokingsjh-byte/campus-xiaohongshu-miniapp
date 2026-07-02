@@ -60,11 +60,11 @@ spring:
           username: ${CAMPUS_DB_USERNAME:root}
           password: ${CAMPUS_DB_PASSWORD:123456}
           #          username: sa # SQL Server 连接的示例
-          #          password: Yudao@2024 # SQL Server 连接的示例
+          #          password: Yundian@2024 # SQL Server 连接的示例
           #          username: SYSDBA # DM 连接的示例
           #          password: SYSDBA001 # DM 连接的示例
           #          username: root # OpenGauss 连接的示例
-          #          password: Yudao@2024 # OpenGauss 连接的示例
+          #          password: Yundian@2024 # OpenGauss 连接的示例
           #          username: root # 瀚高 HighGo 连接的示例
           #          password: 123456 # 瀚高 HighGo 连接的示例
         slave: # 模拟从库，可根据自己需要修改
@@ -231,9 +231,9 @@ wx:
       key-prefix: wa # Redis Key 的前缀
       http-client-type: HttpComponents # 采用 HttpComponents（HttpClient 5）请求微信小程序平台
 
---- #################### 芋道相关配置 ####################
+--- #################### 云点相关配置 ####################
 
-# 芋道配置项，设置当前项目所有自定义的配置
+# 云点配置项，设置当前项目所有自定义的配置
 yudao:
   captcha:
     enable: false # 本地环境，暂时关闭图片验证码，方便登录等接口的测试；
