@@ -1,0 +1,61 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "后台前端: 运行 Vue3 管理端",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm dev",
+      "cwd": "${workspaceFolder}\\campus-platform\\yudao-ui\\yudao-ui-admin-vue3-full"
+    },
+    {
+      "name": "后台前端: 安装依赖",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm install",
+      "cwd": "${workspaceFolder}\\campus-platform\\yudao-ui\\yudao-ui-admin-vue3-full"
+    },
+    {
+      "name": "后端: 运行 yudao-server(local)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "java -jar .\\yudao-server\\target\\yudao-server.jar --spring.profiles.active=local",
+      "cwd": "${workspaceFolder}\\campus-platform"
+    },
+    {
+      "name": "后端: Maven 打包并运行(local)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": ".\\mvnw.cmd -pl yudao-server -am install -DskipTests; java -jar .\\yudao-server\\target\\yudao-server.jar --spring.profiles.active=local",
+      "cwd": "${workspaceFolder}\\campus-platform"
+    },
+    {
+      "name": "小程序: 运行 H5",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev:h5",
+      "cwd": "${workspaceFolder}\\campus-miniapp"
+    },
+    {
+      "name": "小程序: 运行微信小程序",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev:mp-weixin",
+      "cwd": "${workspaceFolder}\\campus-miniapp"
+    },
+    {
+      "name": "小程序: 构建微信小程序",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run build:mp-weixin",
+      "cwd": "${workspaceFolder}\\campus-miniapp"
+    },
+    {
+      "name": "Redis: 启动本地 Redis",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "$redis = Get-ChildItem \"$env:LOCALAPPDATA\\Microsoft\\WinGet\\Packages\" -Recurse -Filter redis-server.exe -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not $redis) { throw '未找到 redis-server.exe，请先安装 Redis' }; & $redis.FullName --port 6379 --bind 127.0.0.1 --save \"\" --appendonly no",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

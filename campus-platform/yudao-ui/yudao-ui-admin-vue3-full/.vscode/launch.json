@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "后台前端: 运行 Vue3 管理端",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm dev",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "后台前端: 安装依赖",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm install",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "后台前端: 构建本地包",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm build:local",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

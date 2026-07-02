@@ -1,0 +1,96 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "后台前端: 安装依赖",
+      "type": "shell",
+      "command": "pnpm install",
+      "options": {
+        "cwd": "${workspaceFolder}\\campus-platform\\yudao-ui\\yudao-ui-admin-vue3-full"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "后台前端: 运行 Vue3 管理端",
+      "type": "shell",
+      "command": "pnpm dev",
+      "options": {
+        "cwd": "${workspaceFolder}\\campus-platform\\yudao-ui\\yudao-ui-admin-vue3-full"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Redis: 启动本地 Redis",
+      "type": "shell",
+      "command": "$redis = Get-ChildItem \"$env:LOCALAPPDATA\\Microsoft\\WinGet\\Packages\" -Recurse -Filter redis-server.exe -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not $redis) { throw '未找到 redis-server.exe，请先安装 Redis' }; & $redis.FullName --port 6379 --bind 127.0.0.1 --save \"\" --appendonly no",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "后端: Maven 打包 yudao-server",
+      "type": "shell",
+      "command": ".\\mvnw.cmd -pl yudao-server -am install -DskipTests",
+      "options": {
+        "cwd": "${workspaceFolder}\\campus-platform"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "后端: 运行 yudao-server(local)",
+      "type": "shell",
+      "command": "java -jar .\\yudao-server\\target\\yudao-server.jar --spring.profiles.active=local",
+      "options": {
+        "cwd": "${workspaceFolder}\\campus-platform"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "后端: 打包并运行(local)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "后端: Maven 打包 yudao-server",
+        "后端: 运行 yudao-server(local)"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "小程序: 安装依赖",
+      "type": "shell",
+      "command": "npm install",
+      "options": {
+        "cwd": "${workspaceFolder}\\campus-miniapp"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "小程序: 运行 H5",
+      "type": "npm",
+      "script": "dev:h5",
+      "path": "campus-miniapp",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "小程序: 运行微信小程序",
+      "type": "npm",
+      "script": "dev:mp-weixin",
+      "path": "campus-miniapp",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "小程序: 构建微信小程序",
+      "type": "npm",
+      "script": "build:mp-weixin",
+      "path": "campus-miniapp",
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

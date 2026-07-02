@@ -1,0 +1,323 @@
+<template>
+  <ContentWrap>
+    <el-form :model="queryParams" :inline="true" label-width="80px">
+      <el-form-item v-if="meta.searchKey" :label="meta.searchLabel">
+        <el-input
+          v-model="queryParams[meta.searchKey]"
+          clearable
+          class="!w-240px"
+          :placeholder="`请输入${meta.searchLabel}`"
+          @keyup.enter="handleQuery"
+        />
+      </el-form-item>
+      <el-form-item v-if="meta.statusKey" label="状态">
+        <el-select v-model="queryParams[meta.statusKey]" clearable class="!w-160px">
+          <el-option label="开启/待审核" :value="0" />
+          <el-option label="运营/生效" :value="1" />
+          <el-option label="暂停/下架" :value="2" />
+          <el-option label="关闭/终止" :value="3" />
+        </el-select>
+      </el-form-item>
+      <el-form-item>
+        <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" />搜索</el-button>
+        <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" />重置</el-button>
+        <el-button type="primary" plain @click="openForm('create')">
+          <Icon icon="ep:plus" class="mr-5px" />新增
+        </el-button>
+      </el-form-item>
+    </el-form>
+  </ContentWrap>
+
+  <ContentWrap>
+    <el-table v-loading="loading" :data="list">
+      <el-table-column label="编号" align="center" prop="id" width="90" />
+      <el-table-column
+        v-for="column in meta.columns"
+        :key="column.prop"
+        :label="column.label"
+        :prop="column.prop"
+        align="center"
+        :show-overflow-tooltip="true"
+      />
+      <el-table-column label="创建时间" align="center" prop="create_time" width="180" />
+      <el-table-column label="操作" align="center" width="160" fixed="right">
+        <template #default="scope">
+          <el-button link type="primary" @click="openForm('update', scope.row.id)">编辑</el-button>
+          <el-button link type="danger" @click="handleDelete(scope.row.id)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+    <Pagination
+      :total="total"
+      v-model:page="queryParams.pageNo"
+      v-model:limit="queryParams.pageSize"
+      @pagination="getList"
+    />
+  </ContentWrap>
+
+  <el-dialog v-model="dialogVisible" :title="dialogTitle" width="680px">
+    <el-form :model="formData" label-width="120px">
+      <el-form-item v-for="field in meta.fields" :key="field.prop" :label="field.label">
+        <el-input-number
+          v-if="field.type === 'number'"
+          v-model="formData[field.prop]"
+          class="!w-240px"
+          :min="0"
+        />
+        <el-input-number
+          v-else-if="field.type === 'decimal'"
+          v-model="formData[field.prop]"
+          class="!w-240px"
+          :precision="2"
+          :min="0"
+        />
+        <el-switch v-else-if="field.type === 'boolean'" v-model="formData[field.prop]" />
+        <el-input
+          v-else-if="field.type === 'textarea'"
+          v-model="formData[field.prop]"
+          type="textarea"
+          :rows="3"
+        />
+        <el-input v-else v-model="formData[field.prop]" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="dialogVisible = false">取消</el-button>
+      <el-button type="primary" :loading="submitLoading" @click="submitForm">确定</el-button>
+    </template>
+  </el-dialog>
+</template>
+
+<script setup lang="ts">
+import { createCampus, deleteCampus, getCampus, getCampusPage, updateCampus } from '@/api/campus/base'
+import { useRoute } from 'vue-router'
+
+defineOptions({ name: 'CampusBase' })
+
+type FieldType = 'text' | 'textarea' | 'number' | 'decimal' | 'boolean'
+
+interface FieldMeta {
+  label: string
+  prop: string
+  type?: FieldType
+  defaultValue?: any
+}
+
+interface PageMeta {
+  title: string
+  searchKey?: string
+  searchLabel?: string
+  statusKey?: string
+  columns: FieldMeta[]
+  fields: FieldMeta[]
+}
+
+const route = useRoute()
+const message = useMessage()
+
+const metas: Record<string, PageMeta> = {
+  region: {
+    title: '区域管理',
+    searchKey: 'name',
+    searchLabel: '区域名称',
+    statusKey: 'status',
+    columns: [
+      { label: '区域名称', prop: 'name' },
+      { label: '省份', prop: 'province' },
+      { label: '城市', prop: 'city' },
+      { label: '区县', prop: 'district' },
+      { label: '状态', prop: 'status' }
+    ],
+    fields: [
+      { label: '区域名称', prop: 'name' },
+      { label: '省份', prop: 'province' },
+      { label: '城市', prop: 'city' },
+      { label: '区县', prop: 'district' },
+      { label: '状态', prop: 'status', type: 'number' },
+      { label: '排序', prop: 'sort', type: 'number' }
+    ]
+  },
+  school: {
+    title: '学校资料',
+    searchKey: 'name',
+    searchLabel: '学校名称',
+    statusKey: 'status',
+    columns: [
+      { label: '学校名称', prop: 'name' },
+      { label: '省份', prop: 'province' },
+      { label: '城市', prop: 'city' },
+      { label: '区县', prop: 'district' },
+      { label: '状态', prop: 'status' }
+    ],
+    fields: [
+      { label: '学校名称', prop: 'name' },
+      { label: '省份', prop: 'province' },
+      { label: '城市', prop: 'city' },
+      { label: '区县', prop: 'district' },
+      { label: 'Logo', prop: 'logo_url' },
+      { label: '状态', prop: 'status', type: 'number' }
+    ]
+  },
+  'tenant-profile': {
+    title: '校区租户',
+    searchKey: 'display_name',
+    searchLabel: '展示名称',
+    statusKey: 'status',
+    columns: [
+      { label: '展示名称', prop: 'display_name' },
+      { label: '学校', prop: 'school_name' },
+      { label: '校区', prop: 'campus_name' },
+      { label: '城市', prop: 'city' },
+      { label: '代理用户', prop: 'agent_user_id' },
+      { label: '状态', prop: 'status' }
+    ],
+    fields: [
+      { label: '系统租户ID', prop: 'system_tenant_id', type: 'number' },
+      { label: '区域ID', prop: 'region_id', type: 'number' },
+      { label: '学校ID', prop: 'school_id', type: 'number' },
+      { label: '学校名称', prop: 'school_name' },
+      { label: '校区名称', prop: 'campus_name' },
+      { label: '展示名称', prop: 'display_name' },
+      { label: '省份', prop: 'province' },
+      { label: '城市', prop: 'city' },
+      { label: '区县', prop: 'district' },
+      { label: '地址', prop: 'address' },
+      { label: '代理用户ID', prop: 'agent_user_id', type: 'number' },
+      { label: '启用分润', prop: 'commission_enabled', type: 'boolean' },
+      { label: '状态', prop: 'status', type: 'number' },
+      { label: '租户ID', prop: 'tenant_id', type: 'number' }
+    ]
+  },
+  agent: {
+    title: '校区代理',
+    searchKey: 'invite_code',
+    searchLabel: '邀请码',
+    statusKey: 'status',
+    columns: [
+      { label: '租户ID', prop: 'system_tenant_id' },
+      { label: '用户ID', prop: 'user_id' },
+      { label: '等级', prop: 'agent_level' },
+      { label: '分润比例', prop: 'commission_rate' },
+      { label: '邀请码', prop: 'invite_code' },
+      { label: '状态', prop: 'status' }
+    ],
+    fields: [
+      { label: '系统租户ID', prop: 'system_tenant_id', type: 'number' },
+      { label: '用户ID', prop: 'user_id', type: 'number' },
+      { label: '代理等级', prop: 'agent_level', type: 'number' },
+      { label: '状态', prop: 'status', type: 'number' },
+      { label: '分润比例', prop: 'commission_rate', type: 'decimal' },
+      { label: '邀请码', prop: 'invite_code' },
+      { label: '租户ID', prop: 'tenant_id', type: 'number' }
+    ]
+  },
+  product: {
+    title: '商品管理',
+    searchKey: 'title',
+    searchLabel: '商品标题',
+    statusKey: 'status',
+    columns: [
+      { label: '标题', prop: 'title' },
+      { label: '发布用户', prop: 'user_id' },
+      { label: '分类', prop: 'category_id' },
+      { label: '价格', prop: 'price' },
+      { label: '状态', prop: 'status' },
+      { label: '地点', prop: 'location' }
+    ],
+    fields: [
+      { label: '发布用户ID', prop: 'user_id', type: 'number' },
+      { label: '分类ID', prop: 'category_id', type: 'number' },
+      { label: '标题', prop: 'title' },
+      { label: '描述', prop: 'description', type: 'textarea' },
+      { label: '价格', prop: 'price', type: 'decimal' },
+      { label: '图片JSON', prop: 'images', type: 'textarea', defaultValue: '[]' },
+      { label: '状态', prop: 'status', type: 'number' },
+      { label: '审核原因', prop: 'audit_reason' },
+      { label: '地点', prop: 'location' },
+      { label: '租户ID', prop: 'tenant_id', type: 'number' }
+    ]
+  }
+}
+
+const resource = computed(() => String(route.path.split('/').filter(Boolean).pop() || 'region'))
+const meta = computed(() => metas[resource.value] || metas.region)
+const loading = ref(false)
+const submitLoading = ref(false)
+const list = ref<Record<string, any>[]>([])
+const total = ref(0)
+const dialogVisible = ref(false)
+const dialogTitle = ref('')
+const formType = ref<'create' | 'update'>('create')
+const formData = ref<Record<string, any>>({})
+const queryParams = reactive<Record<string, any>>({
+  pageNo: 1,
+  pageSize: 10
+})
+
+const getList = async () => {
+  loading.value = true
+  try {
+    const data = await getCampusPage(resource.value, queryParams as PageParam)
+    list.value = data.list || []
+    total.value = data.total || 0
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleQuery = () => {
+  queryParams.pageNo = 1
+  getList()
+}
+
+const resetQuery = () => {
+  Object.keys(queryParams).forEach((key) => {
+    if (!['pageNo', 'pageSize'].includes(key)) delete queryParams[key]
+  })
+  handleQuery()
+}
+
+const openForm = async (type: 'create' | 'update', id?: number) => {
+  formType.value = type
+  dialogTitle.value = `${type === 'create' ? '新增' : '编辑'}${meta.value.title}`
+  formData.value = {}
+  for (const field of meta.value.fields) {
+    if (field.defaultValue !== undefined) formData.value[field.prop] = field.defaultValue
+    else if (field.type === 'number' || field.type === 'decimal') formData.value[field.prop] = 0
+    else if (field.type === 'boolean') formData.value[field.prop] = true
+    else formData.value[field.prop] = ''
+  }
+  if (type === 'update' && id) {
+    formData.value = await getCampus(resource.value, id)
+  }
+  dialogVisible.value = true
+}
+
+const submitForm = async () => {
+  submitLoading.value = true
+  try {
+    if (formType.value === 'create') await createCampus(resource.value, formData.value)
+    else await updateCampus(resource.value, formData.value)
+    message.success('保存成功')
+    dialogVisible.value = false
+    await getList()
+  } finally {
+    submitLoading.value = false
+  }
+}
+
+const handleDelete = async (id: number) => {
+  await message.delConfirm()
+  await deleteCampus(resource.value, id)
+  message.success('删除成功')
+  await getList()
+}
+
+watch(resource, () => {
+  resetQuery()
+})
+
+onMounted(() => {
+  getList()
+})
+</script>

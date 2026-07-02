@@ -1,0 +1,34 @@
+.DS_Store
+Thumbs.db
+
+# Java
+target/
+*.class
+*.log
+
+# Maven
+.mvn/apache-maven-*/
+.mvn/*.zip
+
+# Node
+node_modules/
+dist/
+unpackage/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!campus-platform/yudao-ui/yudao-ui-admin-vue3-full/.vscode/
+!campus-platform/yudao-ui/yudao-ui-admin-vue3-full/.vscode/launch.json
+*.iml
+
+# Local env
+/.env
+/.env.local
+application-local.yml
+
+# Build caches
+.cache/
+.vite/
