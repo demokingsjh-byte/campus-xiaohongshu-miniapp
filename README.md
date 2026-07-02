@@ -21,6 +21,10 @@
 
 [docs/UPDATE_PIPELINE.md](docs/UPDATE_PIPELINE.md)
 
+日常打包部署操作手册见：
+
+[docs/DEPLOY_OPERATION_MANUAL.md](docs/DEPLOY_OPERATION_MANUAL.md)
+
 ## 当前目录
 
 ```text
