@@ -1,0 +1,98 @@
+name: Campus Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_note:
+        description: Deployment note
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  SERVER_HOST: 121.43.83.21
+  SERVER_PORT: 22
+  SERVER_USER: root
+  APP_HOME: /opt/campus-platform
+  BACKEND_SERVICE: campus-platform.service
+  NGINX_RELOAD: "true"
+
+jobs:
+  deploy:
+    name: Build and deploy to server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+
+      - name: Package backend
+        working-directory: campus-platform
+        run: mvn -B -pl yudao-server -am package -DskipTests
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: campus-platform/yudao-ui/yudao-ui-admin-vue3-full/pnpm-lock.yaml
+
+      - name: Build admin UI
+        working-directory: campus-platform/yudao-ui/yudao-ui-admin-vue3-full
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:local
+
+      - name: Prepare deployment bundle
+        shell: bash
+        run: |
+          mkdir -p release
+          cp campus-platform/yudao-server/target/*.jar release/campus-backend.jar
+          tar -czf release/campus-admin-ui-dist.tar.gz -C campus-platform/yudao-ui/yudao-ui-admin-vue3-full dist
+          cp scripts/deploy/update-server.sh release/update-server.sh
+
+      - name: Deploy over SSH
+        shell: bash
+        env:
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          deploy_dir="/tmp/campus-platform-${GITHUB_RUN_ID}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          if [ -n "$SERVER_SSH_KEY" ]; then
+            printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/campus_deploy_key
+            chmod 600 ~/.ssh/campus_deploy_key
+            ssh_base=(ssh -i ~/.ssh/campus_deploy_key -o StrictHostKeyChecking=no -p "$SERVER_PORT")
+            scp_base=(scp -i ~/.ssh/campus_deploy_key -o StrictHostKeyChecking=no -P "$SERVER_PORT")
+          elif [ -n "$SERVER_PASSWORD" ]; then
+            sudo apt-get update
+            sudo apt-get install -y sshpass
+            ssh_base=(sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no -p "$SERVER_PORT")
+            scp_base=(sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SERVER_PORT")
+          else
+            echo "Please configure SERVER_SSH_KEY or SERVER_PASSWORD in GitHub repository secrets."
+            exit 1
+          fi
+
+          remote="${SERVER_USER}@${SERVER_HOST}"
+          "${ssh_base[@]}" "$remote" "mkdir -p '$deploy_dir'"
+          "${scp_base[@]}" release/campus-backend.jar release/campus-admin-ui-dist.tar.gz release/update-server.sh "$remote:$deploy_dir/"
+          "${ssh_base[@]}" "$remote" "cd '$deploy_dir' && chmod +x update-server.sh && APP_HOME='$APP_HOME' BACKEND_SERVICE='$BACKEND_SERVICE' NGINX_RELOAD='$NGINX_RELOAD' ./update-server.sh"

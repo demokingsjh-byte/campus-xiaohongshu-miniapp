@@ -7,6 +7,11 @@ BACKEND_JAR="${BACKEND_JAR:-campus-backend.jar}"
 ADMIN_DIST_TGZ="${ADMIN_DIST_TGZ:-campus-admin-ui-dist.tar.gz}"
 BACKEND_SERVICE="${BACKEND_SERVICE:-campus-platform.service}"
 NGINX_RELOAD="${NGINX_RELOAD:-true}"
+SUDO="${SUDO:-sudo}"
+
+if [ "$(id -u)" = "0" ]; then
+  SUDO=""
+fi
 
 mkdir -p "$APP_HOME/releases" "$APP_HOME/backend" "$APP_HOME/admin"
 
@@ -29,13 +34,13 @@ rm -rf "$APP_HOME/admin/dist"
 cp -R "$release_dir/admin-dist/dist" "$APP_HOME/admin/dist"
 
 echo "[$APP_NAME] restarting backend service: $BACKEND_SERVICE"
-sudo systemctl restart "$BACKEND_SERVICE"
-sudo systemctl status "$BACKEND_SERVICE" --no-pager -l
+$SUDO systemctl restart "$BACKEND_SERVICE"
+$SUDO systemctl status "$BACKEND_SERVICE" --no-pager -l
 
 if [ "$NGINX_RELOAD" = "true" ]; then
   echo "[$APP_NAME] reloading nginx"
-  sudo nginx -t
-  sudo systemctl reload nginx
+  $SUDO nginx -t
+  $SUDO systemctl reload nginx
 fi
 
 echo "[$APP_NAME] release $release_id completed"

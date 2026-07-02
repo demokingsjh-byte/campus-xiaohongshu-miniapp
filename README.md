@@ -2,6 +2,7 @@
 
 [![Campus CI](https://github.com/demokingsjh-byte/campus-xiaohongshu-miniapp/actions/workflows/campus-ci.yml/badge.svg)](https://github.com/demokingsjh-byte/campus-xiaohongshu-miniapp/actions/workflows/campus-ci.yml)
 [![Campus Release](https://github.com/demokingsjh-byte/campus-xiaohongshu-miniapp/actions/workflows/campus-release.yml/badge.svg)](https://github.com/demokingsjh-byte/campus-xiaohongshu-miniapp/actions/workflows/campus-release.yml)
+[![Campus Deploy](https://github.com/demokingsjh-byte/campus-xiaohongshu-miniapp/actions/workflows/campus-deploy.yml/badge.svg)](https://github.com/demokingsjh-byte/campus-xiaohongshu-miniapp/actions/workflows/campus-deploy.yml)
 
 区域校园综合服务小程序，定位为“按校区运营的小红书式校园生活平台”。项目当前已切换为成熟框架主线：
 

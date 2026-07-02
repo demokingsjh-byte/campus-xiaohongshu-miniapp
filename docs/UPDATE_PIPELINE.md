@@ -69,6 +69,50 @@ Release 产物：
 - `campus-admin-ui-dist.tar.gz`
 - `UPDATE_PIPELINE.md`
 
+## 自动部署到服务器
+
+Workflow 文件：
+
+```text
+.github/workflows/campus-deploy.yml
+```
+
+当前服务器：
+
+```text
+ssh://root@121.43.83.21:22
+```
+
+GitHub 配置入口：
+
+```text
+Repository -> Settings -> Secrets and variables -> Actions -> New repository secret
+```
+
+推荐使用 SSH 私钥，新增：
+
+```text
+SERVER_SSH_KEY=服务器 root 用户可登录的私钥内容
+```
+
+如果暂时只有密码，也可以新增：
+
+```text
+SERVER_PASSWORD=服务器 root 密码
+```
+
+部署入口：
+
+```text
+Repository -> Actions -> Campus Deploy -> Run workflow
+```
+
+执行后会自动完成：
+
+```text
+打包后端 Jar -> 打包后台 dist -> 上传到服务器 /tmp -> 更新 /opt/campus-platform -> 重启后端 -> reload nginx
+```
+
 ## 服务器更新模板
 
 脚本路径：
