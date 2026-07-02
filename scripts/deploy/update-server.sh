@@ -40,7 +40,9 @@ $SUDO systemctl status "$BACKEND_SERVICE" --no-pager -l
 if [ "$NGINX_RELOAD" = "true" ]; then
   echo "[$APP_NAME] reloading nginx"
   $SUDO nginx -t
-  $SUDO systemctl reload nginx
+  if ! $SUDO systemctl reload nginx; then
+    $SUDO nginx -s reload
+  fi
 fi
 
 echo "[$APP_NAME] release $release_id completed"
