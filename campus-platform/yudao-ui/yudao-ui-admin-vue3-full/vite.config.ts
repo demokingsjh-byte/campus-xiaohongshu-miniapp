@@ -74,6 +74,10 @@ export default ({command, mode}: ConfigEnv): UserConfig => {
             extensions: ['.mjs', '.js', '.ts', '.jsx', '.tsx', '.json', '.scss', '.css'],
             alias: [
                 {
+                    find: /^util$/,
+                    replacement: pathResolve('src/shims/node-util.ts')
+                },
+                {
                     find: /\@\//,
                     replacement: `${pathResolve('src')}/`
                 }

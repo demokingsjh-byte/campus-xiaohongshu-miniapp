@@ -60,7 +60,7 @@ jobs:
         working-directory: campus-platform/yudao-ui/yudao-ui-admin-vue3-full
         run: |
           pnpm install --frozen-lockfile
-          pnpm build:local
+          pnpm build:prod
 
       - name: Prepare release bundle
         shell: bash
