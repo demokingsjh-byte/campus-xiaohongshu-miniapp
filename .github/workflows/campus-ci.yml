@@ -1,0 +1,114 @@
+name: Campus CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: campus-platform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: maven
+
+      - name: Package yudao-server
+        run: mvn -B -pl yudao-server -am package -DskipTests
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-backend-jar
+          path: campus-platform/yudao-server/target/*.jar
+          if-no-files-found: error
+          retention-days: 14
+
+  admin-ui:
+    name: Admin UI package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: campus-platform/yudao-ui/yudao-ui-admin-vue3-full
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: campus-platform/yudao-ui/yudao-ui-admin-vue3-full/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build admin UI
+        run: pnpm build:local
+
+      - name: Upload admin UI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-admin-ui-dist
+          path: campus-platform/yudao-ui/yudao-ui-admin-vue3-full/dist
+          if-no-files-found: error
+          retention-days: 14
+
+  miniapp:
+    name: WeChat miniapp package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: campus-miniapp
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: campus-miniapp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build WeChat miniapp
+        run: npm run build:mp-weixin
+
+      - name: Upload miniapp artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-miniapp-mp-weixin
+          path: |
+            campus-miniapp/dist/build/mp-weixin
+            campus-miniapp/unpackage/dist/build/mp-weixin
+          if-no-files-found: warn
+          retention-days: 14

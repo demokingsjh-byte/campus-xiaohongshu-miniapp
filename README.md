@@ -1,5 +1,8 @@
 # Campus Xiaohongshu Miniapp
 
+[![Campus CI](https://github.com/demokingsjh-byte/campus-xiaohongshu-miniapp/actions/workflows/campus-ci.yml/badge.svg)](https://github.com/demokingsjh-byte/campus-xiaohongshu-miniapp/actions/workflows/campus-ci.yml)
+[![Campus Release](https://github.com/demokingsjh-byte/campus-xiaohongshu-miniapp/actions/workflows/campus-release.yml/badge.svg)](https://github.com/demokingsjh-byte/campus-xiaohongshu-miniapp/actions/workflows/campus-release.yml)
+
 区域校园综合服务小程序，定位为“按校区运营的小红书式校园生活平台”。项目当前已切换为成熟框架主线：
 
 - `campus-platform`：基于 RuoYi-Vue-Pro / Yudao 的后台与服务端底座
@@ -12,6 +15,10 @@
 详细启动步骤和推荐工具见：
 
 [docs/STARTUP_GUIDE.md](docs/STARTUP_GUIDE.md)
+
+自动打包、版本发布和服务器更新方案见：
+
+[docs/UPDATE_PIPELINE.md](docs/UPDATE_PIPELINE.md)
 
 ## 当前目录
 
