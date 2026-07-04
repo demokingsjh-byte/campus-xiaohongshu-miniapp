@@ -4,7 +4,10 @@ import { getCache, removeCache, setCache } from '@/utils/cache';
 export interface CampusTenant {
   id: number
   name: string
+  areaName?: string
+  agentName?: string
   inviteCode?: string
+  slogan?: string
 }
 
 export function getCampusTenant(): CampusTenant | null {

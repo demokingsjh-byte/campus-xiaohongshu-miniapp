@@ -1,5 +1,5 @@
 {
-  "name": "uniapp_vue3_vite_ts",
+  "name": "yundian_campus",
   "appid": "__UNI__4350F4E",
   "description": "",
   "versionName": "1.2.1",
@@ -132,7 +132,7 @@
     "devServer": {
       "https": false
     },
-    "title": "uniapp_vue3_vite_ts",
+    "title": "云点校园",
     "unipush": {
       "enable": false
     },

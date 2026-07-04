@@ -4,7 +4,7 @@
       "name": "Home",
       "path": "pages/index/index",
       "style": {
-        "navigationBarTitleText": "Home"
+        "navigationBarTitleText": "云点校园"
       },
       "meta": {
         "tabBar": true,
@@ -12,10 +12,10 @@
       }
     },
     {
-      "name": "Demo",
+      "name": "CampusRegion",
       "path": "pages/demo/index",
       "style": {
-        "navigationBarTitleText": "Demo"
+        "navigationBarTitleText": "区域校区"
       },
       "meta": {
         "tabBar": true,
@@ -23,10 +23,21 @@
       }
     },
     {
-      "name": "About",
+      "name": "Publish",
+      "path": "pages/publish/index",
+      "style": {
+        "navigationBarTitleText": "发布"
+      },
+      "meta": {
+        "tabBar": true,
+        "ignoreAuth": true
+      }
+    },
+    {
+      "name": "Mine",
       "path": "pages/about/index",
       "style": {
-        "navigationBarTitleText": "关于"
+        "navigationBarTitleText": "我的"
       },
       "meta": {
         "ignoreAuth": true,
@@ -54,33 +65,40 @@
   "subPackages": [],
   "globalStyle": {
     "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "uni-app",
-    "navigationBarBackgroundColor": "#F2F2F2",
-    "backgroundColor": "#F2F2F2",
+    "navigationBarTitleText": "云点校园",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "backgroundColor": "#F7F8FA",
     "navigationStyle": "default",
     "renderingMode": "seperated",
     "pageOrientation": "portrait"
   },
   "tabBar": {
-    "color": "#474747",
-    "selectedColor": "#9BC6FC",
-    "backgroundColor": "#F2F2F2",
+    "color": "#64748B",
+    "selectedColor": "#2563EB",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "首页",
+        "text": "逛校园",
         "iconPath": "static/images/tabBar/home.png",
         "selectedIconPath": "static/images/tabBar/selectedHome.png"
       },
       {
         "pagePath": "pages/demo/index",
-        "text": "Demo",
+        "text": "分区",
+        "iconPath": "static/images/tabBar/category.png",
+        "selectedIconPath": "static/images/tabBar/selectedCategory.png"
+      },
+      {
+        "pagePath": "pages/publish/index",
+        "text": "发布",
         "iconPath": "static/images/tabBar/demo.png",
         "selectedIconPath": "static/images/tabBar/selectedDemo.png"
       },
       {
         "pagePath": "pages/about/index",
-        "text": "关于",
+        "text": "我的",
         "iconPath": "static/images/tabBar/about.png",
         "selectedIconPath": "static/images/tabBar/selectedAbout.png"
       }
