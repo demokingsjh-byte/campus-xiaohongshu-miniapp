@@ -3,6 +3,10 @@ import { request } from '@/utils/http';
 const LOGIN = '/login';
 const LOGIN_OUT = '/logout';
 const REFRESH_TOKEN = '/refresh/token';
+const CAMPUS_WECHAT_LOGIN = '/campus/auth/wechat-login';
+const CAMPUS_CURRENT_USER = '/campus/auth/me';
+const CAMPUS_PROFILE = '/campus/auth/profile';
+const CAMPUS_PHONE = '/campus/auth/phone';
 
 /**
  * 登录
@@ -28,4 +32,36 @@ export function logout() {
  */
 export function refreshToken() {
   return request.Post<LoginModel>(REFRESH_TOKEN, {});
+}
+
+/**
+ * 微信小程序静默登录
+ */
+export function wechatLogin(params: WechatLoginParams) {
+  return request.Post<WechatLoginModel>(CAMPUS_WECHAT_LOGIN, params, {
+    meta: {
+      ignoreAuth: true,
+    },
+  });
+}
+
+/**
+ * 获取当前校园小程序用户
+ */
+export function getCurrentCampusUser() {
+  return request.Get<CampusUserInfoModel>(CAMPUS_CURRENT_USER);
+}
+
+/**
+ * 补全校园资料
+ */
+export function updateCampusProfile(params: CampusProfileUpdateParams) {
+  return request.Put<CampusUserInfoModel>(CAMPUS_PROFILE, params);
+}
+
+/**
+ * 绑定微信授权手机号
+ */
+export function bindCampusPhone(params: CampusPhoneBindParams) {
+  return request.Post<CampusUserInfoModel>(CAMPUS_PHONE, params);
 }

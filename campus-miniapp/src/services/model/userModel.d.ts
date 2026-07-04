@@ -3,6 +3,8 @@ export interface UserInfoModel {
    * 用户id
    */
   id?: number
+  openid?: string
+  unionid?: string
   /**
    * 昵称
    */
@@ -15,4 +17,10 @@ export interface UserInfoModel {
    * 邮箱
    */
   email?: string
+  mobile?: string
+  schoolName?: string
+  campusName?: string
+  roleType?: string
+  mobileBound?: boolean
+  lastLoginTime?: string
 }

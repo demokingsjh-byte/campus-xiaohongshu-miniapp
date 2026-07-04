@@ -31,12 +31,14 @@ const alovaInstance = createAlova({
   beforeRequest: async (method) => {
     method.config.headers = assign(method.config.headers, ContentType);
     const { config } = method;
-    const ignoreAuth = !config.meta?.ignoreAuth;
-    const authorization = ignoreAuth ? getAuthorization() : null;
-    if (ignoreAuth && !authorization) {
+    const needAuth = !config.meta?.ignoreAuth;
+    const authorization = getAuthorization();
+    if (needAuth && !authorization) {
       throw new Error('[请求错误]：未登录');
     }
-    method.config.headers.authorization = getAuthorization();
+    if (authorization) {
+      method.config.headers.authorization = authorization;
+    }
     const tenantId = getCampusTenantId();
     if (tenantId) {
       method.config.headers['X-Tenant-Id'] = String(tenantId);
@@ -59,7 +61,7 @@ const alovaInstance = createAlova({
           return response;
         }
         const { code, message, data } = rawData as API;
-        if (code === ResultEnum.SUCCESS) {
+        if (code === ResultEnum.SUCCESS || code === 0) {
           return data as any;
         }
         // 逻辑错误处理，与业务相关

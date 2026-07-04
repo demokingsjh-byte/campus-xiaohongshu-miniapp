@@ -11,6 +11,7 @@ DROP TABLE IF EXISTS `campus_trade_order`;
 DROP TABLE IF EXISTS `campus_product`;
 DROP TABLE IF EXISTS `campus_invite_relation`;
 DROP TABLE IF EXISTS `campus_user_tenant`;
+DROP TABLE IF EXISTS `campus_miniapp_user`;
 DROP TABLE IF EXISTS `campus_agent`;
 DROP TABLE IF EXISTS `campus_tenant_profile`;
 DROP TABLE IF EXISTS `campus_region`;
@@ -127,6 +128,33 @@ CREATE TABLE `campus_user_tenant` (
   KEY `idx_user_default` (`user_id`, `defaulted`),
   KEY `idx_system_tenant` (`system_tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='校园用户校区关系';
+
+CREATE TABLE `campus_miniapp_user` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '用户编号',
+  `openid` varchar(64) NOT NULL COMMENT '微信小程序 openid',
+  `unionid` varchar(64) NOT NULL DEFAULT '' COMMENT '微信开放平台 unionid',
+  `nickname` varchar(64) NOT NULL DEFAULT '' COMMENT '昵称',
+  `avatar` varchar(512) NOT NULL DEFAULT '' COMMENT '头像',
+  `mobile` varchar(32) NOT NULL DEFAULT '' COMMENT '手机号',
+  `phone_country_code` varchar(8) NOT NULL DEFAULT '' COMMENT '手机号区号',
+  `school_name` varchar(100) NOT NULL DEFAULT '' COMMENT '学校名称',
+  `campus_name` varchar(100) NOT NULL DEFAULT '' COMMENT '校区名称',
+  `role_type` varchar(32) NOT NULL DEFAULT 'student' COMMENT '身份类型：student、merchant、agent',
+  `source_scene` varchar(128) NOT NULL DEFAULT '' COMMENT '入口 scene',
+  `inviter_user_id` bigint DEFAULT NULL COMMENT '邀请人用户编号',
+  `first_login_time` datetime NOT NULL COMMENT '首次登录时间',
+  `last_login_time` datetime NOT NULL COMMENT '最近登录时间',
+  `creator` varchar(64) DEFAULT '' COMMENT '创建者',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updater` varchar(64) DEFAULT '' COMMENT '更新者',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
+  `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '租户编号，等同校区租户',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_openid` (`openid`),
+  KEY `idx_mobile` (`mobile`),
+  KEY `idx_tenant_last_login` (`tenant_id`, `last_login_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='校园小程序用户';
 
 CREATE TABLE `campus_invite_relation` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '邀请关系编号',

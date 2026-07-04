@@ -37,4 +37,83 @@ export const authMocks = defineMock({
       },
     });
   },
+  '[POST]/api/campus/auth/wechat-login': (params) => {
+    const { code, tenantId, scene, inviterUserId } = params.data || {};
+    if (!code) {
+      return createMock({ data: null, code: ResultEnum.FAIL, message: '微信 code 不能为空' });
+    }
+    const token = createRandomToken();
+    return createMock({
+      data: {
+        token,
+        refreshToken: createRandomToken(64),
+        expiresTime: '2026-07-31 23:59:59',
+        userInfo: {
+          id: 10001,
+          openid: 'mock-openid-10001',
+          unionid: '',
+          nickname: '校园体验用户',
+          avatar: '',
+          mobile: '',
+          email: '',
+          schoolName: tenantId ? `租户 ${tenantId}` : '未选择学校',
+          campusName: scene || '默认校区',
+          roleType: 'student',
+          mobileBound: false,
+          lastLoginTime: '2026-07-05 10:00:00',
+          inviterUserId,
+        },
+      },
+    });
+  },
+  '[GET]/api/campus/auth/me': () => {
+    return createMock({
+      data: {
+        id: 10001,
+        openid: 'mock-openid-10001',
+        unionid: '',
+        nickname: '校园体验用户',
+        avatar: '',
+        mobile: '',
+        email: '',
+        schoolName: '未选择学校',
+        campusName: '默认校区',
+        roleType: 'student',
+        mobileBound: false,
+        lastLoginTime: '2026-07-05 10:00:00',
+      },
+    });
+  },
+  '[PUT]/api/campus/auth/profile': (params) => {
+    return createMock({
+      data: {
+        id: 10001,
+        openid: 'mock-openid-10001',
+        nickname: params.data?.nickname || '校园体验用户',
+        avatar: params.data?.avatar || '',
+        mobile: '',
+        schoolName: params.data?.schoolName || '未选择学校',
+        campusName: params.data?.campusName || '默认校区',
+        roleType: params.data?.roleType || 'student',
+        mobileBound: false,
+        lastLoginTime: '2026-07-05 10:00:00',
+      },
+    });
+  },
+  '[POST]/api/campus/auth/phone': () => {
+    return createMock({
+      data: {
+        id: 10001,
+        openid: 'mock-openid-10001',
+        nickname: '校园体验用户',
+        avatar: '',
+        mobile: '13800000000',
+        schoolName: '未选择学校',
+        campusName: '默认校区',
+        roleType: 'student',
+        mobileBound: true,
+        lastLoginTime: '2026-07-05 10:00:00',
+      },
+    });
+  },
 });
