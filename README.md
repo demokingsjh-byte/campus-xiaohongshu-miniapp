@@ -50,6 +50,12 @@ campus-platform/sql/mysql/ruoyi-vue-pro.sql
 campus-platform/sql/mysql/campus-extension.sql
 ```
 
+最后执行微信小程序初始化配置 SQL：
+
+```text
+campus-platform/sql/mysql/campus-wechat-miniapp-config.sql
+```
+
 ## 小程序端
 
 小程序端已增加校区租户能力：
