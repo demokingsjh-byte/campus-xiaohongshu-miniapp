@@ -1,56 +1,71 @@
-# 2026-07-06 Development Plan
+# 2026-07-06 开发计划
 
-## Goal
+## 目标
 
-Move the campus Xiaohongshu miniapp from infrastructure readiness toward a usable campus content workflow, while keeping backend, admin UI, and miniapp packaging verifiable through GitHub Actions.
+把校园小红书小程序从“基础设施可用”推进到“核心内容流程可用”，重点打通小程序发布、内容列表、后端接口约定和 GitHub Actions 自动打包验证。
 
-## Morning
+## 上午任务
 
-1. Verify the latest `main` branch and confirm the `Campus CI` artifact outputs:
+1. 拉取最新 `main` 分支代码，确认本地工作区干净。
+2. 检查 `Campus CI` 自动打包产物是否正常生成：
    - `campus-backend-jar`
    - `campus-admin-ui-dist`
    - `campus-miniapp-mp-weixin`
-2. Review current miniapp pages under `campus-miniapp/src/pages` and map the required campus content flow:
-   - home feed
-   - publish note
-   - login state
-   - user profile entry
-3. Confirm backend modules needed for the first usable loop:
-   - authentication
-   - note/content list
-   - note publish
-   - file or image upload placeholder
+3. 梳理小程序端现有页面结构，重点查看：
+   - 首页内容流
+   - 发布页面
+   - 登录状态
+   - 个人中心入口
+4. 明确第一版校园内容闭环需要的后端能力：
+   - 用户登录鉴权
+   - 内容列表查询
+   - 内容发布
+   - 图片上传占位或临时方案
 
-## Afternoon
+## 下午任务
 
-1. Implement or align the first API contract for campus note publishing:
-   - request fields
-   - response shape
-   - validation rules
-   - error codes
-2. Connect the miniapp publish page to the API contract, keeping mock fallback available for local development.
-3. Add basic UI states:
-   - loading
-   - empty feed
-   - publish success
-   - publish failure
+1. 设计并对齐校园笔记发布接口：
+   - 请求字段
+   - 返回结构
+   - 必填校验
+   - 错误码规则
+2. 小程序发布页接入接口约定，保留本地 mock 兜底，便于没有后端环境时调试。
+3. 补齐基础交互状态：
+   - 加载中
+   - 空内容
+   - 发布成功
+   - 发布失败
+4. 初步整理首页内容流展示字段，包括标题、正文摘要、图片、发布时间和作者信息。
 
-## Evening
+## 晚上任务
 
-1. Run local smoke checks for the touched module.
-2. Push changes to trigger `Campus CI`.
-3. Review GitHub Actions results and record any packaging failures in the follow-up task list.
+1. 对当天改动模块做本地冒烟检查。
+2. 提交代码并推送到 GitHub。
+3. 确认 `Campus CI` 自动打包是否通过。
+4. 如果打包失败，记录失败步骤、错误原因和第二天优先处理项。
 
-## Acceptance Criteria
+## 验收标准
 
-- The miniapp has a clear first-pass publish flow.
-- The backend API contract is documented or implemented enough for frontend integration.
-- `Campus CI` is triggered from the commit and produces packaging logs.
-- Any failed build step has a concrete next action.
+- 小程序端具备清晰的第一版发布流程。
+- 后端接口约定足够支撑前端联调。
+- 本次提交能够触发 `Campus CI` 自动打包。
+- 后端、后台前端、小程序三个打包任务有明确结果。
+- 失败项必须留下可执行的后续处理计划。
 
-## Risks
+## 风险与注意事项
 
-- The backend platform is large, so full local builds may be slow on Windows.
-- Miniapp build output may depend on environment-specific Uni-app configuration.
-- Deployment should remain manual until the CI package result is confirmed.
+1. 后端工程体量较大，Windows 本地全量构建可能较慢，优先依赖 GitHub Actions 验证。
+2. 小程序构建依赖 Uni-app 配置，若出现平台差异，需要单独记录环境变量和构建命令。
+3. 正式部署仍建议手动触发 `Campus Deploy`，不要在未确认 CI 通过前直接部署。
+4. 不要把服务器密码、数据库密码、GitHub token 或 SSH 私钥写入代码仓库。
+
+## 第二天优先级
+
+| 优先级 | 事项 | 结果要求 |
+| --- | --- | --- |
+| P0 | 打通发布笔记主流程 | 能提交内容并得到明确成功或失败反馈 |
+| P0 | 确认自动打包状态 | `Campus CI` 三个任务都有结果 |
+| P1 | 梳理首页内容流字段 | 页面字段和接口字段能对应 |
+| P1 | 保留 mock 调试能力 | 无后端环境时小程序仍可预览 |
+| P2 | 整理失败项记录 | 后续处理人能直接接手 |
 
