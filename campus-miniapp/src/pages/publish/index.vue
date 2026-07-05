@@ -1,9 +1,8 @@
 <script lang="ts" setup>
 import { campusPublishTypes, campusTenants, getDefaultTenant } from '@/mock/campus';
-import { useTenantStore } from '@/stores/modules/tenant';
 
-const tenantStore = useTenantStore();
 const activeType = ref(campusPublishTypes[0].key);
+const currentTenant = ref(getDefaultTenant());
 const form = reactive({
   title: '',
   price: '',
@@ -11,17 +10,10 @@ const form = reactive({
   contact: '',
 });
 
-const currentTenant = computed(() => tenantStore.currentTenant || getDefaultTenant());
-
-onMounted(() => {
-  if (!tenantStore.currentTenant)
-    tenantStore.selectTenant(getDefaultTenant());
-});
-
 function switchCampus() {
   uni.showActionSheet({
     itemList: campusTenants.map(item => item.name),
-    success: ({ tapIndex }) => tenantStore.selectTenant(campusTenants[tapIndex]),
+    success: ({ tapIndex }) => currentTenant.value = campusTenants[tapIndex],
   });
 }
 

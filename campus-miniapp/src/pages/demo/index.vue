@@ -1,8 +1,6 @@
 <script lang="ts" setup>
 import { campusRegions, campusTenants } from '@/mock/campus';
-import { useTenantStore } from '@/stores/modules/tenant';
 
-const tenantStore = useTenantStore();
 const activeRegionId = ref(campusRegions[0].id);
 
 const campuses = computed(() => campusTenants.filter(item => {
@@ -11,7 +9,6 @@ const campuses = computed(() => campusTenants.filter(item => {
 }));
 
 function selectCampus(campus: typeof campusTenants[number]) {
-  tenantStore.selectTenant(campus);
   uni.showToast({ title: `已切换到${campus.name}`, icon: 'none' });
 }
 </script>

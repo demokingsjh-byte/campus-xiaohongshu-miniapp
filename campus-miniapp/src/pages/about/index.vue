@@ -1,17 +1,16 @@
 <script lang="ts" setup>
 import { getDefaultTenant } from '@/mock/campus';
-import { useTenantStore } from '@/stores/modules/tenant';
-import { useUserStore } from '@/stores/modules/user';
 
-const router = useRouter();
-const userStore = useUserStore();
-const tenantStore = useTenantStore();
-const { loggedIn, userInfo } = storeToRefs(userStore);
-
-const currentTenant = computed(() => tenantStore.currentTenant || getDefaultTenant());
+const loggedIn = ref(false);
+const userInfo = ref({ nickname: '校园体验用户', avatar: '' });
+const currentTenant = ref(getDefaultTenant());
 
 function handleLoginOut() {
-  userStore.logout();
+  loggedIn.value = false;
+}
+
+function goLogin() {
+  uni.navigateTo({ url: '/pages/login/index' });
 }
 </script>
 
@@ -24,7 +23,7 @@ function handleLoginOut() {
         <view class="hint">{{ loggedIn ? '已登录' : '先体验页面，后续接微信授权登录' }}</view>
       </view>
       <button v-if="loggedIn" class="plain-btn" size="mini" @click="handleLoginOut">退出</button>
-      <button v-else class="plain-btn" size="mini" @click="router.push('/pages/login/index')">登录</button>
+      <button v-else class="plain-btn" size="mini" @click="goLogin">登录</button>
     </view>
 
     <view class="tenant-card">

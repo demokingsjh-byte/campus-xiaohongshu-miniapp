@@ -1,23 +1,16 @@
 <script setup lang="ts">
 import { campusChannels, campusTenants, getDefaultTenant, getPostsByTenant } from '@/mock/campus';
-import { useTenantStore } from '@/stores/modules/tenant';
 
-const tenantStore = useTenantStore();
 const activeChannel = ref('推荐');
+const currentTenant = ref(getDefaultTenant());
 
-const currentTenant = computed(() => tenantStore.currentTenant || getDefaultTenant());
 const posts = computed(() => getPostsByTenant(currentTenant.value?.id, activeChannel.value));
-
-onMounted(() => {
-  if (!tenantStore.currentTenant)
-    tenantStore.selectTenant(getDefaultTenant());
-});
 
 function switchCampus() {
   uni.showActionSheet({
     itemList: campusTenants.map(item => `${item.name} · ${item.areaName}`),
     success: ({ tapIndex }) => {
-      tenantStore.selectTenant(campusTenants[tapIndex]);
+      currentTenant.value = campusTenants[tapIndex];
       activeChannel.value = '推荐';
     },
   });
