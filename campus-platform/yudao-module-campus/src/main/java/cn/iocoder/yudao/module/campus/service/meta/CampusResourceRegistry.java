@@ -33,7 +33,12 @@ public class CampusResourceRegistry {
                     set("user_id", "category_id", "title", "description", "price", "images", "status",
                             "audit_reason", "location", "view_count", "like_count", "tenant_id", "creator", "updater"),
                     set("user_id", "category_id", "status", "tenant_id"),
-                    set("title", "location"))
+                    set("title", "location")),
+            meta("miniapp-user", "campus_miniapp_user",
+                    set("nickname", "avatar", "mobile", "phone_country_code", "school_name", "campus_name",
+                            "role_type", "source_scene", "inviter_user_id", "tenant_id", "updater"),
+                    set("tenant_id", "inviter_user_id"),
+                    set("openid", "unionid", "nickname", "mobile", "school_name", "campus_name", "role_type"))
     ).stream().collect(Collectors.toMap(CampusResourceMeta::getResource, Function.identity()));
 
     private CampusResourceRegistry() {

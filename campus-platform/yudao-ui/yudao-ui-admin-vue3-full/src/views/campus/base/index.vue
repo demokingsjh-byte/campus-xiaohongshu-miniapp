@@ -21,7 +21,7 @@
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" />搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" />重置</el-button>
-        <el-button type="primary" plain @click="openForm('create')">
+        <el-button v-if="meta.allowCreate !== false" type="primary" plain @click="openForm('create')">
           <Icon icon="ep:plus" class="mr-5px" />新增
         </el-button>
       </el-form-item>
@@ -108,6 +108,7 @@ interface PageMeta {
   searchKey?: string
   searchLabel?: string
   statusKey?: string
+  allowCreate?: boolean
   columns: FieldMeta[]
   fields: FieldMeta[]
 }
@@ -234,6 +235,34 @@ const metas: Record<string, PageMeta> = {
       { label: '状态', prop: 'status', type: 'number' },
       { label: '审核原因', prop: 'audit_reason' },
       { label: '地点', prop: 'location' },
+      { label: '租户ID', prop: 'tenant_id', type: 'number' }
+    ]
+  },
+  'miniapp-user': {
+    title: '小程序用户',
+    searchKey: 'nickname',
+    searchLabel: '昵称',
+    allowCreate: false,
+    columns: [
+      { label: 'OpenID', prop: 'openid' },
+      { label: '昵称', prop: 'nickname' },
+      { label: '手机号', prop: 'mobile' },
+      { label: '学校', prop: 'school_name' },
+      { label: '校区', prop: 'campus_name' },
+      { label: '身份', prop: 'role_type' },
+      { label: '租户ID', prop: 'tenant_id' },
+      { label: '最近登录', prop: 'last_login_time' }
+    ],
+    fields: [
+      { label: '昵称', prop: 'nickname' },
+      { label: '头像', prop: 'avatar' },
+      { label: '手机号', prop: 'mobile' },
+      { label: '国家区号', prop: 'phone_country_code' },
+      { label: '学校名称', prop: 'school_name' },
+      { label: '校区名称', prop: 'campus_name' },
+      { label: '身份类型', prop: 'role_type' },
+      { label: '入口 scene', prop: 'source_scene' },
+      { label: '邀请人ID', prop: 'inviter_user_id', type: 'number' },
       { label: '租户ID', prop: 'tenant_id', type: 'number' }
     ]
   }
