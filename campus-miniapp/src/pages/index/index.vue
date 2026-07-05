@@ -25,7 +25,7 @@ function switchCampus() {
 </script>
 
 <template>
-  <scroll-view class="page" scroll-y>
+  <view class="page">
     <view class="hero">
       <view>
         <view class="eyebrow">当前校区</view>
@@ -70,13 +70,15 @@ function switchCampus() {
         </view>
       </view>
     </view>
-  </scroll-view>
+  </view>
 </template>
 
 <style lang="scss" scoped>
 .page {
   min-height: 100vh;
   background: #f7f8fa;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .hero {
