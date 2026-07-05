@@ -47,14 +47,14 @@ spring:
       primary: master
       datasource:
         master:
-          url: ${CAMPUS_DB_URL:jdbc:mysql://127.0.0.1:3306/SuperCampus?allowMultiQueries=true&useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&autoReconnect=true&rewriteBatchedStatements=true}
-          username: ${CAMPUS_DB_USERNAME:root}
-          password: ${CAMPUS_DB_PASSWORD:123456}
+          url: ${CAMPUS_DB_URL:jdbc:mysql://rm-bp1s74yol3jn5pc97co.mysql.rds.aliyuncs.com:3306/SuperCampus?allowMultiQueries=true&useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=Asia/Shanghai&autoReconnect=true&rewriteBatchedStatements=true}
+          username: ${CAMPUS_DB_USERNAME:mx_dba}
+          password: ${CAMPUS_DB_PASSWORD:mx1!2@3#4$}
         slave: # 模拟从库，可根据自己需要修改 # 模拟从库，可根据自己需要修改
           lazy: true # 开启懒加载，保证启动速度
-          url: ${CAMPUS_DB_SLAVE_URL:${CAMPUS_DB_URL:jdbc:mysql://127.0.0.1:3306/SuperCampus?allowMultiQueries=true&useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&autoReconnect=true&rewriteBatchedStatements=true}}
-          username: ${CAMPUS_DB_SLAVE_USERNAME:${CAMPUS_DB_USERNAME:root}}
-          password: ${CAMPUS_DB_SLAVE_PASSWORD:${CAMPUS_DB_PASSWORD:123456}}
+          url: ${CAMPUS_DB_SLAVE_URL:${CAMPUS_DB_URL:jdbc:mysql://rm-bp1s74yol3jn5pc97co.mysql.rds.aliyuncs.com:3306/SuperCampus?allowMultiQueries=true&useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=Asia/Shanghai&autoReconnect=true&rewriteBatchedStatements=true}}
+          username: ${CAMPUS_DB_SLAVE_USERNAME:${CAMPUS_DB_USERNAME:mx_dba}}
+          password: ${CAMPUS_DB_SLAVE_PASSWORD:${CAMPUS_DB_PASSWORD:mx1!2@3#4$}}
 
   # Redis 配置。Redisson 默认的配置足够使用，一般不需要进行调优
   redis:
@@ -177,6 +177,17 @@ yudao:
     transfer-notify-url: https://yunai.natapp1.cc/admin-api/pay/notify/transfer # 支付渠道的【转账】回调地址
   demo: false # 开启演示模式
   tencent-lbs-key: TVDBZ-TDILD-4ON4B-PFDZA-RNLKH-VVF6E # QQ 地图的密钥 https://lbs.qq.com/service/staticV2/staticGuide/staticDoc
+  oss:
+    enabled: ${ALI_OSS_ENABLED:true}
+    endpoint: ${ALI_OSS_ENDPOINT:https://oss-cn-shenzhen.aliyuncs.com}
+    bucket: ${ALI_OSS_BUCKET:dylsjh}
+    region: ${ALI_OSS_REGION:cn-shenzhen}
+    access-key-id: ${ALI_OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${ALI_OSS_ACCESS_KEY_SECRET:}
+    prefix: ${ALI_OSS_PREFIX:commerce-images/}
+    public-base-url: ${ALI_OSS_PUBLIC_BASE_URL:https://dylsjh.oss-cn-shenzhen.aliyuncs.com}
+    public-read: ${ALI_OSS_PUBLIC_READ:false}
+    url-expire-seconds: ${ALI_OSS_URL_EXPIRE_SECONDS:86400}
 
 justauth:
   enabled: true
