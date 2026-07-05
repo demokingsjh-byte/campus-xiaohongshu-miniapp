@@ -80,7 +80,7 @@ export function createStorage({
         const decVal = this.hasEncrypt ? this.encryption.decryptByAES(val) : val;
         const data = JSON.parse(decVal);
         const { value, expire } = data;
-        if (isNullOrUnDef(expire) || expire < new Date().getTime()) {
+        if (!isNullOrUnDef(expire) && expire < new Date().getTime()) {
           this.remove(key);
           return def;
         }

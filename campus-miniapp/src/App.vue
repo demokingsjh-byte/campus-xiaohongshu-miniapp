@@ -7,7 +7,9 @@ onLaunch(() => {
 });
 onShow(() => {
   const userStore = useUserStore();
-  userStore.initUserInfo();
+  userStore.initUserInfo().catch((error) => {
+    console.warn('init user info failed', error);
+  });
   console.log('App Show');
 });
 onHide(() => {
