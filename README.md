@@ -56,6 +56,12 @@ campus-platform/sql/mysql/campus-extension.sql
 campus-platform/sql/mysql/campus-wechat-miniapp-config.sql
 ```
 
+如果需要启用阿里云 OSS 文件上传，再执行：
+
+```text
+campus-platform/sql/mysql/campus-oss-config.sql
+```
+
 ## 小程序端
 
 小程序端已增加校区租户能力：
