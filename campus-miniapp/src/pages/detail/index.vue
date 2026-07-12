@@ -12,14 +12,37 @@ const post = computed(() => campusPosts.find(item => item.id === postId.value) |
 const related = computed(() => campusPosts.filter(item => item.id !== post.value.id).slice(0, 2));
 const comments = ref([{ name: '小满同学', avatar: '满', time: '8分钟前', content: '请问桌子的尺寸大概是多少呀？宿舍上床下桌旁边能放吗？', likes: 3 }, { name: '晚风同学', avatar: '晚', time: '刚刚', content: '回复 @小满同学：80×50cm，床边可以放，我之前就是这样用的。', likes: 1 }]);
 
-onLoad((query) => { postId.value = Number(query?.id || 1001); setTimeout(() => pageState.value = post.value ? 'content' : 'error', 500); });
+onLoad((query) => {
+  postId.value = Number(query?.id || 1001);
+  const exists = campusPosts.some(item => item.id === postId.value);
+  setTimeout(() => pageState.value = exists ? 'content' : 'error', 500);
+});
+function ensureLogin() {
+  if (uni.getStorageSync('yd-demo-login'))
+    return true;
+  uni.showModal({ title: '登录后参与互动', content: '登录后可以评论、收藏和联系发布者。', confirmText: '去登录', success: res => res.confirm && uni.navigateTo({ url: '/pages/login/index' }) });
+  return false;
+}
 function sendComment() {
+  if (!ensureLogin())
+    return;
   if (!comment.value.trim())
-    return; comments.value.push({ name: '佳佳同学', avatar: '佳', time: '刚刚', content: comment.value, likes: 0 }); comment.value = ''; uni.showToast({ title: '评论成功', icon: 'success' });
+    return;
+  comments.value.push({ name: '佳佳同学', avatar: '佳', time: '刚刚', content: comment.value, likes: 0 });
+  comment.value = '';
+  uni.showToast({ title: '评论成功', icon: 'success' });
 }
 function contact() {
-  if (!uni.getStorageSync('yd-demo-login'))
-    uni.navigateTo({ url: '/pages/login/index' }); else uni.showToast({ title: '已发送联系请求', icon: 'success' });
+  if (ensureLogin())
+    uni.showToast({ title: '已发送联系请求', icon: 'success' });
+}
+function toggleLike() {
+  if (ensureLogin())
+    liked.value = !liked.value;
+}
+function toggleCollect() {
+  if (ensureLogin())
+    collected.value = !collected.value;
 }
 </script>
 
@@ -100,9 +123,9 @@ function contact() {
       <view class="bottom-bar">
         <view class="comment-input">
           <input v-model="comment" placeholder="友善评论一下…" confirm-type="send" @confirm="sendComment">
-        </view><view class="action" :class="{ active: liked }" @click="liked = !liked">
+        </view><view class="action" :class="{ active: liked }" @click="toggleLike">
           <text>{{ liked ? '♥' : '♡' }}</text><span>{{ post.likes + (liked ? 1 : 0) }}</span>
-        </view><view class="action" :class="{ active: collected }" @click="collected = !collected">
+        </view><view class="action" :class="{ active: collected }" @click="toggleCollect">
           <text>☆</text><span>收藏</span>
         </view><button @click="contact">
           联系TA

@@ -104,10 +104,13 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
                 .addValue("avatar", trim(reqVO.getAvatar()))
                 .addValue("schoolName", trim(reqVO.getSchoolName()))
                 .addValue("campusName", trim(reqVO.getCampusName()))
+                .addValue("grade", trim(reqVO.getGrade()))
+                .addValue("gender", trim(reqVO.getGender()))
                 .addValue("roleType", trim(reqVO.getRoleType()));
         namedParameterJdbcTemplate.update("UPDATE " + TABLE
                 + " SET nickname = COALESCE(:nickname, nickname), avatar = COALESCE(:avatar, avatar),"
                 + " school_name = COALESCE(:schoolName, school_name), campus_name = COALESCE(:campusName, campus_name),"
+                + " grade = COALESCE(:grade, grade), gender = COALESCE(:gender, gender),"
                 + " role_type = COALESCE(:roleType, role_type), update_time = NOW()"
                 + " WHERE id = :id AND deleted = b'0'", params);
         return getLoginUser(userId);
@@ -183,6 +186,8 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
         respVO.setMobile(toStr(row.get("mobile")));
         respVO.setSchoolName(toStr(row.get("school_name")));
         respVO.setCampusName(toStr(row.get("campus_name")));
+        respVO.setGrade(toStr(row.get("grade")));
+        respVO.setGender(toStr(row.get("gender")));
         respVO.setRoleType(toStr(row.get("role_type")));
         respVO.setMobileBound(StrUtil.isNotBlank(respVO.getMobile()));
         Object lastLoginTime = row.get("last_login_time");

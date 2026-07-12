@@ -33,6 +33,12 @@ public class CampusUserRespVO {
     @Schema(description = "校区名称")
     private String campusName;
 
+    @Schema(description = "年级")
+    private String grade;
+
+    @Schema(description = "性别")
+    private String gender;
+
     @Schema(description = "用户角色，student、merchant、agent")
     private String roleType;
 

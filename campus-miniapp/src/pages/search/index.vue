@@ -10,10 +10,38 @@ const activeFilter = ref('综合');
 const recent = ref(['折叠桌', '杭州东站拼车', '计算器']);
 const hot = ['毕业闲置', '校园卡', '周末活动', '东门美食', '四六级资料', '找搭子'];
 const tabs = ['全部', '二手', '互助', '活动', '用户'];
-const results = computed(() => !keyword.value || keyword.value.includes('不存在') ? [] : campusPosts.filter(item => activeTab.value === '全部' || item.channel === activeTab.value));
+const tabChannels: Record<string, string[]> = { 二手: ['二手'], 互助: ['互助'], 活动: ['社团'] };
+const results = computed(() => {
+  const query = keyword.value.trim().toLowerCase();
+  if (!query)
+    return [];
+
+  const matched = campusPosts.filter((item) => {
+    const content = [item.title, item.content, item.author, item.school, item.channel, ...item.tags].join(' ').toLowerCase();
+    if (!content.includes(query))
+      return false;
+    if (activeTab.value === '用户')
+      return `${item.author} ${item.school}`.toLowerCase().includes(query);
+    const channels = tabChannels[activeTab.value];
+    return !channels || channels.includes(item.channel);
+  });
+
+  if (activeFilter.value === '价格')
+    return [...matched].sort((a, b) => Number.parseFloat(a.price || '0') - Number.parseFloat(b.price || '0'));
+  if (activeFilter.value === '最新')
+    return [...matched].sort((a, b) => b.id - a.id);
+  return matched;
+});
 function search(value?: string) {
   if (value)
-    keyword.value = value; searched.value = true; if (keyword.value && !recent.value.includes(keyword.value))
+    keyword.value = value;
+  keyword.value = keyword.value.trim();
+  if (!keyword.value) {
+    uni.showToast({ title: '请输入搜索关键词', icon: 'none' });
+    return;
+  }
+  searched.value = true;
+  if (!recent.value.includes(keyword.value))
     recent.value.unshift(keyword.value);
 }
 function clear() { keyword.value = ''; searched.value = false; }
@@ -76,7 +104,7 @@ function clear() { keyword.value = ''; searched.value = false; }
       <StatePanel v-if="!results.length" title="没有找到相关内容" :description="`换个关键词试试，或者去发布「${keyword}」相关内容。`" action="去发布" @action="uni.switchTab({ url: '/pages/publish/index' })" />
       <template v-else>
         <view class="result-count">
-          找到 {{ results.length * 12 + 6 }} 条与“{{ keyword }}”相关的内容
+          找到 {{ results.length }} 条与“{{ keyword }}”相关的内容
         </view><view class="result-grid">
           <view class="column">
             <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" />

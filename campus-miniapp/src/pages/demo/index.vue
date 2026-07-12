@@ -1,8 +1,11 @@
 <script lang="ts" setup>
-import { campusRegions, campusTenants } from '@/mock/campus';
+import StatePanel from '@/components/StatePanel/index.vue';
+import { campusRegions, campusTenants, getDefaultTenant } from '@/mock/campus';
+import { useTenantStore } from '@/stores/modules/tenant';
 
 const activeRegionId = ref(1);
 const keyword = ref('');
+const tenantStore = useTenantStore();
 const services = [
   { icon: '♻', label: '二手市场', note: '386件在售' },
   { icon: '🙌', label: '校园互助', note: '48条求助' },
@@ -11,8 +14,21 @@ const services = [
   { icon: '🔎', label: '失物招领', note: '今日12条' },
   { icon: '🎉', label: '社团活动', note: '本周28场' },
 ];
-const campuses = computed(() => campusTenants.filter(item => !keyword.value || `${item.name}${item.areaName}`.includes(keyword.value)));
-function selectCampus(name: string) { uni.showToast({ title: `已切换到${name}`, icon: 'success' }); setTimeout(() => uni.switchTab({ url: '/pages/index/index' }), 600); }
+const currentTenant = computed(() => tenantStore.currentTenant || getDefaultTenant());
+const currentRegion = computed(() => campusRegions.find(item => item.id === activeRegionId.value));
+const campuses = computed(() => campusTenants.filter((item) => {
+  const matchesRegion = !currentRegion.value || item.areaName === currentRegion.value.name;
+  const matchesKeyword = !keyword.value.trim() || `${item.name}${item.areaName}`.includes(keyword.value.trim());
+  return matchesRegion && matchesKeyword;
+}));
+function selectCampus(campus: typeof campusTenants[number]) {
+  tenantStore.selectTenant(campus);
+  uni.showToast({ title: `已切换到${campus.name}`, icon: 'success' });
+  setTimeout(() => uni.switchTab({ url: '/pages/index/index' }), 600);
+}
+function regionLabel(name: string) {
+  return name.replace('杭州大学城', '大学城').replace('滨江高校圈', '滨江').replace('下沙生活区', '下沙');
+}
 </script>
 
 <template>
@@ -24,9 +40,9 @@ function selectCampus(name: string) { uni.showToast({ title: `已切换到${name
       <view class="current-main">
         <view>
           <view class="current-name">
-            浙江理工大学
+            {{ currentTenant.name }}
           </view><view class="current-meta">
-            杭州大学城 · 已认证校园
+            {{ currentTenant.areaName }} · 已认证校园
           </view>
         </view><view class="verified">
           ✓ 同校
@@ -65,12 +81,13 @@ function selectCampus(name: string) { uni.showToast({ title: `已切换到${name
         附近校园
       </view><view class="region-tabs">
         <text v-for="region in campusRegions" :key="region.id" :class="{ active: activeRegionId === region.id }" @click="activeRegionId = region.id">
-          {{ region.city }}
+          {{ regionLabel(region.name) }}
         </text>
       </view>
     </view>
-    <view class="campus-list">
-      <view v-for="(campus, index) in campuses" :key="campus.id" class="campus-row yd-card" @click="selectCampus(campus.name)">
+    <StatePanel v-if="!campuses.length" title="这个区域暂未开通校园" description="可以切换其他区域，或搜索已开通的学校和校区。" />
+    <view v-else class="campus-list">
+      <view v-for="(campus, index) in campuses" :key="campus.id" class="campus-row yd-card" @click="selectCampus(campus)">
         <view class="school-logo" :class="`logo-${index}`">
           {{ campus.name.slice(0, 1) }}
         </view>

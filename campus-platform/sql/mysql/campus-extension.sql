@@ -139,6 +139,8 @@ CREATE TABLE `campus_miniapp_user` (
   `phone_country_code` varchar(8) NOT NULL DEFAULT '' COMMENT '手机号区号',
   `school_name` varchar(100) NOT NULL DEFAULT '' COMMENT '学校名称',
   `campus_name` varchar(100) NOT NULL DEFAULT '' COMMENT '校区名称',
+  `grade` varchar(32) NOT NULL DEFAULT '' COMMENT '年级',
+  `gender` varchar(16) NOT NULL DEFAULT '不公开' COMMENT '性别：不公开、男、女',
   `role_type` varchar(32) NOT NULL DEFAULT 'student' COMMENT '身份类型：student、merchant、agent',
   `source_scene` varchar(128) NOT NULL DEFAULT '' COMMENT '入口 scene',
   `inviter_user_id` bigint DEFAULT NULL COMMENT '邀请人用户编号',
@@ -153,6 +155,7 @@ CREATE TABLE `campus_miniapp_user` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_openid` (`openid`),
   KEY `idx_mobile` (`mobile`),
+  KEY `idx_school_campus` (`school_name`, `campus_name`),
   KEY `idx_tenant_last_login` (`tenant_id`, `last_login_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='校园小程序用户';
 

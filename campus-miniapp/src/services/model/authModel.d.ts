@@ -23,6 +23,8 @@ declare interface CampusUserInfoModel {
   email?: string
   schoolName?: string
   campusName?: string
+  grade?: string
+  gender?: string
   roleType?: string
   mobileBound?: boolean
   lastLoginTime?: string
@@ -40,6 +42,8 @@ declare interface CampusProfileUpdateParams {
   avatar?: string
   schoolName?: string
   campusName?: string
+  grade?: string
+  gender?: string
   roleType?: string
 }
 

@@ -1,24 +1,34 @@
 <script lang="ts" setup>
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
-import { campusChannels, campusPosts, getPostsByTenant } from '@/mock/campus';
+import { campusChannels, getDefaultTenant, getPostsByTenant } from '@/mock/campus';
+import { useTenantStore } from '@/stores/modules/tenant';
 
 const activeChannel = ref('推荐');
 const state = ref<'content' | 'loading' | 'empty' | 'error'>('content');
 const refreshing = ref(false);
-const visiblePosts = computed(() => getPostsByTenant(null, activeChannel.value));
+const tenantStore = useTenantStore();
+const visiblePosts = computed(() => getPostsByTenant(tenantStore.tenantId, activeChannel.value));
 const leftPosts = computed(() => visiblePosts.value.filter((_, index) => index % 2 === 0));
 const rightPosts = computed(() => visiblePosts.value.filter((_, index) => index % 2 === 1));
 
+onLoad(() => {
+  if (!tenantStore.currentTenant)
+    tenantStore.selectTenant(getDefaultTenant());
+});
+
 function chooseChannel(channel: string) {
   activeChannel.value = channel;
-  state.value = getPostsByTenant(null, channel).length ? 'content' : 'empty';
+  state.value = getPostsByTenant(tenantStore.tenantId, channel).length ? 'content' : 'empty';
 }
 function goSearch() { uni.navigateTo({ url: '/pages/search/index' }); }
 function goMessages() { uni.navigateTo({ url: '/pages/messages/index' }); }
 function switchCampus() { uni.switchTab({ url: '/pages/demo/index' }); }
 function retry() { state.value = 'loading'; setTimeout(() => state.value = 'content', 650); }
 function onRefresh() { refreshing.value = true; setTimeout(() => refreshing.value = false, 700); }
+watch([() => tenantStore.tenantId, activeChannel], () => {
+  state.value = visiblePosts.value.length ? 'content' : 'empty';
+}, { immediate: true });
 </script>
 
 <template>
@@ -34,7 +44,7 @@ function onRefresh() { refreshing.value = true; setTimeout(() => refreshing.valu
             云点
           </view>
           <view class="campus-line">
-            浙江理工大学 <text>⌄</text>
+            {{ tenantStore.tenantName || '全部校园' }} <text>⌄</text>
           </view>
         </view>
       </view>
@@ -62,7 +72,7 @@ function onRefresh() { refreshing.value = true; setTimeout(() => refreshing.valu
     <view class="campus-note">
       <view><text class="note-dot" />只看本校真实内容</view>
       <text class="note-side">
-        今日新增 {{ campusPosts.length + 18 }} 条
+        当前校园 {{ visiblePosts.length }} 条
       </text>
     </view>
 

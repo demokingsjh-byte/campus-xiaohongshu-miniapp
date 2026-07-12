@@ -36,9 +36,9 @@ public class CampusResourceRegistry {
                     set("title", "location")),
             meta("miniapp-user", "campus_miniapp_user",
                     set("nickname", "avatar", "mobile", "phone_country_code", "school_name", "campus_name",
-                            "role_type", "source_scene", "inviter_user_id", "tenant_id", "updater"),
-                    set("tenant_id", "inviter_user_id"),
-                    set("openid", "unionid", "nickname", "mobile", "school_name", "campus_name", "role_type"))
+                            "grade", "gender", "role_type", "source_scene", "inviter_user_id", "tenant_id", "updater"),
+                    set("tenant_id", "inviter_user_id", "role_type", "gender"),
+                    set("openid", "unionid", "nickname", "mobile", "school_name", "campus_name", "grade"))
     ).stream().collect(Collectors.toMap(CampusResourceMeta::getResource, Function.identity()));
 
     private CampusResourceRegistry() {

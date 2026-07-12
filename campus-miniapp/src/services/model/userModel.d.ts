@@ -20,6 +20,8 @@ export interface UserInfoModel {
   mobile?: string
   schoolName?: string
   campusName?: string
+  grade?: string
+  gender?: string
   roleType?: string
   mobileBound?: boolean
   lastLoginTime?: string

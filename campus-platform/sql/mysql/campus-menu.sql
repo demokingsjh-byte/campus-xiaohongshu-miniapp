@@ -17,7 +17,7 @@ VALUES
     (900300, '校区租户', 'campus:tenant-profile:query', 2, 3, 900000, 'tenant-profile', 'ep:coordinate', 'campus/base/index', 'CampusTenantProfile', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900400, '校区代理', 'campus:agent:query', 2, 4, 900000, 'agent', 'ep:user-filled', 'campus/base/index', 'CampusAgent', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900500, '商品管理', 'campus:product:query', 2, 5, 900000, 'product', 'ep:goods', 'campus/base/index', 'CampusProduct', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900600, '小程序用户', 'campus:miniapp-user:query', 2, 6, 900000, 'miniapp-user', 'ep:user', 'campus/base/index', 'CampusMiniappUser', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
+    (900600, '学生用户', 'campus:miniapp-user:query', 2, 6, 900000, 'miniapp-user', 'ep:user', 'campus/base/index', 'CampusStudentUser', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
 ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), sort = VALUES(sort), parent_id = VALUES(parent_id), path = VALUES(path), icon = VALUES(icon), component = VALUES(component), component_name = VALUES(component_name), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';
 
 INSERT INTO system_menu
@@ -38,6 +38,6 @@ VALUES
     (900501, '商品新增', 'campus:product:create', 3, 1, 900500, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900502, '商品修改', 'campus:product:update', 3, 2, 900500, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900503, '商品删除', 'campus:product:delete', 3, 3, 900500, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900601, '小程序用户修改', 'campus:miniapp-user:update', 3, 1, 900600, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900602, '小程序用户删除', 'campus:miniapp-user:delete', 3, 2, 900600, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
+    (900601, '学生用户修改', 'campus:miniapp-user:update', 3, 1, 900600, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900602, '学生用户删除', 'campus:miniapp-user:delete', 3, 2, 900600, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
 ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), parent_id = VALUES(parent_id), sort = VALUES(sort), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';

@@ -10,6 +10,37 @@
           @keyup.enter="handleQuery"
         />
       </el-form-item>
+      <el-form-item v-for="filter in meta.filters || []" :key="filter.prop" :label="filter.label">
+        <el-select
+          v-if="filter.options"
+          v-model="queryParams[filter.prop]"
+          clearable
+          class="!w-180px"
+          :placeholder="`请选择${filter.label}`"
+        >
+          <el-option
+            v-for="option in filter.options"
+            :key="String(option.value)"
+            :label="option.label"
+            :value="option.value"
+          />
+        </el-select>
+        <el-input-number
+          v-else-if="filter.type === 'number'"
+          v-model="queryParams[filter.prop]"
+          controls-position="right"
+          class="!w-180px"
+          :min="0"
+        />
+        <el-input
+          v-else
+          v-model="queryParams[filter.prop]"
+          clearable
+          class="!w-180px"
+          :placeholder="`请输入${filter.label}`"
+          @keyup.enter="handleQuery"
+        />
+      </el-form-item>
       <el-form-item v-if="meta.statusKey" label="状态">
         <el-select v-model="queryParams[meta.statusKey]" clearable class="!w-160px">
           <el-option label="开启/待审核" :value="0" />
@@ -31,6 +62,13 @@
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
       <el-table-column label="编号" align="center" prop="id" width="90" />
+      <el-table-column v-if="resource === 'miniapp-user'" label="微信头像" align="center" width="90">
+        <template #default="scope">
+          <el-avatar :size="42" :src="scope.row.avatar">
+            {{ String(scope.row.nickname || '学').slice(0, 1) }}
+          </el-avatar>
+        </template>
+      </el-table-column>
       <el-table-column
         v-for="column in meta.columns"
         :key="column.prop"
@@ -96,11 +134,17 @@ defineOptions({ name: 'CampusBase' })
 
 type FieldType = 'text' | 'textarea' | 'number' | 'decimal' | 'boolean'
 
+interface SelectOption {
+  label: string
+  value: string | number
+}
+
 interface FieldMeta {
   label: string
   prop: string
   type?: FieldType
   defaultValue?: any
+  options?: SelectOption[]
 }
 
 interface PageMeta {
@@ -109,6 +153,8 @@ interface PageMeta {
   searchLabel?: string
   statusKey?: string
   allowCreate?: boolean
+  filters?: FieldMeta[]
+  defaultQuery?: Record<string, any>
   columns: FieldMeta[]
   fields: FieldMeta[]
 }
@@ -239,16 +285,36 @@ const metas: Record<string, PageMeta> = {
     ]
   },
   'miniapp-user': {
-    title: '小程序用户',
+    title: '学生用户',
     searchKey: 'nickname',
-    searchLabel: '昵称',
+    searchLabel: '微信昵称',
     allowCreate: false,
-    columns: [
-      { label: 'OpenID', prop: 'openid' },
-      { label: '昵称', prop: 'nickname' },
+    defaultQuery: { role_type: 'student' },
+    filters: [
       { label: '手机号', prop: 'mobile' },
       { label: '学校', prop: 'school_name' },
       { label: '校区', prop: 'campus_name' },
+      { label: '年级', prop: 'grade' },
+      { label: '身份', prop: 'role_type', options: [
+        { label: '学生', value: 'student' },
+        { label: '商家', value: 'merchant' },
+        { label: '代理', value: 'agent' }
+      ] },
+      { label: '性别', prop: 'gender', options: [
+        { label: '不公开', value: '不公开' },
+        { label: '男', value: '男' },
+        { label: '女', value: '女' }
+      ] },
+      { label: '校区租户ID', prop: 'tenant_id', type: 'number' }
+    ],
+    columns: [
+      { label: 'OpenID', prop: 'openid' },
+      { label: '微信昵称', prop: 'nickname' },
+      { label: '手机号', prop: 'mobile' },
+      { label: '学校', prop: 'school_name' },
+      { label: '校区', prop: 'campus_name' },
+      { label: '年级', prop: 'grade' },
+      { label: '性别', prop: 'gender' },
       { label: '身份', prop: 'role_type' },
       { label: '租户ID', prop: 'tenant_id' },
       { label: '最近登录', prop: 'last_login_time' }
@@ -260,6 +326,8 @@ const metas: Record<string, PageMeta> = {
       { label: '国家区号', prop: 'phone_country_code' },
       { label: '学校名称', prop: 'school_name' },
       { label: '校区名称', prop: 'campus_name' },
+      { label: '年级', prop: 'grade' },
+      { label: '性别', prop: 'gender' },
       { label: '身份类型', prop: 'role_type' },
       { label: '入口 scene', prop: 'source_scene' },
       { label: '邀请人ID', prop: 'inviter_user_id', type: 'number' },
@@ -280,7 +348,8 @@ const formType = ref<'create' | 'update'>('create')
 const formData = ref<Record<string, any>>({})
 const queryParams = reactive<Record<string, any>>({
   pageNo: 1,
-  pageSize: 10
+  pageSize: 10,
+  ...(meta.value.defaultQuery || {})
 })
 
 const getList = async () => {
@@ -303,6 +372,7 @@ const resetQuery = () => {
   Object.keys(queryParams).forEach((key) => {
     if (!['pageNo', 'pageSize'].includes(key)) delete queryParams[key]
   })
+  Object.assign(queryParams, meta.value.defaultQuery || {})
   handleQuery()
 }
 

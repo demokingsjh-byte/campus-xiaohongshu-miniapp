@@ -1,31 +1,42 @@
 <script lang="ts" setup>
 import StatePanel from '@/components/StatePanel/index.vue';
+import { useUserStore } from '@/stores/modules/user';
 
-const loggedIn = computed(() => Boolean(uni.getStorageSync('yd-demo-login')));
+const userStore = useUserStore();
+const loggedIn = ref(false);
 const activeTab = ref('全部');
 const networkError = ref(false);
 const tabs = ['全部', '评论', '赞与收藏', '系统'];
-const messages = [
+const messages = reactive([
   { type: '评论', icon: '评', color: '#DFF1EC', title: '小满同学 评论了你的发布', content: '请问桌子的尺寸大概是多少呀？', time: '8分钟前', unread: true },
   { type: '赞与收藏', icon: '♡', color: '#FFF0ED', title: '3 位同学赞了你的内容', content: '毕业出九成新折叠桌和台灯', time: '32分钟前', unread: true },
   { type: '系统', icon: '云', color: '#E8EFF0', title: '校园认证已通过', content: '你已获得浙江理工大学同校标识', time: '昨天', unread: false },
   { type: '评论', icon: '复', color: '#FFF0D9', title: '赶高铁 回复了你', content: '可以的，周五 18:20 东门见。', time: '周五', unread: false },
-];
+]);
 const filtered = computed(() => activeTab.value === '全部' ? messages : messages.filter(item => item.type === activeTab.value));
-function markRead() { messages.forEach(item => item.unread = false); uni.showToast({ title: '已全部标为已读', icon: 'none' }); }
+const unreadCount = computed(() => messages.filter(item => item.unread).length);
+const commentUnreadCount = computed(() => messages.filter(item => item.type === '评论' && item.unread).length);
+onShow(() => loggedIn.value = userStore.loggedIn || Boolean(uni.getStorageSync('yd-demo-login')));
+function markRead() {
+  if (!unreadCount.value)
+    return;
+  messages.forEach(item => item.unread = false);
+  uni.showToast({ title: '已全部标为已读', icon: 'none' });
+}
+function markSingle(item: typeof messages[number]) { item.unread = false; }
 </script>
 
 <template>
   <view class="messages-page">
     <view class="message-actions">
-      <text>{{ messages.filter(item => item.unread).length }} 条未读</text><text @click="markRead">
+      <text>{{ unreadCount }} 条未读</text><text :class="{ disabled: !unreadCount }" @click="markRead">
         全部已读
       </text>
     </view>
     <scroll-view scroll-x class="message-tabs">
       <view>
         <text v-for="tab in tabs" :key="tab" :class="{ active: activeTab === tab }" @click="activeTab = tab">
-          {{ tab }}<i v-if="tab === '评论'">1</i>
+          {{ tab }}<i v-if="tab === '评论' && commentUnreadCount">{{ commentUnreadCount }}</i>
         </text>
       </view>
     </scroll-view>
@@ -34,7 +45,7 @@ function markRead() { messages.forEach(item => item.unread = false); uni.showToa
     <StatePanel v-else-if="networkError" type="offline" title="网络连接不可用" description="检查网络后重试，消息不会丢失。" action="重新连接" @action="networkError = false" />
     <StatePanel v-else-if="!filtered.length" title="暂时没有新消息" description="参与评论或发布内容后，校园里的回应会出现在这里。" />
     <view v-else class="message-list">
-      <view v-for="item in filtered" :key="item.title" class="message-row" :class="{ unread: item.unread }">
+      <view v-for="item in filtered" :key="item.title" class="message-row" :class="{ unread: item.unread }" @click="markSingle(item)">
         <view class="message-icon" :style="{ background: item.color }">
           {{ item.icon }}
         </view><view class="message-main">
@@ -73,6 +84,7 @@ function markRead() { messages.forEach(item => item.unread = false); uni.showToa
 .message-actions text:last-child {
   color: #0f766e;
 }
+.message-actions .disabled { color: #aab2af; }
 .message-tabs {
   background: #fff;
   white-space: nowrap;

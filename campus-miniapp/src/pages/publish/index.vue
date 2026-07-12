@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { campusPublishTypes } from '@/mock/campus';
+import { useUserStore } from '@/stores/modules/user';
 
 const activeType = ref('idle');
 const images = ref<string[]>([]);
@@ -7,481 +8,344 @@ const submitting = ref(false);
 const showSuccess = ref(false);
 const agreed = ref(true);
 const errors = reactive<Record<string, string>>({});
-const form = reactive({ title: '', price: '', content: '', location: '浙江理工大学 · 生活二区', tags: [] as string[], contact: '', anonymous: false });
-const tagOptions = ['宿舍自提', '可小刀', '急', '女生优先', '校内交易'];
-const showPrice = computed(() => ['idle', 'ride', 'shop'].includes(activeType.value));
-const currentType = computed(() => campusPublishTypes.find(item => item.key === activeType.value)!);
+const userStore = useUserStore();
+const locations = ['浙江理工大学 · 下沙校区', '浙江理工大学 · 临平校区', '浙江理工大学 · 延安路校区'];
+const visibleRanges = ['仅本校可见', '同城高校可见', '所有人可见'];
+const form = reactive({
+  title: '',
+  price: '',
+  originalPrice: '',
+  content: '',
+  location: locations[0],
+  tags: [] as string[],
+  contact: '',
+  tradeMode: '校内自提',
+  visibleRange: visibleRanges[0],
+  anonymous: false,
+});
 
+const typeDetails: Record<string, { eyebrow: string, hint: string, placeholder: string, tags: string[], modes: string[] }> = {
+  idle: { eyebrow: '闲置交易', hint: '真实图片和成色描述能更快成交', placeholder: '品牌、型号、成色、购买时间、瑕疵和取货方式...', tags: ['宿舍自提', '可小刀', '九成新', '毕业出', '校内交易'], modes: ['校内自提', '送到宿舍', '快递邮寄'] },
+  help: { eyebrow: '同学互助', hint: '把时间、地点和具体需求写清楚', placeholder: '需要什么帮助、截止时间、地点和答谢方式...', tags: ['急', '有偿', '奶茶答谢', '今天', '女生优先'], modes: ['线上回应', '当面帮助'] },
+  ride: { eyebrow: '拼车出行', hint: '请注明时间、路线、人数和行李情况', placeholder: '出发时间、上车点、目的地、空位和行李要求...', tags: ['杭州东站', '萧山机场', '女生优先', '可带行李', '周末'], modes: ['费用均摊', '司机接单'] },
+  shop: { eyebrow: '校园探店', hint: '实拍、价格和真实体验最有参考价值', placeholder: '推荐菜品、价格、排队情况、位置和真实感受...', tags: ['学生折扣', '人均30', '东门', '不踩雷', '适合聚餐'], modes: ['到店消费', '外卖可点'] },
+  lost: { eyebrow: '失物招领', hint: '避免公开证件号码等敏感信息', placeholder: '丢失或捡到的物品、时间、地点和辨认特征...', tags: ['急', '校园卡', '图书馆', '已交服务台', '求扩散'], modes: ['失物寻找', '物品招领'] },
+  club: { eyebrow: '社团活动', hint: '活动时间、地点和报名方式要完整', placeholder: '活动主题、时间地点、适合人群、名额和报名方式...', tags: ['社团活动', '零基础', '免费', '周末', '招募中'], modes: ['线上报名', '现场参与'] },
+};
+
+const currentType = computed(() => campusPublishTypes.find(item => item.key === activeType.value)!);
+const currentDetail = computed(() => typeDetails[activeType.value]);
+const showPrice = computed(() => ['idle', 'ride', 'shop'].includes(activeType.value));
+const requiresImage = computed(() => ['idle', 'shop', 'lost'].includes(activeType.value));
+
+onLoad(() => {
+  const draft = uni.getStorageSync('campus-publish-draft');
+  if (!draft || typeof draft !== 'object')
+    return;
+  const draftType = campusPublishTypes.some(item => item.key === draft.activeType) ? draft.activeType : 'idle';
+  activeType.value = draftType;
+  Object.assign(form, {
+    title: draft.title || '',
+    price: draft.price || '',
+    originalPrice: draft.originalPrice || '',
+    content: draft.content || '',
+    location: locations.includes(draft.location) ? draft.location : locations[0],
+    tags: Array.isArray(draft.tags) ? draft.tags.slice(0, 3) : [],
+    contact: draft.contact || '',
+    tradeMode: typeDetails[draftType].modes.includes(draft.tradeMode) ? draft.tradeMode : typeDetails[draftType].modes[0],
+    visibleRange: visibleRanges.includes(draft.visibleRange) ? draft.visibleRange : visibleRanges[0],
+    anonymous: Boolean(draft.anonymous),
+  });
+  images.value = Array.isArray(draft.images) ? draft.images.slice(0, 9) : [];
+  uni.showToast({ title: '已恢复上次草稿', icon: 'none' });
+});
+
+function chooseType(key: string) {
+  activeType.value = key;
+  form.tags = [];
+  form.tradeMode = typeDetails[key].modes[0];
+  Object.keys(errors).forEach(keyName => errors[keyName] = '');
+}
 function addImage() {
   if (images.value.length >= 9)
     return;
-  uni.chooseImage({ count: 9 - images.value.length, success: res => images.value.push(...res.tempFilePaths) });
+  uni.chooseImage({ count: 9 - images.value.length, sizeType: ['compressed'], success: res => images.value.push(...res.tempFilePaths) });
 }
 function removeImage(index: number) { images.value.splice(index, 1); }
-function toggleTag(tag: string) { const index = form.tags.indexOf(tag); index >= 0 ? form.tags.splice(index, 1) : form.tags.push(tag); }
+function setCover(index: number) {
+  if (index === 0)
+    return;
+  const selected = images.value[index];
+  images.value.splice(index, 1);
+  images.value.unshift(selected);
+  uni.showToast({ title: '已设为封面', icon: 'none' });
+}
+function toggleTag(tag: string) {
+  const index = form.tags.indexOf(tag);
+  if (index >= 0)
+    form.tags.splice(index, 1);
+  else if (form.tags.length < 3)
+    form.tags.push(tag);
+  else
+    uni.showToast({ title: '最多选择 3 个标签', icon: 'none' });
+}
+function selectFrom(key: 'location' | 'visibleRange', options: string[], event: any) { form[key] = options[Number(event.detail.value)]; }
 function validate() {
-  errors.title = form.title.trim() ? '' : '请填写一个清楚的标题';
-  errors.content = form.content.trim().length >= 10 ? '' : '内容至少写 10 个字，让同学更容易了解';
+  errors.images = requiresImage.value && !images.value.length ? '请至少上传 1 张真实图片' : '';
+  errors.title = form.title.trim().length >= 4 ? '' : '标题至少填写 4 个字';
+  errors.content = form.content.trim().length >= 10 ? '' : '详细描述至少填写 10 个字';
   errors.price = showPrice.value && form.price && Number(form.price) <= 0 ? '价格需要大于 0' : '';
   errors.agreement = agreed.value ? '' : '请先同意社区发布规范';
   return !Object.values(errors).some(Boolean);
 }
-function saveDraft() { uni.setStorageSync('campus-publish-draft', { ...form, activeType: activeType.value }); uni.showToast({ title: '草稿已保存', icon: 'none' }); }
-function submit() {
-  if (!validate()) { uni.showToast({ title: '还有内容需要完善', icon: 'none' }); return; }
-  submitting.value = true;
-  setTimeout(() => { submitting.value = false; showSuccess.value = true; }, 900);
+function preview() {
+  if (!form.title.trim()) { uni.showToast({ title: '先写一个标题再预览', icon: 'none' }); return; }
+  uni.showModal({ title: '发布预览', content: `${currentType.value.title}\n${form.title}\n${form.price ? `¥${form.price}` : '免费 / 面议'} · ${form.location}`, showCancel: false });
 }
-function reset() { showSuccess.value = false; Object.assign(form, { title: '', price: '', content: '', location: '浙江理工大学 · 生活二区', tags: [], contact: '', anonymous: false }); images.value = []; }
+function saveDraft() {
+  uni.setStorageSync('campus-publish-draft', { ...form, images: images.value, activeType: activeType.value });
+  uni.showToast({ title: '草稿已保存', icon: 'none' });
+}
+function submit() {
+  if (!userStore.loggedIn && !uni.getStorageSync('yd-demo-login')) {
+    uni.showModal({
+      title: '登录后才能发布',
+      content: '登录并完善校园资料后，内容会优先展示给同校同学。',
+      confirmText: '去登录',
+      success: res => res.confirm && uni.navigateTo({ url: '/pages/login/index' }),
+    });
+    return;
+  }
+  if (!validate()) { uni.showToast({ title: '还有必填内容未完成', icon: 'none' }); return; }
+  submitting.value = true;
+  setTimeout(() => {
+    submitting.value = false;
+    uni.removeStorageSync('campus-publish-draft');
+    showSuccess.value = true;
+  }, 900);
+}
+function reset() {
+  showSuccess.value = false;
+  Object.assign(form, { title: '', price: '', originalPrice: '', content: '', location: locations[0], tags: [], contact: '', tradeMode: typeDetails.idle.modes[0], visibleRange: visibleRanges[0], anonymous: false });
+  images.value = [];
+  activeType.value = 'idle';
+  agreed.value = true;
+  Object.keys(errors).forEach(key => errors[key] = '');
+  uni.removeStorageSync('campus-publish-draft');
+}
 </script>
 
 <template>
-  <view class="yd-page publish-page safe-bottom">
-    <view class="publish-intro">
+  <view class="publish-page safe-bottom">
+    <view class="publish-head">
       <view>
-        <view class="intro-title">分享此刻的校园生活</view>
-        <view class="intro-desc">真实、清楚的内容更容易获得回应</view>
+        <view class="head-title">发布到校园</view>
+        <view class="head-subtitle">分享真实信息，和同校同学更快连接</view>
       </view>
-      <view class="school-chip">浙理工 <text>⌄</text></view>
+      <view class="draft-entry" @click="saveDraft"><view class="draft-icon" /><text>草稿</text></view>
     </view>
 
-    <view class="type-scroll">
-      <view class="type-list">
-        <view v-for="item in campusPublishTypes" :key="item.key" class="type-item" :class="{ active: activeType === item.key }" @click="activeType = item.key">
-          <view class="type-icon">{{ item.title.slice(0, 1) }}</view><text>{{ item.title }}</text>
+    <view class="type-card card-block">
+      <view class="block-head"><text>选择发布类型</text><text>发布后不可修改</text></view>
+      <scroll-view scroll-x class="type-scroll" :show-scrollbar="false">
+        <view class="type-track">
+          <view v-for="item in campusPublishTypes" :key="item.key" class="type-item" :class="{ active: activeType === item.key }" @click="chooseType(item.key)">
+            <view class="type-symbol">{{ item.title.slice(0, 1) }}</view>
+            <text>{{ item.title.replace('校园', '').replace('出行', '').replace('种草', '').replace('闲置', '') }}</text>
+          </view>
         </view>
-      </view>
+      </scroll-view>
+      <view class="type-helper"><text>{{ currentDetail.eyebrow }}</text><view>{{ currentDetail.hint }}</view></view>
     </view>
 
-    <view class="form-card yd-card">
-      <view class="form-section-head">
-        <text>内容信息</text><text>必填项请认真填写</text>
-      </view>
-      <view class="field-label">
-        上传图片 <text>最多 9 张，首图会成为封面</text>
-      </view>
-      <view class="uploader">
-        <view v-for="(image, index) in images" :key="image" class="image-wrap">
-          <image :src="image" mode="aspectFill" /><text @click="removeImage(index)">
-            ×
-          </text>
+    <view class="content-card card-block">
+      <view class="block-head media-head"><text>图片</text><text>{{ images.length }}/9 · 首图作为封面</text></view>
+      <view class="uploader-grid">
+        <view v-for="(image, index) in images" :key="image" class="image-item" @click="setCover(index)">
+          <image :src="image" mode="aspectFill" />
+          <text v-if="index === 0" class="cover-badge">封面</text>
+          <text class="remove-image" @click.stop="removeImage(index)">×</text>
         </view>
         <view v-if="images.length < 9" class="add-image" @click="addImage">
-          <text class="plus">
-            ＋
-          </text><text>添加实拍</text>
+          <view class="camera-icon"><i /></view>
+          <text>添加实拍</text>
+          <text>支持图片</text>
         </view>
       </view>
+      <view v-if="errors.images" class="error">{{ errors.images }}</view>
 
-      <view class="field-group">
-        <view class="field-label">
-          标题 <text>{{ form.title.length }}/30</text>
-        </view><input v-model="form.title" maxlength="30" class="field-input" :class="{ invalid: errors.title }" :placeholder="`${currentType.title}，一句话说清楚`"><view v-if="errors.title" class="error">
-          {{ errors.title }}
-        </view>
+      <view class="editor-divider" />
+      <view class="title-editor">
+        <input v-model="form.title" maxlength="30" :class="{ invalid: errors.title }" :placeholder="`${currentType.title}，一句话说明重点`">
+        <text>{{ form.title.length }}/30</text>
       </view>
-      <view class="field-group">
-        <view class="field-label">
-          详细描述 <text>{{ form.content.length }}/500</text>
-        </view><textarea v-model="form.content" maxlength="500" class="field-textarea" :class="{ invalid: errors.content }" placeholder="说说具体情况、时间、成色或注意事项，真实描述更容易获得回应…" /><view v-if="errors.content" class="error">
-          {{ errors.content }}
-        </view>
-      </view>
+      <view v-if="errors.title" class="error">{{ errors.title }}</view>
+      <view class="editor-divider" />
+      <textarea v-model="form.content" maxlength="500" class="content-editor" :class="{ invalid: errors.content }" :placeholder="currentDetail.placeholder" />
+      <view class="content-tools"><text>真实描述更容易获得回应</text><text>{{ form.content.length }}/500</text></view>
+      <view v-if="errors.content" class="error">{{ errors.content }}</view>
 
-      <view v-if="showPrice" class="field-group price-group">
-        <view class="field-label">
-          {{ activeType === 'ride' ? '人均费用' : '价格' }} <text>可不填</text>
-        </view><view class="price-input">
-          <text>¥</text><input v-model="form.price" type="digit" placeholder="0.00">
-        </view><view v-if="errors.price" class="error">
-          {{ errors.price }}
+      <view class="editor-divider" />
+      <view class="block-head tag-head"><text>添加标签</text><text>最多选 3 个</text></view>
+      <scroll-view scroll-x class="tag-scroll" :show-scrollbar="false">
+        <view class="tag-track">
+          <view v-for="tag in currentDetail.tags" :key="tag" class="tag-chip" :class="{ active: form.tags.includes(tag) }" @click="toggleTag(tag)"># {{ tag }}</view>
         </view>
-      </view>
+      </scroll-view>
+    </view>
 
-      <view class="field-group">
-        <view class="field-label">
-          标签 <text>最多选择 3 个</text>
-        </view><view class="tag-list">
-          <view v-for="tag in tagOptions" :key="tag" class="tag-chip" :class="{ active: form.tags.includes(tag) }" @click="form.tags.length < 3 || form.tags.includes(tag) ? toggleTag(tag) : null">
-            # {{ tag }}
-          </view>
-        </view>
+    <view v-if="showPrice" class="trade-card card-block">
+      <view class="block-head"><text>{{ activeType === 'ride' ? '费用信息' : '交易信息' }}</text><text>价格可面议</text></view>
+      <view class="price-row">
+        <view class="price-main"><text>¥</text><input v-model="form.price" type="digit" placeholder="0.00"></view>
+        <view v-if="activeType === 'idle'" class="original-price"><text>原价</text><input v-model="form.originalPrice" type="digit" placeholder="选填"></view>
       </view>
-
-      <view class="setting-row">
-        <view>
-          <view class="setting-title">
-            <i class="location-mark" />校园位置
-          </view><view class="setting-value">
-            {{ form.location }}
-          </view>
-        </view><text>›</text>
-      </view>
-      <view class="setting-row">
-        <view>
-          <view class="setting-title">
-            联系方式
-          </view><view class="setting-value">
-            仅回应后双方可见
-          </view>
-        </view><text>›</text>
-      </view>
-      <view class="setting-row">
-        <view>
-          <view class="setting-title">
-            匿名发布
-          </view><view class="setting-value">
-            昵称将显示为“同校同学”
-          </view>
-        </view><switch :checked="form.anonymous" color="#16A085" @change="form.anonymous = $event.detail.value" />
+      <view v-if="errors.price" class="error">{{ errors.price }}</view>
+      <view class="mode-label">{{ activeType === 'ride' ? '费用方式' : '交付方式' }}</view>
+      <view class="mode-list">
+        <view v-for="mode in currentDetail.modes" :key="mode" :class="{ active: form.tradeMode === mode }" @click="form.tradeMode = mode"><i />{{ mode }}</view>
       </view>
     </view>
 
-    <view class="agreement" @click="agreed = !agreed">
-      <view class="check" :class="{ checked: agreed }">
-        {{ agreed ? '✓' : '' }}
-      </view><text>我已阅读并同意《云点校园社区发布规范》</text>
+    <view class="setting-card card-block">
+      <picker :range="locations" @change="selectFrom('location', locations, $event)">
+        <view class="setting-row">
+          <view class="setting-icon pin-icon"><i /></view>
+          <view class="setting-main"><text>发布位置</text><text>{{ form.location }}</text></view><text class="arrow">›</text>
+        </view>
+      </picker>
+      <picker :range="visibleRanges" @change="selectFrom('visibleRange', visibleRanges, $event)">
+        <view class="setting-row">
+          <view class="setting-icon eye-icon"><i /></view>
+          <view class="setting-main"><text>谁可以看</text><text>{{ form.visibleRange }}</text></view><text class="arrow">›</text>
+        </view>
+      </picker>
+      <view class="setting-row contact-row">
+        <view class="setting-icon contact-icon">联</view>
+        <view class="setting-main"><text>联系方式</text><input v-model="form.contact" placeholder="选填，仅回应后可见"></view>
+      </view>
+      <view class="setting-row last-row">
+        <view class="setting-icon anonymous-icon">匿</view>
+        <view class="setting-main"><text>匿名发布</text><text>昵称将显示为“同校同学”</text></view>
+        <switch :checked="form.anonymous" color="#15967f" @change="form.anonymous = $event.detail.value" />
+      </view>
     </view>
-    <view v-if="errors.agreement" class="error agreement-error">
-      {{ errors.agreement }}
+
+    <view class="community-note">
+      <view class="check" :class="{ checked: agreed }" @click="agreed = !agreed">{{ agreed ? '✓' : '' }}</view>
+      <text>发布即代表同意《云点校园社区发布规范》，请勿泄露身份证、校园卡号等敏感信息。</text>
     </view>
+    <view v-if="errors.agreement" class="error agreement-error">{{ errors.agreement }}</view>
+    <view class="bottom-spacer" />
+
     <view class="submit-bar">
-      <button class="draft-btn" @click="saveDraft">
-        存草稿
-      </button><button class="publish-btn" :loading="submitting" @click="submit">
-        {{ submitting ? '发布中…' : '确认发布' }}
-      </button>
+      <button class="preview-btn" @click="preview"><view class="preview-icon" />预览</button>
+      <button class="publish-btn" :loading="submitting" @click="submit">{{ submitting ? '发布中…' : `发布${currentType.title}` }}</button>
     </view>
 
     <view v-if="showSuccess" class="success-mask">
       <view class="success-card">
-        <view class="success-icon">
-          ✓
-        </view><view class="success-title">
-          发布成功
-        </view><view class="success-desc">
-          内容正在同校社区展示，新的回应会通过消息通知你。
-        </view><button class="yd-primary-btn" @click="uni.switchTab({ url: '/pages/index/index' })">
-          查看内容
-        </button><button class="again" @click="reset">
-          再发一条
-        </button>
+        <view class="success-mark"><i /></view>
+        <view class="success-title">发布成功</view>
+        <view class="success-desc">内容已进入「{{ currentType.title }}」分区，新的回应会通过消息通知你。</view>
+        <view class="success-summary"><text>{{ form.location }}</text><text>{{ form.visibleRange }}</text></view>
+        <button class="view-content" @click="uni.switchTab({ url: '/pages/index/index' })">查看刚刚发布的内容</button>
+        <button class="again" @click="reset">继续发布</button>
       </view>
     </view>
   </view>
 </template>
 
 <style lang="scss" scoped>
-.publish-page {
-  padding-top: 12rpx;
-  background: #f7f7f3;
-}
-.publish-intro {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12rpx 2rpx 22rpx;
-}
-.intro-title { color: #18201e; font-size: 32rpx; font-weight: 850; }
-.intro-desc { margin-top: 6rpx; color: #7f8a86; font-size: 21rpx; }
-.school-chip { padding: 13rpx 17rpx; border: 1rpx solid #dedfd9; border-radius: 999rpx; color: #0f766e; background: #fff; font-size: 21rpx; font-weight: 700; }
-.school-chip text { margin-left: 4rpx; }
-.type-scroll {
-  margin-bottom: 20rpx;
-}
-.type-list {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12rpx;
-}
-.type-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  height: 82rpx;
-  padding: 0 12rpx;
-  border: 1rpx solid #e5e5df;
-  border-radius: 18rpx;
-  color: #596762;
-  background: #fff;
-  font-size: 20rpx;
-}
-.type-item.active {
-  border-color: #16a085;
-  color: #0f766e;
-  background: #e8f5f1;
-  font-weight: 700;
-  box-shadow: inset 0 0 0 1rpx #16a085;
-}
-.type-icon {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 42rpx;
-  height: 42rpx;
-  margin-right: 9rpx;
-  border-radius: 13rpx;
-  color: #fff;
-  background: #253a35;
-  font-size: 20rpx;
-  font-weight: 800;
-}
-.type-item.active .type-icon { background: #16a085; }
-.form-card {
-  padding: 25rpx 24rpx 8rpx;
-  border-radius: 28rpx;
-  box-shadow: 0 6rpx 22rpx rgba(26, 49, 43, 0.04);
-}
-.form-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 25rpx; padding-bottom: 20rpx; border-bottom: 1rpx solid #efede7; }
-.form-section-head text:first-child { color: #18201e; font-size: 29rpx; font-weight: 800; }
-.form-section-head text:last-child { color: #a0a9a5; font-size: 19rpx; }
-.field-group {
-  margin-top: 28rpx;
-}
-.field-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14rpx;
-  font-size: 25rpx;
-  font-weight: 750;
-}
-.field-label text {
-  color: #9aa39f;
-  font-size: 20rpx;
-  font-weight: 400;
-}
-.uploader {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14rpx;
-}
-.image-wrap,
-.add-image {
-  position: relative;
-  width: 150rpx;
-  height: 150rpx;
-  overflow: hidden;
-  border-radius: 20rpx;
-}
-.image-wrap image {
-  width: 100%;
-  height: 100%;
-}
-.image-wrap > text {
-  position: absolute;
-  top: 6rpx;
-  right: 6rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34rpx;
-  height: 34rpx;
-  border-radius: 50%;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.55);
-}
-.add-image {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border: 2rpx dashed #b9c7c2;
-  color: #89938f;
-  background: #f5faf8;
-  font-size: 21rpx;
-}
-.plus {
-  color: #16a085;
-  font-size: 46rpx;
-}
-.field-input,
-.field-textarea {
-  width: 100%;
-  border: 2rpx solid #ebeae4;
-  border-radius: 18rpx;
-  background: #fafaf7;
-  font-size: 26rpx;
-}
-.field-input {
-  height: 84rpx;
-  padding: 0 22rpx;
-}
-.field-textarea {
-  height: 230rpx;
-  padding: 22rpx;
-}
-.invalid {
-  border-color: #ff6b5e;
-  background: #fff8f6;
-}
-.error {
-  margin-top: 8rpx;
-  color: #ff6b5e;
-  font-size: 21rpx;
-}
-.price-input {
-  display: flex;
-  align-items: center;
-  height: 84rpx;
-  padding: 0 22rpx;
-  border-radius: 18rpx;
-  color: #ff6b5e;
-  border: 2rpx solid #ffddd7;
-  background: #fff8f6;
-  font-size: 30rpx;
-  font-weight: 800;
-}
-.price-input input {
-  flex: 1;
-  margin-left: 8rpx;
-  color: #ff6b5e;
-  font-size: 32rpx;
-}
-.tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-}
-.tag-chip {
-  padding: 11rpx 17rpx;
-  border: 1rpx solid #e5e5df;
-  border-radius: 999rpx;
-  color: #75807c;
-  background: #fff;
-  font-size: 22rpx;
-}
-.tag-chip.active {
-  border-color: #b8dfd6;
-  color: #0f766e;
-  background: #dff1ec;
-  font-weight: 700;
-}
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 23rpx 2rpx;
-  border-top: 1rpx solid #eeeae3;
-}
-.tag-list + .setting-row {
-  margin-top: 28rpx;
-}
-.setting-title {
-  display: flex;
-  align-items: center;
-  font-size: 26rpx;
-  font-weight: 700;
-}
-.location-mark { display: inline-block; width: 13rpx; height: 13rpx; margin-right: 12rpx; border: 4rpx solid #16a085; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); }
-.setting-value {
-  margin-top: 6rpx;
-  color: #929c98;
-  font-size: 21rpx;
-}
-.setting-row > text {
-  color: #9ba39f;
-  font-size: 34rpx;
-}
-.agreement {
-  display: flex;
-  align-items: center;
-  margin: 22rpx 8rpx 0;
-  color: #7b8581;
-  font-size: 21rpx;
-}
-.check {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32rpx;
-  height: 32rpx;
-  margin-right: 10rpx;
-  border: 2rpx solid #bac1bd;
-  border-radius: 9rpx;
-}
-.check.checked {
-  border-color: #16a085;
-  color: #fff;
-  background: #16a085;
-}
-.agreement-error {
-  margin-left: 8rpx;
-}
-.submit-bar {
-  position: sticky;
-  z-index: 8;
-  bottom: calc(18rpx + env(safe-area-inset-bottom));
-  display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: 16rpx;
-  margin: 22rpx -4rpx 0;
-  padding: 12rpx;
-  border: 1rpx solid rgba(229, 229, 223, 0.9);
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 12rpx 34rpx rgba(26, 49, 43, 0.12);
-}
-.submit-bar button {
-  height: 88rpx;
-  border-radius: 999rpx;
-  font-size: 28rpx;
-  font-weight: 800;
-}
-.draft-btn {
-  color: #0f766e;
-  background: #eef6f3;
-}
-.publish-btn {
-  color: #fff;
-  background: #118b79;
-}
-.success-mask {
-  position: fixed;
-  z-index: 20;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 44rpx;
-  background: rgba(24, 32, 30, 0.48);
-}
-.success-card {
-  width: 100%;
-  padding: 46rpx 36rpx 32rpx;
-  border-radius: 32rpx;
-  background: #fff;
-  text-align: center;
-}
-.success-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100rpx;
-  height: 100rpx;
-  margin: 0 auto;
-  border-radius: 34rpx;
-  color: #fff;
-  background: #16a085;
-  font-size: 46rpx;
-  font-weight: 900;
-}
-.success-title {
-  margin-top: 24rpx;
-  font-size: 36rpx;
-  font-weight: 900;
-}
-.success-desc {
-  margin: 12rpx 0 28rpx;
-  color: #77827e;
-  font-size: 24rpx;
-  line-height: 1.55;
-}
-.again {
-  margin-top: 12rpx;
-  color: #0f766e;
-  background: transparent;
-  font-size: 25rpx;
-}
+.publish-page { min-height: 100vh; padding: 18rpx 22rpx 0; background: #f5f5f1; }
+.publish-head { display: flex; align-items: center; justify-content: space-between; padding: 8rpx 4rpx 22rpx; }
+.head-title { color: #17201d; font-size: 34rpx; font-weight: 900; }
+.head-subtitle { margin-top: 6rpx; color: #7c8783; font-size: 21rpx; }
+.draft-entry { display: flex; align-items: center; gap: 8rpx; padding: 12rpx 16rpx; border: 1rpx solid #e2e2dc; border-radius: 999rpx; color: #53615d; background: #fff; font-size: 21rpx; }
+.draft-icon { width: 18rpx; height: 22rpx; border: 3rpx solid #61706b; border-radius: 3rpx; }
+.draft-icon::after { display: block; width: 10rpx; height: 3rpx; margin: 5rpx auto; background: #61706b; box-shadow: 0 7rpx #61706b; content: ''; }
+.card-block { margin-bottom: 18rpx; padding: 24rpx; border: 1rpx solid #e8e7e1; border-radius: 26rpx; background: #fff; box-shadow: 0 5rpx 18rpx rgba(26, 44, 39, 0.035); }
+.block-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20rpx; }
+.block-head > text:first-child { color: #1c2623; font-size: 27rpx; font-weight: 800; }
+.block-head > text:last-child { color: #9aa29f; font-size: 19rpx; }
+.type-card { padding-right: 0; padding-left: 0; }
+.type-card .block-head { padding: 0 24rpx; }
+.type-scroll { width: 100%; white-space: nowrap; }
+.type-track { display: flex; gap: 12rpx; padding: 0 24rpx 5rpx; }
+.type-item { display: inline-flex; flex: 0 0 auto; flex-direction: column; align-items: center; justify-content: center; width: 104rpx; height: 102rpx; border: 2rpx solid transparent; border-radius: 20rpx; color: #6a7571; background: #f3f3ef; font-size: 20rpx; }
+.type-symbol { display: flex; align-items: center; justify-content: center; width: 42rpx; height: 42rpx; margin-bottom: 7rpx; border-radius: 14rpx; color: #fff; background: #34423e; font-size: 20rpx; font-weight: 800; }
+.type-item.active { border-color: #15967f; color: #0d7565; background: #eaf6f2; font-weight: 700; }
+.type-item.active .type-symbol { background: #15967f; }
+.type-helper { display: flex; align-items: center; margin: 17rpx 24rpx 0; padding: 16rpx 18rpx; border-radius: 16rpx; color: #73807b; background: #f6faf8; font-size: 20rpx; }
+.type-helper > text { flex: 0 0 auto; margin-right: 14rpx; padding-right: 14rpx; border-right: 1rpx solid #d5e4df; color: #0e7666; font-weight: 700; }
+.media-head { margin-bottom: 15rpx; }
+.uploader-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12rpx; }
+.image-item,
+.add-image { position: relative; height: 190rpx; overflow: hidden; border-radius: 18rpx; }
+.image-item image { width: 100%; height: 100%; }
+.cover-badge { position: absolute; left: 8rpx; bottom: 8rpx; padding: 5rpx 10rpx; border-radius: 999rpx; color: #fff; background: rgba(18, 28, 25, 0.7); font-size: 17rpx; }
+.remove-image { position: absolute; top: 8rpx; right: 8rpx; display: flex; align-items: center; justify-content: center; width: 34rpx; height: 34rpx; border-radius: 50%; color: #fff; background: rgba(18, 28, 25, 0.68); font-size: 26rpx; }
+.add-image { display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2rpx dashed #bdcac5; color: #5f6d68; background: #f5faf8; font-size: 20rpx; }
+.add-image > text:last-child { margin-top: 3rpx; color: #a0aaa6; font-size: 17rpx; }
+.camera-icon { position: relative; width: 47rpx; height: 35rpx; margin-bottom: 12rpx; border: 4rpx solid #188f7b; border-radius: 10rpx; }
+.camera-icon::before { position: absolute; top: -12rpx; left: 11rpx; width: 18rpx; height: 10rpx; border-radius: 5rpx 5rpx 0 0; background: #188f7b; content: ''; }
+.camera-icon i { position: absolute; top: 7rpx; left: 13rpx; width: 13rpx; height: 13rpx; border: 4rpx solid #188f7b; border-radius: 50%; }
+.editor-divider { height: 1rpx; margin: 25rpx 0; background: #eeece7; }
+.title-editor { display: flex; align-items: center; }
+.title-editor input { flex: 1; height: 66rpx; color: #17201d; font-size: 31rpx; font-weight: 700; }
+.title-editor > text { margin-left: 12rpx; color: #a5ada9; font-size: 18rpx; }
+.content-editor { width: 100%; height: 220rpx; color: #34403c; font-size: 25rpx; line-height: 1.65; }
+.content-tools { display: flex; justify-content: space-between; margin-top: 8rpx; color: #a0a8a5; font-size: 18rpx; }
+.invalid { color: #d95549 !important; }
+.error { margin-top: 9rpx; color: #e45f52; font-size: 20rpx; }
+.tag-head { margin-bottom: 14rpx; }
+.tag-scroll { width: 100%; white-space: nowrap; }
+.tag-track { display: flex; gap: 10rpx; }
+.tag-chip { flex: 0 0 auto; padding: 11rpx 16rpx; border: 1rpx solid #e4e4df; border-radius: 999rpx; color: #68736f; background: #f8f8f5; font-size: 20rpx; }
+.tag-chip.active { border-color: #aad8cd; color: #0d7565; background: #e6f4f0; font-weight: 700; }
+.price-row { display: flex; align-items: flex-end; gap: 26rpx; padding: 5rpx 0 22rpx; border-bottom: 1rpx solid #eeece7; }
+.price-main { display: flex; flex: 1; align-items: baseline; color: #ff695b; }
+.price-main > text { margin-right: 8rpx; font-size: 28rpx; font-weight: 800; }
+.price-main input { flex: 1; height: 66rpx; color: #ff695b; font-size: 44rpx; font-weight: 900; }
+.original-price { display: flex; flex: 0 0 190rpx; align-items: center; height: 60rpx; padding: 0 16rpx; border-radius: 14rpx; background: #f5f4f0; }
+.original-price text { margin-right: 10rpx; color: #818b87; font-size: 19rpx; }
+.original-price input { flex: 1; font-size: 22rpx; }
+.mode-label { margin-top: 21rpx; color: #303b37; font-size: 23rpx; font-weight: 700; }
+.mode-list { display: flex; flex-wrap: wrap; gap: 12rpx; margin-top: 13rpx; }
+.mode-list > view { display: flex; align-items: center; padding: 12rpx 17rpx; border: 1rpx solid #e1e2dc; border-radius: 15rpx; color: #64706b; font-size: 20rpx; }
+.mode-list i { width: 13rpx; height: 13rpx; margin-right: 9rpx; border: 2rpx solid #b3bbb8; border-radius: 50%; }
+.mode-list .active { border-color: #92cfc0; color: #0d7565; background: #ebf6f3; }
+.mode-list .active i { border: 4rpx solid #15967f; }
+.setting-card { padding-top: 0; padding-bottom: 0; }
+.setting-row { display: flex; align-items: center; min-height: 104rpx; border-bottom: 1rpx solid #eeece7; }
+.last-row { border-bottom: 0; }
+.setting-icon { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 52rpx; height: 52rpx; margin-right: 17rpx; border-radius: 16rpx; color: #0d7565; background: #e8f4f0; font-size: 20rpx; font-weight: 800; }
+.pin-icon i { width: 14rpx; height: 14rpx; border: 4rpx solid #15967f; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); }
+.eye-icon i { width: 25rpx; height: 16rpx; border: 3rpx solid #15967f; border-radius: 50%; }
+.setting-main { display: flex; flex: 1; flex-direction: column; }
+.setting-main > text:first-child { color: #25302c; font-size: 24rpx; font-weight: 700; }
+.setting-main > text:last-child,
+.setting-main input { margin-top: 5rpx; color: #87918d; font-size: 20rpx; }
+.arrow { color: #a2aaa7; font-size: 33rpx; }
+.contact-row input { width: 100%; }
+.community-note { display: flex; align-items: flex-start; padding: 4rpx 8rpx; color: #8a9490; font-size: 19rpx; line-height: 1.5; }
+.check { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 29rpx; height: 29rpx; margin: 1rpx 10rpx 0 0; border: 2rpx solid #b9c0bd; border-radius: 8rpx; }
+.check.checked { border-color: #15967f; color: #fff; background: #15967f; }
+.agreement-error { margin-left: 8rpx; }
+.bottom-spacer { height: 190rpx; }
+.submit-bar { position: fixed; z-index: 10; right: 22rpx; bottom: 18rpx; left: 22rpx; display: grid; grid-template-columns: 168rpx 1fr; gap: 13rpx; padding: 12rpx; border: 1rpx solid rgba(225, 226, 220, 0.9); border-radius: 26rpx; background: rgba(255, 255, 255, 0.97); box-shadow: 0 12rpx 38rpx rgba(22, 47, 40, 0.14); }
+.submit-bar button { display: flex; align-items: center; justify-content: center; height: 82rpx; border-radius: 20rpx; font-size: 25rpx; font-weight: 800; }
+.preview-btn { gap: 8rpx; color: #0d7565; background: #edf6f3; }
+.preview-icon { width: 27rpx; height: 17rpx; border: 3rpx solid #178c79; border-radius: 50%; }
+.preview-icon::after { display: block; width: 7rpx; height: 7rpx; margin: 2rpx auto; border-radius: 50%; background: #178c79; content: ''; }
+.publish-btn { color: #fff; background: #15967f; }
+.success-mask { position: fixed; z-index: 30; inset: 0; display: flex; align-items: center; justify-content: center; padding: 44rpx; background: rgba(17, 28, 25, 0.52); }
+.success-card { width: 100%; padding: 48rpx 34rpx 30rpx; border-radius: 34rpx; background: #fff; text-align: center; }
+.success-mark { position: relative; width: 104rpx; height: 104rpx; margin: 0 auto; border-radius: 34rpx; background: #15967f; }
+.success-mark i { position: absolute; top: 32rpx; left: 27rpx; width: 45rpx; height: 23rpx; border-bottom: 8rpx solid #fff; border-left: 8rpx solid #fff; transform: rotate(-45deg); }
+.success-title { margin-top: 24rpx; color: #19231f; font-size: 36rpx; font-weight: 900; }
+.success-desc { margin-top: 10rpx; color: #75807c; font-size: 23rpx; line-height: 1.55; }
+.success-summary { display: flex; flex-direction: column; gap: 8rpx; margin: 24rpx 0; padding: 18rpx; border-radius: 18rpx; color: #56706a; background: #f0f7f5; font-size: 20rpx; }
+.view-content { height: 84rpx; border-radius: 999rpx; color: #fff; background: #15967f; font-size: 26rpx; font-weight: 800; }
+.again { margin-top: 10rpx; color: #0d7565; background: transparent; font-size: 22rpx; }
 </style>

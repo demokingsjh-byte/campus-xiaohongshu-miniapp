@@ -19,6 +19,12 @@ public class CampusUserProfileUpdateReqVO {
     @Schema(description = "校区名称")
     private String campusName;
 
+    @Schema(description = "年级", example = "2023级")
+    private String grade;
+
+    @Schema(description = "性别：不公开、男、女")
+    private String gender;
+
     @Schema(description = "用户角色，student、merchant、agent")
     private String roleType;
 

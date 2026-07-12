@@ -1,11 +1,25 @@
 <script lang="ts" setup>
+import { useUserStore } from '@/stores/modules/user';
+
+const userStore = useUserStore();
 const loggedIn = ref(Boolean(uni.getStorageSync('yd-demo-login')));
+const profile = computed(() => userStore.userInfo);
 const menuGroups = [
   [{ icon: '📦', label: '我的交易', note: '待确认 1' }, { icon: '✎', label: '我的发布', note: '12' }, { icon: '♡', label: '收藏与足迹', note: '36' }],
   [{ icon: '🎓', label: '校园认证', note: '已认证' }, { icon: '⚙', label: '设置与隐私', note: '' }, { icon: '◉', label: '帮助与反馈', note: '' }],
 ];
-onShow(() => loggedIn.value = Boolean(uni.getStorageSync('yd-demo-login')));
-function goLogin() { uni.navigateTo({ url: '/pages/login/index' }); }
+onShow(async () => {
+  const hasLoginMarker = Boolean(uni.getStorageSync('yd-demo-login'));
+  if (hasLoginMarker && !userStore.userInfo) {
+    try {
+      await userStore.initUserInfo();
+    } catch {}
+  }
+  loggedIn.value = userStore.loggedIn || hasLoginMarker;
+});
+function goLogin(mode: 'login' | 'edit' = 'login') {
+  uni.navigateTo({ url: `/pages/login/index${mode === 'edit' ? '?mode=edit' : ''}` });
+}
 </script>
 
 <template>
@@ -24,23 +38,24 @@ function goLogin() { uni.navigateTo({ url: '/pages/login/index' }); }
         登录后开启校园生活
       </view><view class="guest-desc">
         发布内容、收藏好物，也不错过同学的回应
-      </view><button @click="goLogin">
+      </view><button @click="goLogin()">
         微信一键登录
       </button>
     </view>
     <view v-else class="profile-card">
       <view class="profile-head">
         <view class="profile-avatar">
-          佳
+          <image v-if="profile?.avatar" :src="profile.avatar" mode="aspectFill" />
+          <text v-else>{{ profile?.nickname?.slice(0, 1) || '同' }}</text>
         </view><view class="profile-info">
           <view class="nickname">
-            佳佳同学 <text>✓ 已认证</text>
+            {{ profile?.nickname || '同校同学' }} <text>✓ 已认证</text>
           </view><view class="student-id">
-            浙江理工大学 · 2023级
+            {{ profile?.schoolName || '浙江理工大学' }} · {{ profile?.campusName || '下沙校区' }} · {{ profile?.grade || '学生' }}
           </view><view class="bio">
             慢慢逛校园，也认真过生活。
           </view>
-        </view><text class="edit" @click="goLogin">
+        </view><text class="edit" @click="goLogin('edit')">
           编辑
         </text>
       </view>
@@ -185,6 +200,7 @@ function goLogin() { uni.navigateTo({ url: '/pages/login/index' }); }
   font-size: 36rpx;
   font-weight: 900;
 }
+.profile-avatar image { width: 100%; height: 100%; border-radius: 50%; }
 .profile-info {
   flex: 1;
   margin-left: 20rpx;

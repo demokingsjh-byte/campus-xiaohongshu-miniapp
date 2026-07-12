@@ -39,7 +39,7 @@ export const useUserStore = defineStore('UserStore', () => {
       try {
         await getUserInfo();
         return;
-      } catch (error) {
+      } catch {
         removeToken();
         token.value = null;
         userInfo.value = null;
@@ -64,7 +64,7 @@ export const useUserStore = defineStore('UserStore', () => {
     if (!code) {
       try {
         code = await uniLoginCode();
-      } catch (error) {
+      } catch {
         if (!isUseMock()) {
           return false;
         }
@@ -105,6 +105,7 @@ export const useUserStore = defineStore('UserStore', () => {
 
   async function logout() {
     removeCache(TOKEN_KEY);
+    uni.removeStorageSync('yd-demo-login');
     userInfo.value = null;
     token.value = null;
   }
