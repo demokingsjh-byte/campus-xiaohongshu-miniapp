@@ -6,6 +6,8 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.campus.service.meta.CampusResourceMeta;
 import cn.iocoder.yudao.module.campus.service.meta.CampusResourceRegistry;
+import com.mzt.logapi.context.LogRecordContext;
+import com.mzt.logapi.starter.annotation.LogRecord;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -34,6 +36,8 @@ public class CampusCrudServiceImpl implements CampusCrudService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "校园运营", subType = "新增数据", bizNo = "{{#campusDataId}}",
+            success = "新增校园数据，资源：{{#resource}}，编号：{{#campusDataId}}")
     public Long create(String resource, Map<String, Object> data) {
         CampusResourceMeta meta = CampusResourceRegistry.get(resource);
         Map<String, Object> values = filterWritable(meta, data, false);
@@ -50,17 +54,22 @@ public class CampusCrudServiceImpl implements CampusCrudService {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         namedParameterJdbcTemplate.update(sql, new MapSqlParameterSource(values), keyHolder);
         Number key = keyHolder.getKey();
-        return key == null ? null : key.longValue();
+        Long id = key == null ? null : key.longValue();
+        LogRecordContext.putVariable("campusDataId", id);
+        return id;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "校园运营", subType = "编辑数据", bizNo = "{{#campusDataId}}",
+            success = "编辑校园数据，资源：{{#resource}}，编号：{{#campusDataId}}")
     public void update(String resource, Map<String, Object> data) {
         CampusResourceMeta meta = CampusResourceRegistry.get(resource);
         Long id = Convert.toLong(data.get(ID));
         if (id == null) {
             throw new IllegalArgumentException("id 不能为空");
         }
+        LogRecordContext.putVariable("campusDataId", id);
         Map<String, Object> values = filterWritable(meta, data, true);
         if (values.isEmpty()) {
             return;
@@ -78,7 +87,10 @@ public class CampusCrudServiceImpl implements CampusCrudService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "校园运营", subType = "删除数据", bizNo = "{{#campusDataId}}",
+            success = "删除校园数据，资源：{{#resource}}，编号：{{#campusDataId}}")
     public void delete(String resource, Long id) {
+        LogRecordContext.putVariable("campusDataId", id);
         CampusResourceMeta meta = CampusResourceRegistry.get(resource);
         namedParameterJdbcTemplate.update("UPDATE " + meta.getTableName()
                 + " SET deleted = b'1', update_time = NOW() WHERE id = :id",
@@ -87,10 +99,14 @@ public class CampusCrudServiceImpl implements CampusCrudService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @LogRecord(type = "校园运营", subType = "批量删除", bizNo = "{{#campusDataId}}",
+            success = "批量删除校园数据，资源：{{#resource}}，编号：{{#campusDataIds}}")
     public void deleteList(String resource, List<Long> ids) {
         if (CollUtil.isEmpty(ids)) {
             return;
         }
+        LogRecordContext.putVariable("campusDataId", ids.get(0));
+        LogRecordContext.putVariable("campusDataIds", CollUtil.join(ids, ","));
         CampusResourceMeta meta = CampusResourceRegistry.get(resource);
         namedParameterJdbcTemplate.update("UPDATE " + meta.getTableName()
                 + " SET deleted = b'1', update_time = NOW() WHERE id IN (:ids)",

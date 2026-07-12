@@ -1,6 +1,6 @@
 -- Hide non-MVP RuoYi/Yudao menus for the campus project.
 -- This script is non-destructive: it disables and hides menus instead of deleting them.
--- Run after ruoyi-vue-pro-cloud-nobom.sql and campus-extension.sql.
+-- Run after the UTF-8 ruoyi-vue-pro-cloud-nobom.sql and campus-extension.sql.
 
 SET NAMES utf8mb4;
 

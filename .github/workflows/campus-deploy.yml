@@ -1,6 +1,9 @@
 name: Campus Deploy
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       deploy_note:
@@ -61,9 +64,15 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
+          mkdir -p release/migrations
           cp campus-platform/yudao-server/target/*.jar release/campus-backend.jar
           tar -czf release/campus-admin-ui-dist.tar.gz -C campus-platform/yudao-ui/yudao-ui-admin-vue3-full dist
           cp scripts/deploy/update-server.sh release/update-server.sh
+          cp scripts/deploy/migrate-server.sh release/migrate-server.sh
+          cp campus-platform/sql/mysql/campus-student-user-upgrade.sql release/migrations/
+          cp campus-platform/sql/mysql/campus-menu-encoding-repair.sql release/migrations/
+          cp campus-platform/sql/mysql/campus-menu.sql release/migrations/
+          cp campus-platform/sql/mysql/campus-school-data-upgrade.sql release/migrations/
 
       - name: Deploy over SSH
         shell: bash
@@ -94,5 +103,5 @@ jobs:
 
           remote="${SERVER_USER}@${SERVER_HOST}"
           "${ssh_base[@]}" "$remote" "mkdir -p '$deploy_dir'"
-          "${scp_base[@]}" release/campus-backend.jar release/campus-admin-ui-dist.tar.gz release/update-server.sh "$remote:$deploy_dir/"
-          "${ssh_base[@]}" "$remote" "cd '$deploy_dir' && chmod +x update-server.sh && APP_HOME='$APP_HOME' BACKEND_SERVICE='$BACKEND_SERVICE' NGINX_RELOAD='$NGINX_RELOAD' ./update-server.sh"
+          "${scp_base[@]}" -r release/campus-backend.jar release/campus-admin-ui-dist.tar.gz release/update-server.sh release/migrate-server.sh release/migrations "$remote:$deploy_dir/"
+          "${ssh_base[@]}" "$remote" "cd '$deploy_dir' && chmod +x migrate-server.sh update-server.sh && APP_HOME='$APP_HOME' ./migrate-server.sh && APP_HOME='$APP_HOME' BACKEND_SERVICE='$BACKEND_SERVICE' NGINX_RELOAD='$NGINX_RELOAD' ./update-server.sh"

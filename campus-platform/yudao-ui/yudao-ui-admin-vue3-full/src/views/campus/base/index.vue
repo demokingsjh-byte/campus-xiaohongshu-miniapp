@@ -78,9 +78,10 @@
         :show-overflow-tooltip="true"
       />
       <el-table-column label="创建时间" align="center" prop="create_time" width="180" />
-      <el-table-column label="操作" align="center" width="160" fixed="right">
+      <el-table-column label="操作" align="center" width="210" fixed="right">
         <template #default="scope">
           <el-button link type="primary" @click="openForm('update', scope.row.id)">编辑</el-button>
+          <el-button link type="info" @click="openLog(scope.row.id)">日志</el-button>
           <el-button link type="danger" @click="handleDelete(scope.row.id)">删除</el-button>
         </template>
       </el-table-column>
@@ -96,8 +97,11 @@
   <el-dialog v-model="dialogVisible" :title="dialogTitle" width="680px">
     <el-form :model="formData" label-width="120px">
       <el-form-item v-for="field in meta.fields" :key="field.prop" :label="field.label">
+        <el-select v-if="field.options" v-model="formData[field.prop]" class="!w-240px">
+          <el-option v-for="option in field.options" :key="String(option.value)" :label="option.label" :value="option.value" />
+        </el-select>
         <el-input-number
-          v-if="field.type === 'number'"
+          v-else-if="field.type === 'number'"
           v-model="formData[field.prop]"
           class="!w-240px"
           :min="0"
@@ -128,7 +132,7 @@
 
 <script setup lang="ts">
 import { createCampus, deleteCampus, getCampus, getCampusPage, updateCampus } from '@/api/campus/base'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 defineOptions({ name: 'CampusBase' })
 
@@ -160,6 +164,7 @@ interface PageMeta {
 }
 
 const route = useRoute()
+const router = useRouter()
 const message = useMessage()
 
 const metas: Record<string, PageMeta> = {
@@ -327,8 +332,16 @@ const metas: Record<string, PageMeta> = {
       { label: '学校名称', prop: 'school_name' },
       { label: '校区名称', prop: 'campus_name' },
       { label: '年级', prop: 'grade' },
-      { label: '性别', prop: 'gender' },
-      { label: '身份类型', prop: 'role_type' },
+      { label: '性别', prop: 'gender', options: [
+        { label: '不公开', value: '不公开' },
+        { label: '男', value: '男' },
+        { label: '女', value: '女' }
+      ] },
+      { label: '身份类型', prop: 'role_type', options: [
+        { label: '学生', value: 'student' },
+        { label: '商家', value: 'merchant' },
+        { label: '代理', value: 'agent' }
+      ] },
       { label: '入口 scene', prop: 'source_scene' },
       { label: '邀请人ID', prop: 'inviter_user_id', type: 'number' },
       { label: '租户ID', prop: 'tenant_id', type: 'number' }
@@ -410,6 +423,10 @@ const handleDelete = async (id: number) => {
   await deleteCampus(resource.value, id)
   message.success('删除成功')
   await getList()
+}
+
+const openLog = (id: number) => {
+  router.push({ path: '/campus/data-log', query: { bizId: String(id) } })
 }
 
 watch(resource, () => {
