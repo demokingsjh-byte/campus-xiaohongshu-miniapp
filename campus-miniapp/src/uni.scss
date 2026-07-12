@@ -1,47 +1,9 @@
-view,
-scroll-view,
-swiper,
-match-media,
-movable-area,
-movable-view,
-cover-view,
-cover-image,
-icon,
-text,
-rich-text,
-progress,
-button,
-checkboxe,
-ditor,
-form,
-input,
-label,
-picker,
-picker-view,
-radio,
-slider,
-switch,
-textarea,
-navigator,
-audio,
-camera,
-image,
-video,
-live-player,
-live-pusher,
-map,
-canvas,
-web-view,
-:before,
-:after {
-  box-sizing: border-box;
-}
-
-/* 隐藏scroll-view的滚动条 */
-::-webkit-scrollbar {
-  display: none;
-  width: 0 !important;
-  height: 0 !important;
-  -webkit-appearance: none;
-  background: transparent;
-}
+$yd-bg: #faf8f3;
+$yd-surface: #ffffff;
+$yd-primary: #16a085;
+$yd-primary-dark: #0f766e;
+$yd-primary-soft: #e8f5f1;
+$yd-coral: #ff6b5e;
+$yd-text: #18201e;
+$yd-text-secondary: #5f6b67;
+$yd-border: #e8e5de;

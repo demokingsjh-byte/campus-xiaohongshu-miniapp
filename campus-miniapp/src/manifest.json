@@ -94,18 +94,16 @@
   /* 小程序特有相关 */
   "mp-weixin": {
     "appid": "wx3141ca27b55b0b9c",
+    "libVersion": "3.16.2",
     "setting": {
       "urlCheck": false,
       "es6": true,
       "postcss": true,
-      "minified": true
+      "minified": true,
+      "compileHotReLoad": false
     },
     "usingComponents": true,
     "permission": {},
-    "optimization": {
-      "subPackages": true
-    },
-    "lazyCodeLoading": "requiredComponents",
     "style": "v2"
   },
   "mp-alipay": {

@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 import TransformPages from 'uni-read-pages-vite';
 import { defineConfig, loadEnv } from 'vite';
-import { createVitePlugins, currentPlatform, resolveProxy } from './build';
+import { createVitePlugins, currentPlatform, isH5, resolveProxy } from './build';
 // import postcssPlugins from './postcss.config';
 
 export default defineConfig(async ({ mode }) => {
@@ -61,14 +61,14 @@ export default defineConfig(async ({ mode }) => {
           drop_debugger: true,
         },
       },
-      rollupOptions: {
+      rollupOptions: isH5 ? {
         output: {
           entryFileNames: `assets/[name].${new Date().getTime()}.js`,
           chunkFileNames: `assets/[name].${new Date().getTime()}.js`,
           assetFileNames: `assets/[name].${new Date().getTime()}.[ext]`,
           compact: true,
         },
-      },
+      } : undefined,
     },
   } as UserConfig;
 });

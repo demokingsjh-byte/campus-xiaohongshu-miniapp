@@ -1,0 +1,261 @@
+<script lang="ts" setup>
+import CampusPostCard from '@/components/CampusFeedCard/index.vue';
+import StatePanel from '@/components/StatePanel/index.vue';
+import { campusPosts } from '@/mock/campus';
+
+const keyword = ref('');
+const searched = ref(false);
+const activeTab = ref('全部');
+const activeFilter = ref('综合');
+const recent = ref(['折叠桌', '杭州东站拼车', '计算器']);
+const hot = ['毕业闲置', '校园卡', '周末活动', '东门美食', '四六级资料', '找搭子'];
+const tabs = ['全部', '二手', '互助', '活动', '用户'];
+const results = computed(() => !keyword.value || keyword.value.includes('不存在') ? [] : campusPosts.filter(item => activeTab.value === '全部' || item.channel === activeTab.value));
+function search(value?: string) {
+  if (value)
+    keyword.value = value; searched.value = true; if (keyword.value && !recent.value.includes(keyword.value))
+    recent.value.unshift(keyword.value);
+}
+function clear() { keyword.value = ''; searched.value = false; }
+</script>
+
+<template>
+  <view class="search-page">
+    <view class="search-status" /><view class="search-top">
+      <view class="back" @click="uni.navigateBack()">
+        ‹
+      </view><view class="search-input">
+        <text>⌕</text><input v-model="keyword" autofocus placeholder="搜校园内容和同学" confirm-type="search" @confirm="search()"><text v-if="keyword" class="clear" @click="clear">
+          ×
+        </text>
+      </view><text class="search-text" @click="search()">
+        搜索
+      </text>
+    </view>
+
+    <view v-if="!searched" class="discover">
+      <view class="discover-section">
+        <view class="discover-head">
+          <b>最近搜索</b><text @click="recent = []">
+            清空
+          </text>
+        </view><view v-if="recent.length" class="chip-list">
+          <text v-for="item in recent" :key="item" @click="search(item)">
+            {{ item }}
+          </text>
+        </view><view v-else class="recent-empty">
+          暂无搜索记录
+        </view>
+      </view>
+      <view class="discover-section">
+        <view class="discover-head">
+          <b>校园热搜</b><text>实时更新</text>
+        </view><view class="hot-list">
+          <view v-for="(item, index) in hot" :key="item" @click="search(item)">
+            <text class="rank" :class="{ top: index < 3 }">
+              {{ index + 1 }}
+            </text><span>{{ item }}</span><i v-if="index < 2">热</i>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view v-else class="results">
+      <scroll-view scroll-x class="tab-scroll">
+        <view class="tabs">
+          <text v-for="tab in tabs" :key="tab" :class="{ active: activeTab === tab }" @click="activeTab = tab">
+            {{ tab }}
+          </text>
+        </view>
+      </scroll-view>
+      <view class="filters">
+        <text v-for="filter in ['综合', '最新', '附近', '价格']" :key="filter" :class="{ active: activeFilter === filter }" @click="activeFilter = filter">
+          {{ filter }}<i v-if="filter === '价格'">↕</i>
+        </text>
+      </view>
+      <StatePanel v-if="!results.length" title="没有找到相关内容" :description="`换个关键词试试，或者去发布「${keyword}」相关内容。`" action="去发布" @action="uni.switchTab({ url: '/pages/publish/index' })" />
+      <template v-else>
+        <view class="result-count">
+          找到 {{ results.length * 12 + 6 }} 条与“{{ keyword }}”相关的内容
+        </view><view class="result-grid">
+          <view class="column">
+            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" />
+          </view><view class="column">
+            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" />
+          </view>
+        </view>
+      </template>
+    </view>
+  </view>
+</template>
+
+<style lang="scss" scoped>
+.search-page {
+  min-height: 100vh;
+  background: #faf8f3;
+}
+.search-status {
+  height: calc(28rpx + env(safe-area-inset-top));
+}
+.search-top {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 10rpx 20rpx 18rpx;
+}
+.back {
+  font-size: 48rpx;
+}
+.search-input {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  height: 72rpx;
+  padding: 0 20rpx;
+  border-radius: 22rpx;
+  background: #eeece6;
+  color: #16a085;
+}
+.search-input input {
+  flex: 1;
+  margin-left: 10rpx;
+  font-size: 24rpx;
+}
+.clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 50%;
+  color: #fff;
+  background: #aeb6b2;
+}
+.search-text {
+  color: #0f766e;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+.discover {
+  padding: 10rpx 24rpx;
+}
+.discover-section {
+  margin-top: 28rpx;
+}
+.discover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.discover-head b {
+  font-size: 30rpx;
+}
+.discover-head text {
+  color: #929c98;
+  font-size: 21rpx;
+}
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+.chip-list text {
+  padding: 13rpx 22rpx;
+  border-radius: 999rpx;
+  color: #65706c;
+  background: #eeece6;
+  font-size: 22rpx;
+}
+.recent-empty {
+  margin-top: 18rpx;
+  color: #a0a8a4;
+  font-size: 22rpx;
+}
+.hot-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4rpx 24rpx;
+  margin-top: 14rpx;
+}
+.hot-list > view {
+  display: flex;
+  align-items: center;
+  height: 74rpx;
+  font-size: 24rpx;
+}
+.rank {
+  width: 36rpx;
+  color: #9ba39f;
+  font-weight: 800;
+}
+.rank.top {
+  color: #ff6b5e;
+}
+.hot-list span {
+  flex: 1;
+}
+.hot-list i {
+  padding: 3rpx 7rpx;
+  border-radius: 7rpx;
+  color: #ff6b5e;
+  background: #fff0ed;
+  font-size: 17rpx;
+  font-style: normal;
+}
+.tab-scroll {
+  border-bottom: 1rpx solid #e8e5de;
+  white-space: nowrap;
+}
+.tabs {
+  display: flex;
+  gap: 44rpx;
+  padding: 0 24rpx;
+}
+.tabs text {
+  position: relative;
+  padding: 18rpx 0;
+  color: #707b77;
+  font-size: 25rpx;
+}
+.tabs .active {
+  color: #18201e;
+  font-weight: 800;
+}
+.tabs .active::after {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 34rpx;
+  height: 5rpx;
+  border-radius: 999rpx;
+  background: #16a085;
+  content: '';
+  transform: translateX(-50%);
+}
+.filters {
+  display: flex;
+  gap: 36rpx;
+  padding: 20rpx 24rpx;
+  color: #7d8883;
+  font-size: 22rpx;
+}
+.filters .active {
+  color: #0f766e;
+  font-weight: 700;
+}
+.filters i {
+  font-style: normal;
+}
+.result-count {
+  padding: 0 24rpx 16rpx;
+  color: #929c98;
+  font-size: 20rpx;
+}
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18rpx;
+  padding: 0 20rpx 30rpx;
+}
+</style>
