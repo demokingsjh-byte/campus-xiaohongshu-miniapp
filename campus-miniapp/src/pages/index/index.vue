@@ -8,14 +8,11 @@ const activeChannel = ref('推荐');
 const state = ref<'content' | 'loading' | 'empty' | 'error'>('content');
 const refreshing = ref(false);
 const tenantStore = useTenantStore();
+if (!tenantStore.currentTenant)
+  tenantStore.selectTenant(getDefaultTenant());
 const visiblePosts = computed(() => getPostsByTenant(tenantStore.tenantId, activeChannel.value));
 const leftPosts = computed(() => visiblePosts.value.filter((_, index) => index % 2 === 0));
 const rightPosts = computed(() => visiblePosts.value.filter((_, index) => index % 2 === 1));
-
-onLoad(() => {
-  if (!tenantStore.currentTenant)
-    tenantStore.selectTenant(getDefaultTenant());
-});
 
 function chooseChannel(channel: string) {
   activeChannel.value = channel;
