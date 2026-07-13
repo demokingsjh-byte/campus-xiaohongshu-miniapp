@@ -2,6 +2,7 @@
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
 import { campusPosts } from '@/mock/campus';
+import { reportCampusPost } from '@/services/api/content';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 
@@ -106,6 +107,37 @@ function managePost() {
     },
   });
 }
+
+function reportPost() {
+  if (!ensureLogin())
+    return;
+  const reasons = ['广告诈骗', '人身攻击', '色情低俗', '虚假信息', '侵犯隐私', '其他'];
+  uni.showActionSheet({
+    itemList: reasons,
+    success: ({ tapIndex }) => {
+      const reason = reasons[tapIndex];
+      if (!reason)
+        return;
+      uni.showModal({
+        title: `举报：${reason}`,
+        content: '可补充说明，帮助校园运营人员核实处理',
+        editable: true,
+        placeholderText: '选填，最多 300 字',
+        confirmText: '提交举报',
+        success: async (result) => {
+          if (!result.confirm)
+            return;
+          try {
+            await reportCampusPost(postId.value, { reason, detail: result.content?.trim().slice(0, 300) });
+            uni.showToast({ title: '举报已提交', icon: 'success' });
+          } catch {
+            uni.showToast({ title: '提交失败，请稍后重试', icon: 'none' });
+          }
+        },
+      });
+    },
+  });
+}
 </script>
 
 <template>
@@ -160,7 +192,13 @@ function managePost() {
           </text>
         </view>
         <view class="meta">
-          📍 {{ post.location || `${post.school} · 校内` }} <text>浏览 {{ post.views || 0 }}</text>
+          <text class="meta-location">
+            📍 {{ post.location || `${post.school} · 校内` }}
+          </text><view class="meta-actions">
+            <text>浏览 {{ post.views || 0 }}</text><text v-if="!post.owner" class="report-entry" @click="reportPost">
+              举报
+            </text>
+          </view>
         </view>
       </view>
 
@@ -372,6 +410,20 @@ function managePost() {
   border-top: 1rpx solid #eeeae3;
   color: #89948f;
   font-size: 21rpx;
+}
+.meta-location {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meta-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 18rpx;
+  margin-left: 18rpx;
+}
+.report-entry {
+  color: #777b84;
 }
 .section-title {
   font-size: 30rpx;

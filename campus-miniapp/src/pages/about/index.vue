@@ -48,16 +48,9 @@ function handleMenu(action: string, requiresLogin: boolean) {
   } else if (action === 'profile') {
     goLogin('edit');
   } else if (action === 'settings') {
-    uni.showActionSheet({ itemList: ['隐私设置', '清理搜索记录', '退出登录'], success: async (res) => {
-      if (res.tapIndex === 1) {
-        uni.removeStorageSync('campus-search-recent');
-        uni.showToast({ title: '搜索记录已清理', icon: 'none' });
-      } else if (res.tapIndex === 2) {
-        await userStore.logout();
-      }
-    } });
+    uni.navigateTo({ url: '/pages/settings/index' });
   } else {
-    uni.showModal({ title: '帮助与反馈', content: '遇到问题可以在校园运营后台留言，我们会尽快处理。', showCancel: false });
+    uni.navigateTo({ url: '/pages/settings/index' });
   }
 }
 </script>

@@ -164,4 +164,5 @@ export const contentMocks = defineMock({
     setStoredPosts(stored.filter(item => item.id !== id));
     return createMock({ data: true });
   },
+  '[POST]/api/campus/post/report': () => createMock({ data: true }),
 });

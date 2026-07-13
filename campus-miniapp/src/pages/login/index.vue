@@ -3,10 +3,11 @@ import { campusTenants, getDefaultTenant } from '@/mock/campus';
 import { uploadCampusAvatar } from '@/services/api/file';
 import { useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
+import { hasCurrentPrivacyConsent, openPolicyPage, recordPrivacyConsent } from '@/utils/privacy';
 
 const step = ref<'login' | 'profile' | 'done'>('login');
 const editing = ref(false);
-const agreed = ref(true);
+const agreed = ref(hasCurrentPrivacyConsent());
 const loading = ref(false);
 const loginError = ref('');
 const avatarUploading = ref(false);
@@ -57,6 +58,7 @@ async function loginDemo() {
   loginError.value = '';
   loading.value = true;
   try {
+    recordPrivacyConsent();
     const success = await userStore.silentLogin({ tenantId: initialTenant.id });
     if (!success)
       throw new Error('未完成微信登录');
@@ -129,6 +131,10 @@ function finish() {
       uni.switchTab({ url: '/pages/about/index' });
   }, 500);
 }
+
+function openPolicy(type: 'privacy' | 'agreement') {
+  openPolicyPage(type);
+}
 </script>
 
 <template>
@@ -167,10 +173,19 @@ function finish() {
           重试
         </text>
       </view>
-      <view class="privacy" @click="agreed = !agreed">
-        <view :class="{ checked: agreed }">
+      <view class="privacy">
+        <view class="privacy-check" :class="{ checked: agreed }" @click="agreed = !agreed">
           {{ agreed ? '✓' : '' }}
-        </view><text>已阅读并同意《用户协议》和《隐私政策》</text>
+        </view><text @click="agreed = !agreed">
+          我已阅读并同意
+        </text><text class="privacy-link" @click.stop="openPolicy('agreement')">
+          《用户协议》
+        </text><text>和</text><text class="privacy-link" @click.stop="openPolicy('privacy')">
+          《隐私政策》
+        </text>
+      </view>
+      <view class="guest-tip">
+        不同意也可以返回，以游客身份浏览公开校园内容
       </view>
     </view>
 
@@ -418,7 +433,7 @@ function finish() {
   color: #8b9591;
   font-size: 20rpx;
 }
-.privacy > view {
+.privacy-check {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -432,6 +447,17 @@ function finish() {
   border-color: var(--yd-green);
   color: #fff;
   background: var(--yd-green);
+}
+.privacy-link {
+  color: var(--yd-green);
+  font-weight: 650;
+}
+.guest-tip {
+  margin-top: 12rpx;
+  color: #a0a7b2;
+  font-size: 19rpx;
+  line-height: 1.5;
+  text-align: center;
 }
 .profile-content {
   padding-top: 22rpx;

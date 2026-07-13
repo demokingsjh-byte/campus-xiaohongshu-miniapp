@@ -131,6 +131,12 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
       currentPost.value = null;
   }
 
+  function clearPersonalContent() {
+    publishedPosts.value = [];
+    favoritePosts.value = [];
+    currentPost.value = null;
+  }
+
   return {
     posts,
     publishedPosts,
@@ -147,5 +153,6 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
     setPostLike,
     setPostCollect,
     removePost,
+    clearPersonalContent,
   };
 });

@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstant
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCreateReqVO;
+import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -205,6 +206,30 @@ public class CampusPostServiceImpl implements CampusPostService {
         if (updated == 0) {
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "内容不存在或无权删除");
         }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void reportPost(Long postId, Long userId, CampusPostReportReqVO reqVO) {
+        requireUserId(userId);
+        Map<String, Object> post = getPostRow(postId);
+        Long ownerUserId = toLongObject(post.get("user_id"));
+        if (userId.equals(ownerUserId)) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "不能举报自己的内容");
+        }
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("postId", postId)
+                .addValue("userId", userId)
+                .addValue("tenantId", toLong(post.get("tenant_id"), DEFAULT_TENANT_ID))
+                .addValue("reason", reqVO.getReason().trim())
+                .addValue("detail", trimToEmpty(reqVO.getDetail()))
+                .addValue("operator", String.valueOf(userId));
+        jdbcTemplate.update("INSERT INTO campus_post_report (post_id, reporter_user_id, tenant_id, reason, detail,"
+                        + " status, creator, updater, create_time, update_time, deleted) VALUES (:postId, :userId,"
+                        + " :tenantId, :reason, :detail, 0, :operator, :operator, NOW(), NOW(), b'0')"
+                        + " ON DUPLICATE KEY UPDATE reason = :reason, detail = :detail, status = 0, deleted = b'0',"
+                        + " updater = :operator, update_time = NOW()",
+                params);
     }
 
     private PageResult<CampusPostRespVO> page(String where, MapSqlParameterSource params, Long loginUserId,

@@ -148,6 +148,33 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
         return getLoginUser(userId);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteAccount(Long userId) {
+        MapSqlParameterSource params = new MapSqlParameterSource("userId", userId);
+        int userCount = namedParameterJdbcTemplate.update("UPDATE " + TABLE
+                + " SET openid = CONCAT('deleted_', id, '_', UNIX_TIMESTAMP()), unionid = '',"
+                + " nickname = '已注销用户', avatar = '', mobile = '', phone_country_code = '',"
+                + " school_name = '', campus_name = '', grade = '', gender = '不公开',"
+                + " source_scene = '', inviter_user_id = NULL, updater = '', update_time = NOW(), deleted = b'1'"
+                + " WHERE id = :userId AND deleted = b'0'", params);
+        if (userCount == 0) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "校园用户不存在或已注销");
+        }
+
+        namedParameterJdbcTemplate.update("UPDATE campus_post"
+                + " SET title = '内容已由用户删除', content = '', contact = '', location = '',"
+                + " images_json = '[]', tags_json = '[]', status = 2, updater = '', update_time = NOW(), deleted = b'1'"
+                + " WHERE user_id = :userId AND deleted = b'0'", params);
+        namedParameterJdbcTemplate.update("UPDATE campus_post_interaction"
+                + " SET updater = '', update_time = NOW(), deleted = b'1'"
+                + " WHERE user_id = :userId AND deleted = b'0'", params);
+        namedParameterJdbcTemplate.update("UPDATE campus_post_report"
+                + " SET detail = '', result_note = '', updater = '', update_time = NOW(), deleted = b'1'"
+                + " WHERE reporter_user_id = :userId OR post_id IN"
+                + " (SELECT id FROM campus_post WHERE user_id = :userId)", params);
+    }
+
     private CampusUserRespVO getByOpenid(String openid) {
         List<Map<String, Object>> rows = namedParameterJdbcTemplate.queryForList(
                 "SELECT * FROM " + TABLE + " WHERE openid = :openid AND deleted = b'0' LIMIT 1",

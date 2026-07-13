@@ -7,6 +7,7 @@ const CAMPUS_WECHAT_LOGIN = '/campus/auth/wechat-login';
 const CAMPUS_CURRENT_USER = '/campus/auth/me';
 const CAMPUS_PROFILE = '/campus/auth/profile';
 const CAMPUS_PHONE = '/campus/auth/phone';
+const CAMPUS_ACCOUNT = '/campus/auth/account';
 
 /**
  * 登录
@@ -64,4 +65,11 @@ export function updateCampusProfile(params: CampusProfileUpdateParams) {
  */
 export function bindCampusPhone(params: CampusPhoneBindParams) {
   return request.Post<CampusUserInfoModel>(CAMPUS_PHONE, params);
+}
+
+/**
+ * 注销当前校园账号并删除或匿名化关联个人信息
+ */
+export function deleteCampusAccount() {
+  return request.Delete<boolean>(CAMPUS_ACCOUNT);
 }

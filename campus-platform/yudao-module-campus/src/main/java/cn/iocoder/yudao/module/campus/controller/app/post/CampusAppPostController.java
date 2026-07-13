@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostInteractionReqVO;
+import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
 import cn.iocoder.yudao.module.campus.service.post.CampusPostService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -96,6 +97,14 @@ public class CampusAppPostController {
     @Operation(summary = "删除自己的发布")
     public CommonResult<Boolean> deletePost(@RequestParam("id") Long id) {
         campusPostService.deletePost(id, getLoginUserId());
+        return success(true);
+    }
+
+    @PostMapping("/report")
+    @Operation(summary = "举报校园内容")
+    public CommonResult<Boolean> reportPost(@RequestParam("id") Long id,
+                                             @Valid @RequestBody CampusPostReportReqVO reqVO) {
+        campusPostService.reportPost(id, getLoginUserId(), reqVO);
         return success(true);
     }
 }

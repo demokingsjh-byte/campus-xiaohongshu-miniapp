@@ -1,5 +1,7 @@
 package cn.iocoder.yudao.module.campus.controller.app.auth;
 
+import cn.hutool.core.util.StrUtil;
+import cn.iocoder.yudao.framework.common.biz.system.oauth2.OAuth2TokenCommonApi;
 import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
@@ -12,6 +14,7 @@ import cn.iocoder.yudao.module.campus.service.auth.CampusAppAuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -21,11 +24,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 import javax.annotation.security.PermitAll;
+import javax.servlet.http.HttpServletRequest;
 import javax.validation.Valid;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.error;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
+import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.obtainAuthorization;
 
 @Tag(name = "用户 App - 校园小程序认证")
 @RestController
@@ -35,6 +40,8 @@ public class CampusAppAuthController {
 
     @Resource
     private CampusAppAuthService campusAppAuthService;
+    @Resource
+    private OAuth2TokenCommonApi oauth2TokenCommonApi;
 
     @PostMapping("/wechat-login")
     @PermitAll
@@ -85,6 +92,18 @@ public class CampusAppAuthController {
     @Operation(summary = "绑定微信授权手机号")
     public CommonResult<CampusUserRespVO> bindPhone(@Valid @RequestBody CampusPhoneBindReqVO reqVO) {
         return success(campusAppAuthService.bindPhone(getLoginUserId(), reqVO));
+    }
+
+    @DeleteMapping("/account")
+    @Operation(summary = "注销当前校园账号")
+    public CommonResult<Boolean> deleteAccount(HttpServletRequest request) {
+        Long userId = getLoginUserId();
+        campusAppAuthService.deleteAccount(userId);
+        String accessToken = obtainAuthorization(request, "Authorization", "access_token");
+        if (StrUtil.isNotBlank(accessToken)) {
+            oauth2TokenCommonApi.removeAccessToken(accessToken);
+        }
+        return success(true);
     }
 
 }

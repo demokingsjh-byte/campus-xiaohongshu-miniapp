@@ -137,4 +137,8 @@ export const authMocks = defineMock({
       data: profile,
     });
   },
+  '[DELETE]/api/campus/auth/account': () => {
+    uni.removeStorageSync(MOCK_PROFILE_KEY);
+    return createMock({ data: true });
+  },
 });

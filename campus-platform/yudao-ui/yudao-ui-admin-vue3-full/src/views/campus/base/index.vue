@@ -43,10 +43,12 @@
       </el-form-item>
       <el-form-item v-if="meta.statusKey" label="状态">
         <el-select v-model="queryParams[meta.statusKey]" clearable class="!w-160px">
-          <el-option label="开启/待审核" :value="0" />
-          <el-option label="运营/生效" :value="1" />
-          <el-option label="暂停/下架" :value="2" />
-          <el-option label="关闭/终止" :value="3" />
+          <el-option
+            v-for="option in meta.statusOptions || defaultStatusOptions"
+            :key="String(option.value)"
+            :label="option.label"
+            :value="option.value"
+          />
         </el-select>
       </el-form-item>
       <el-form-item>
@@ -156,6 +158,7 @@ interface PageMeta {
   searchKey?: string
   searchLabel?: string
   statusKey?: string
+  statusOptions?: SelectOption[]
   allowCreate?: boolean
   filters?: FieldMeta[]
   defaultQuery?: Record<string, any>
@@ -166,6 +169,12 @@ interface PageMeta {
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
+const defaultStatusOptions: SelectOption[] = [
+  { label: '开启/待审核', value: 0 },
+  { label: '运营/生效', value: 1 },
+  { label: '暂停/下架', value: 2 },
+  { label: '关闭/终止', value: 3 }
+]
 
 const metas: Record<string, PageMeta> = {
   region: {
@@ -334,6 +343,39 @@ const metas: Record<string, PageMeta> = {
         { label: '已下架', value: 2 }
       ] },
       { label: '租户ID', prop: 'tenant_id', type: 'number' }
+    ]
+  },
+  'post-report': {
+    title: '举报处理',
+    searchKey: 'reason',
+    searchLabel: '举报原因',
+    statusKey: 'status',
+    statusOptions: [
+      { label: '待处理', value: 0 },
+      { label: '已处理', value: 1 },
+      { label: '已驳回', value: 2 }
+    ],
+    allowCreate: false,
+    filters: [
+      { label: '帖子ID', prop: 'post_id', type: 'number' },
+      { label: '举报用户', prop: 'reporter_user_id', type: 'number' },
+      { label: '校区租户ID', prop: 'tenant_id', type: 'number' }
+    ],
+    columns: [
+      { label: '帖子ID', prop: 'post_id' },
+      { label: '举报用户', prop: 'reporter_user_id' },
+      { label: '原因', prop: 'reason' },
+      { label: '补充说明', prop: 'detail' },
+      { label: '处理状态', prop: 'status' },
+      { label: '处理说明', prop: 'result_note' }
+    ],
+    fields: [
+      { label: '处理状态', prop: 'status', options: [
+        { label: '待处理', value: 0 },
+        { label: '已处理', value: 1 },
+        { label: '已驳回', value: 2 }
+      ] },
+      { label: '处理说明', prop: 'result_note', type: 'textarea' }
     ]
   },
   'miniapp-user': {

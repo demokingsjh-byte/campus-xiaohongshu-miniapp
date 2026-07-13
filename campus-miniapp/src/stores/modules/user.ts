@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import { TOKEN_KEY } from '@/enums/cacheEnum';
 import {
   bindCampusPhone,
+  deleteCampusAccount,
   getCurrentCampusUser,
   login as loginApi,
   updateCampusProfile,
@@ -11,6 +12,7 @@ import {
 import { getToken, isLogin, removeToken, setToken } from '@/utils/auth';
 import { removeCache } from '@/utils/cache';
 import { isUseMock } from '@/utils/env';
+import { clearCampusLocalData, hasCurrentPrivacyConsent, revokePrivacyConsent } from '@/utils/privacy';
 import { getCampusTenantId } from '@/utils/tenant';
 
 function uniLoginCode() {
@@ -38,18 +40,22 @@ export const useUserStore = defineStore('UserStore', () => {
     if (initialization)
       return initialization;
     initialization = (async () => {
-      if (isLogin()) {
+      if (isLogin() && !hasCurrentPrivacyConsent()) {
+        removeToken();
+        token.value = null;
+        userInfo.value = null;
+      } else if (isLogin()) {
         token.value = getToken();
         try {
           await getUserInfo();
-          return;
         } catch {
           removeToken();
           token.value = null;
           userInfo.value = null;
         }
       }
-      await silentLogin();
+      // 没有本地登录凭证时保持游客状态。只有用户明确阅读并同意规则、点击登录后，
+      // 才调用微信登录并在后端创建校园用户。
     })();
     try {
       await initialization;
@@ -113,9 +119,17 @@ export const useUserStore = defineStore('UserStore', () => {
     return userInfo.value;
   }
 
-  async function logout() {
+  async function deleteAccount() {
+    await deleteCampusAccount();
+    await logout({ clearConsent: true });
+  }
+
+  async function logout(options: { clearConsent?: boolean } = {}) {
     removeCache(TOKEN_KEY);
     uni.removeStorageSync('yd-demo-login');
+    clearCampusLocalData({ keepConsent: !options.clearConsent });
+    if (options.clearConsent)
+      revokePrivacyConsent();
     userInfo.value = null;
     token.value = null;
   }
@@ -130,5 +144,6 @@ export const useUserStore = defineStore('UserStore', () => {
     silentLogin,
     updateProfile,
     bindPhone,
+    deleteAccount,
   };
 });

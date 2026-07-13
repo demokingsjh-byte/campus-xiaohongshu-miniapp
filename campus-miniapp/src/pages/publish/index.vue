@@ -3,6 +3,7 @@ import { campusPublishTypes, getDefaultTenant } from '@/mock/campus';
 import { uploadCampusPostImage } from '@/services/api/file';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
+import { openPolicyPage } from '@/utils/privacy';
 
 const activeType = ref('idle');
 const images = ref<string[]>([]);
@@ -421,7 +422,11 @@ function reset() {
       <view class="check" :class="{ checked: agreed }" @click="agreed = !agreed">
         {{ agreed ? '✓' : '' }}
       </view>
-      <text>发布即代表同意《云点校园社区发布规范》，请勿泄露身份证、校园卡号等敏感信息。</text>
+      <view class="community-copy">
+        <text>发布即代表同意</text><text class="community-link" @click="openPolicyPage('community')">
+          《云点校园社区发布规范》
+        </text><text>，请勿泄露身份证、校园卡号等敏感信息。</text>
+      </view>
     </view>
     <view v-if="errors.agreement" class="error agreement-error">
       {{ errors.agreement }}
@@ -1013,6 +1018,13 @@ function reset() {
   color: #8a9490;
   font-size: 19rpx;
   line-height: 1.5;
+}
+.community-copy {
+  flex: 1;
+}
+.community-link {
+  color: var(--yd-green);
+  font-weight: 650;
 }
 .check {
   display: flex;

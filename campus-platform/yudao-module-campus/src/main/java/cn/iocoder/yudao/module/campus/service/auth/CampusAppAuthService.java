@@ -18,4 +18,6 @@ public interface CampusAppAuthService {
 
     CampusUserRespVO bindPhone(Long userId, @Valid CampusPhoneBindReqVO reqVO);
 
+    void deleteAccount(Long userId);
+
 }

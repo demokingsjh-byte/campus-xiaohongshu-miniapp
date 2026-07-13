@@ -29,6 +29,11 @@ export interface CampusPostPageParams {
   pageSize?: number
 }
 
+export interface CampusPostReportParams {
+  reason: string
+  detail?: string
+}
+
 const POST_BASE = '/campus/post';
 
 export function createCampusPost(params: CampusPostCreateParams) {
@@ -61,4 +66,8 @@ export function setCampusPostCollect(id: number, active: boolean) {
 
 export function deleteCampusPost(id: number) {
   return request.Delete<boolean>(`${POST_BASE}/delete`, undefined, { params: { id } });
+}
+
+export function reportCampusPost(id: number, params: CampusPostReportParams) {
+  return request.Post<boolean>(`${POST_BASE}/report`, params, { params: { id } });
 }

@@ -8,6 +8,8 @@
     { "name": "PostDetail", "path": "pages/detail/index", "style": { "navigationBarTitleText": "内容详情" }, "meta": { "ignoreAuth": true } },
     { "name": "Search", "path": "pages/search/index", "style": { "navigationStyle": "custom" }, "meta": { "ignoreAuth": true } },
     { "name": "Messages", "path": "pages/messages/index", "style": { "navigationBarTitleText": "消息通知" }, "meta": { "ignoreAuth": true } },
+    { "name": "PrivacySettings", "path": "pages/settings/index", "style": { "navigationBarTitleText": "设置与隐私" }, "meta": { "ignoreAuth": true } },
+    { "name": "Policy", "path": "pages/policy/index", "style": { "navigationBarTitleText": "规则与政策" }, "meta": { "ignoreAuth": true } },
     { "name": "Log", "path": "pages/log/index", "style": { "navigationBarTitleText": "日志" } }
   ],
   "subPackages": [],

@@ -103,6 +103,7 @@
       "compileHotReLoad": false
     },
     "usingComponents": true,
+    "__usePrivacyCheck__": true,
     "permission": {},
     "style": "v2"
   },
