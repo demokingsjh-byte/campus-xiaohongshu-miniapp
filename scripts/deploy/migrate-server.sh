@@ -125,7 +125,13 @@ for migration in "${migrations[@]}"; do
   fi
   echo "Applying $migration..."
   CURRENT_STEP="applying $migration"
-  "$mysql_bin" "${mysql_args[@]}" < "$migration_path"
+  if ! migration_output=$("$mysql_bin" "${mysql_args[@]}" < "$migration_path" 2>&1); then
+    migration_output="${migration_output//$'\r'/ }"
+    migration_output="${migration_output//$'\n'/ }"
+    migration_output="${migration_output//'%'/'%25'}"
+    echo "::error title=MySQL migration error::$migration: $migration_output" >&2
+    exit 1
+  fi
 done
 
 echo "Database migration completed. Backup: $BACKUP_DIR/affected-tables.sql.gz"
