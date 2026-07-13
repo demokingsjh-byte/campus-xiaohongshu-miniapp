@@ -6,11 +6,21 @@ EXPECTED_IP="121.43.83.21"
 APP_HOME="${APP_HOME:-/opt/campus-platform}"
 SOURCE_DIR="${1:-.}"
 ACME_ROOT="/var/www/letsencrypt"
+NGINX_BIN="${NGINX_BIN:-$(command -v nginx)}"
 
-if [ -d /www/server/panel/vhost/nginx ]; then
+if [ -z "$NGINX_BIN" ]; then
+  echo "::error title=Nginx unavailable::nginx executable was not found on the server." >&2
+  exit 1
+fi
+
+NGINX_CONFIG="$($NGINX_BIN -T 2>&1)"
+if grep -Eq 'configuration file /www/server/panel/vhost/nginx/|include[[:space:]]+/www/server/panel/vhost/nginx/\*\.conf' <<<"$NGINX_CONFIG"; then
   NGINX_SITE_DIR=/www/server/panel/vhost/nginx
-else
+elif grep -Eq 'configuration file /etc/nginx/conf\.d/|include[[:space:]]+/etc/nginx/conf\.d/\*\.conf' <<<"$NGINX_CONFIG"; then
   NGINX_SITE_DIR=/etc/nginx/conf.d
+else
+  echo "::error title=Nginx site directory unknown::The active nginx configuration does not include a supported virtual-host directory." >&2
+  exit 1
 fi
 
 TARGET="$NGINX_SITE_DIR/$DOMAIN.conf"
@@ -19,10 +29,25 @@ SSL_SOURCE="$SOURCE_DIR/$DOMAIN.ssl.conf"
 BACKUP=""
 
 reload_nginx() {
-  nginx -t
-  if ! systemctl reload nginx; then
-    nginx -s reload
+  "$NGINX_BIN" -t
+  if ! systemctl is-active --quiet nginx 2>/dev/null || ! systemctl reload nginx; then
+    "$NGINX_BIN" -s reload
   fi
+}
+
+wait_for_http() {
+  local label="$1"
+  shift
+
+  for _ in {1..10}; do
+    if curl --fail --silent --show-error --max-time 10 "$@" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "::error title=Nginx health check failed::$label did not become healthy after the nginx reload." >&2
+  return 1
 }
 
 rollback() {
@@ -31,7 +56,7 @@ rollback() {
   else
     rm -f "$TARGET"
   fi
-  nginx -t && (systemctl reload nginx || nginx -s reload) || true
+  "$NGINX_BIN" -t && (systemctl reload nginx || "$NGINX_BIN" -s reload) || true
 }
 
 install_certbot() {
@@ -80,10 +105,9 @@ trap rollback ERR
 cp "$HTTP_SOURCE" "$TARGET"
 reload_nginx
 
-curl --fail --silent --show-error --max-time 10 \
-  -H "Host: $DOMAIN" http://127.0.0.1/ >/dev/null
-curl --fail --silent --show-error --max-time 10 \
-  -H "Host: $DOMAIN" http://127.0.0.1/admin-api/system/auth/get-permission-info >/dev/null
+wait_for_http "HTTP admin UI" -H "Host: $DOMAIN" http://127.0.0.1/
+wait_for_http "HTTP admin API" -H "Host: $DOMAIN" \
+  http://127.0.0.1/admin-api/system/auth/get-permission-info
 
 echo "HTTP virtual host is healthy. Preparing HTTPS certificate."
 
@@ -106,10 +130,10 @@ certbot certonly \
 cp "$SSL_SOURCE" "$TARGET"
 reload_nginx
 
-curl --fail --silent --show-error --max-time 15 \
-  --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/" >/dev/null
-curl --fail --silent --show-error --max-time 15 \
-  --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/admin-api/system/auth/get-permission-info" >/dev/null
+wait_for_http "HTTPS admin UI" --resolve "$DOMAIN:443:127.0.0.1" \
+  "https://$DOMAIN/"
+wait_for_http "HTTPS admin API" --resolve "$DOMAIN:443:127.0.0.1" \
+  "https://$DOMAIN/admin-api/system/auth/get-permission-info"
 
 trap - ERR
 echo "Nginx domain configuration completed with HTTPS: https://$DOMAIN"
