@@ -1,46 +1,20 @@
 import type { CampusPost } from '@/mock/campus';
+import type { CampusPostCreateParams, CampusPostPageParams } from '@/services/api/content';
 import type { CampusTenant } from '@/utils/tenant';
 import { defineStore } from 'pinia';
-import { campusPosts } from '@/mock/campus';
+import {
+  createCampusPost,
+  deleteCampusPost,
+  getCampusPost,
+  getCampusPostPage,
+  getFavoriteCampusPostPage,
+  getMyCampusPostPage,
+  setCampusPostCollect,
+  setCampusPostLike,
+} from '@/services/api/content';
 import { clearCampusTenant, getCampusTenant, setCampusTenant } from '@/utils/tenant';
 
-const CONTENT_STORAGE_KEY = 'campus-published-posts';
-
-export interface PublishPostInput {
-  tenantId: number
-  school: string
-  type: string
-  title: string
-  content: string
-  price?: string
-  tags: string[]
-  images: string[]
-  author: string
-  anonymous?: boolean
-}
-
-const channelMap: Record<string, string> = {
-  idle: '二手',
-  help: '互助',
-  ride: '拼车',
-  shop: '探店',
-  lost: '失物',
-  club: '社团',
-};
-
-const coverMap: Record<string, { color: string, emoji: string, label: string }> = {
-  idle: { color: '#DDEFE8', emoji: '📦', label: '刚刚发布｜实拍' },
-  help: { color: '#E6EEE0', emoji: '🙌', label: '同校互助' },
-  ride: { color: '#DCEEF3', emoji: '🚕', label: '拼车招募中' },
-  shop: { color: '#FCE7DE', emoji: '🥤', label: '真实探店' },
-  lost: { color: '#FFF0D9', emoji: '🔎', label: '失物信息' },
-  club: { color: '#E7EFE8', emoji: '🎉', label: '活动报名中' },
-};
-
-function readPublishedPosts(): CampusPost[] {
-  const cached = uni.getStorageSync(CONTENT_STORAGE_KEY);
-  return Array.isArray(cached) ? cached : [];
-}
+export type PublishPostInput = CampusPostCreateParams;
 
 export const useTenantStore = defineStore('TenantStore', () => {
   const currentTenant = ref<CampusTenant | null>(getCampusTenant());
@@ -68,41 +42,110 @@ export const useTenantStore = defineStore('TenantStore', () => {
 });
 
 export const useCampusContentStore = defineStore('CampusContentStore', () => {
-  const publishedPosts = ref<CampusPost[]>(readPublishedPosts());
-  const allPosts = computed(() => [...publishedPosts.value, ...campusPosts]);
+  const posts = ref<CampusPost[]>([]);
+  const publishedPosts = ref<CampusPost[]>([]);
+  const favoritePosts = ref<CampusPost[]>([]);
+  const currentPost = ref<CampusPost | null>(null);
+  const loading = ref(false);
+  const allPosts = computed(() => posts.value);
 
-  function publishPost(input: PublishPostInput) {
-    const cover = coverMap[input.type] || coverMap.help;
-    const author = input.anonymous ? '同校同学' : (input.author || '同校同学');
-    const post: CampusPost = {
-      id: Date.now(),
-      tenantId: input.tenantId,
-      channel: channelMap[input.type] || '互助',
-      title: input.title.trim(),
-      content: input.content.trim(),
-      author,
-      avatarText: author.slice(0, 1),
-      school: input.school,
-      time: '刚刚',
-      price: input.price?.trim() || undefined,
-      tags: input.tags.length ? [...input.tags] : ['校园新鲜事'],
-      likes: 0,
-      comments: 0,
-      coverColor: cover.color,
-      coverEmoji: cover.emoji,
-      coverLabel: cover.label,
-      height: input.images.length > 1 ? 'tall' : (input.price ? 'medium' : 'short'),
-      coverImage: input.images[0],
+  function replacePost(updated: CampusPost) {
+    const replace = (list: CampusPost[]) => {
+      const index = list.findIndex(item => item.id === updated.id);
+      if (index >= 0)
+        list[index] = updated;
     };
-    publishedPosts.value.unshift(post);
-    publishedPosts.value = publishedPosts.value.slice(0, 30);
-    uni.setStorageSync(CONTENT_STORAGE_KEY, publishedPosts.value);
+    replace(posts.value);
+    replace(publishedPosts.value);
+    replace(favoritePosts.value);
+    if (currentPost.value?.id === updated.id)
+      currentPost.value = updated;
+  }
+
+  async function loadPosts(params: CampusPostPageParams = {}) {
+    loading.value = true;
+    try {
+      const page = await getCampusPostPage({ pageNo: 1, pageSize: 100, ...params });
+      posts.value = page.list || [];
+      return posts.value;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  async function loadMyPosts() {
+    const page = await getMyCampusPostPage({ pageNo: 1, pageSize: 100 });
+    publishedPosts.value = page.list || [];
+    return publishedPosts.value;
+  }
+
+  async function loadFavorites() {
+    const page = await getFavoriteCampusPostPage({ pageNo: 1, pageSize: 100 });
+    favoritePosts.value = page.list || [];
+    return favoritePosts.value;
+  }
+
+  async function publishPost(input: PublishPostInput) {
+    const created = await createCampusPost(input);
+    posts.value = [created, ...posts.value.filter(item => item.id !== created.id)];
+    publishedPosts.value = [created, ...publishedPosts.value.filter(item => item.id !== created.id)];
+    currentPost.value = created;
+    return created;
+  }
+
+  async function loadPost(id: number) {
+    const post = await getCampusPost(id);
+    currentPost.value = post;
+    replacePost(post);
     return post;
   }
 
   function getPost(id: number) {
-    return allPosts.value.find(item => item.id === id);
+    return currentPost.value?.id === id
+      ? currentPost.value
+      : [...posts.value, ...publishedPosts.value, ...favoritePosts.value].find(item => item.id === id);
   }
 
-  return { publishedPosts, allPosts, publishPost, getPost };
+  async function setPostLike(id: number, active: boolean) {
+    const updated = await setCampusPostLike(id, active);
+    replacePost(updated);
+    return updated;
+  }
+
+  async function setPostCollect(id: number, active: boolean) {
+    const updated = await setCampusPostCollect(id, active);
+    replacePost(updated);
+    if (active && !favoritePosts.value.some(item => item.id === id))
+      favoritePosts.value.unshift(updated);
+    if (!active)
+      favoritePosts.value = favoritePosts.value.filter(item => item.id !== id);
+    return updated;
+  }
+
+  async function removePost(id: number) {
+    await deleteCampusPost(id);
+    posts.value = posts.value.filter(item => item.id !== id);
+    publishedPosts.value = publishedPosts.value.filter(item => item.id !== id);
+    favoritePosts.value = favoritePosts.value.filter(item => item.id !== id);
+    if (currentPost.value?.id === id)
+      currentPost.value = null;
+  }
+
+  return {
+    posts,
+    publishedPosts,
+    favoritePosts,
+    currentPost,
+    loading,
+    allPosts,
+    loadPosts,
+    loadMyPosts,
+    loadFavorites,
+    publishPost,
+    loadPost,
+    getPost,
+    setPostLike,
+    setPostCollect,
+    removePost,
+  };
 });

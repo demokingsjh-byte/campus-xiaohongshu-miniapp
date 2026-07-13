@@ -6,23 +6,30 @@ import { useUserStore } from '@/stores/modules/user';
 const userStore = useUserStore();
 const tenantStore = useTenantStore();
 const contentStore = useCampusContentStore();
-const loggedIn = ref(Boolean(uni.getStorageSync('yd-demo-login')));
+const loggedIn = computed(() => userStore.loggedIn);
 const profile = computed(() => userStore.userInfo);
 const currentSchool = computed(() => profile.value?.schoolName || tenantStore.tenantName || getDefaultTenant().name);
 const currentCampus = computed(() => profile.value?.campusName || (currentSchool.value === '吉首大学' ? '吉首校区' : '主校区'));
 const myPublishCount = computed(() => contentStore.publishedPosts.length);
+const myFavoriteCount = computed(() => contentStore.favoritePosts.length);
+const receivedLikeCount = computed(() => contentStore.publishedPosts.reduce((total, post) => total + post.likes, 0));
 const menuGroups = [
   [{ label: '我的交易', note: '查看回应', action: 'messages' }, { label: '我的发布', note: '', action: 'published' }, { label: '收藏与足迹', note: '最近浏览', action: 'favorites' }],
   [{ label: '校园认证', note: '已认证', action: 'profile' }, { label: '设置与隐私', note: '', action: 'settings' }, { label: '帮助与反馈', note: '', action: 'help' }],
 ];
 onShow(async () => {
-  const hasLoginMarker = Boolean(uni.getStorageSync('yd-demo-login'));
-  if (hasLoginMarker && !userStore.userInfo) {
+  if (!userStore.userInfo) {
     try {
       await userStore.initUserInfo();
     } catch {}
   }
-  loggedIn.value = userStore.loggedIn || hasLoginMarker;
+  if (userStore.loggedIn) {
+    try {
+      await Promise.all([contentStore.loadMyPosts(), contentStore.loadFavorites()]);
+    } catch {
+      uni.showToast({ title: '个人数据加载失败，请稍后重试', icon: 'none' });
+    }
+  }
 });
 function goLogin(mode: 'login' | 'edit' = 'login') {
   uni.navigateTo({ url: `/pages/login/index${mode === 'edit' ? '?mode=edit' : ''}` });
@@ -37,7 +44,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   } else if (action === 'published') {
     uni.navigateTo({ url: '/pages/search/index?mine=1' });
   } else if (action === 'favorites') {
-    uni.navigateTo({ url: '/pages/search/index?keyword=校园' });
+    uni.navigateTo({ url: '/pages/search/index?favorites=1' });
   } else if (action === 'profile') {
     goLogin('edit');
   } else if (action === 'settings') {
@@ -47,7 +54,6 @@ function handleMenu(action: string, requiresLogin: boolean) {
         uni.showToast({ title: '搜索记录已清理', icon: 'none' });
       } else if (res.tapIndex === 2) {
         await userStore.logout();
-        loggedIn.value = false;
       }
     } });
   } else {
@@ -97,8 +103,8 @@ function handleMenu(action: string, requiresLogin: boolean) {
       </view>
       <view class="stats">
         <view><b>{{ myPublishCount }}</b><span>发布</span></view>
-        <view><b>8</b><span>收藏</span></view>
-        <view><b>36</b><span>获赞</span></view>
+        <view><b>{{ myFavoriteCount }}</b><span>收藏</span></view>
+        <view><b>{{ receivedLikeCount }}</b><span>获赞</span></view>
         <view><b>5</b><span>关注</span></view>
       </view>
     </view>
@@ -142,7 +148,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 .mine-page {
   min-height: 100vh;
   padding: 0 24rpx 36rpx;
-  background: #f7f7f3;
+  background: var(--yd-paper);
 }
 .mine-status {
   height: calc(72rpx + env(safe-area-inset-top));
@@ -171,7 +177,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   position: relative;
   width: 25rpx;
   height: 27rpx;
-  border: 3rpx solid #273632;
+  border: 3rpx solid #3a3a3c;
   border-bottom: 0;
   border-top-left-radius: 16rpx;
   border-top-right-radius: 16rpx;
@@ -183,7 +189,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   width: 33rpx;
   height: 3rpx;
   border-radius: 9rpx;
-  background: #273632;
+  background: #3a3a3c;
   content: '';
 }
 .mine-bell::after {
@@ -193,7 +199,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   width: 8rpx;
   height: 5rpx;
   border-radius: 0 0 8rpx 8rpx;
-  background: #273632;
+  background: #3a3a3c;
   content: '';
 }
 .message i {
@@ -203,15 +209,16 @@ function handleMenu(action: string, requiresLogin: boolean) {
   width: 13rpx;
   height: 13rpx;
   border-radius: 50%;
-  background: #ff6b5e;
+  background: var(--yd-coral);
 }
 .guest-card,
 .profile-card {
   padding: 34rpx 28rpx;
-  border-radius: 30rpx;
-  color: #fff;
-  background: #174f48;
-  box-shadow: 0 14rpx 32rpx rgba(23, 79, 72, 0.16);
+  border: 1rpx solid #b7d4c8;
+  border-radius: 21rpx;
+  color: var(--yd-ink);
+  background: var(--yd-mint);
+  box-shadow: 0 12rpx 30rpx rgba(33, 50, 86, 0.08);
 }
 .guest-card {
   text-align: center;
@@ -224,8 +231,8 @@ function handleMenu(action: string, requiresLogin: boolean) {
   height: 94rpx;
   margin: 0 auto;
   border-radius: 32rpx;
-  color: #174f48;
-  background: #d8f0e9;
+  color: #fff;
+  background: var(--yd-green-dark);
   font-size: 38rpx;
   font-weight: 900;
 }
@@ -236,15 +243,15 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 .guest-desc {
   margin-top: 9rpx;
-  color: rgba(255, 255, 255, 0.72);
+  color: #657970;
   font-size: 23rpx;
 }
 .guest-card button {
   width: 300rpx;
   margin: 24rpx auto 0;
   border-radius: 999rpx;
-  color: #174f48;
-  background: #fff;
+  color: #fff;
+  background: var(--yd-green);
   font-size: 26rpx;
   font-weight: 800;
 }
@@ -258,10 +265,10 @@ function handleMenu(action: string, requiresLogin: boolean) {
   justify-content: center;
   width: 104rpx;
   height: 104rpx;
-  border: 4rpx solid rgba(255, 255, 255, 0.6);
+  border: 4rpx solid #fffdf8;
   border-radius: 50%;
-  color: #174f48;
-  background: #d9eee8;
+  color: #fff;
+  background: var(--yd-green-dark);
   font-size: 36rpx;
   font-weight: 900;
 }
@@ -280,20 +287,21 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 .nickname text {
   margin-left: 8rpx;
-  color: #bde9dd;
+  color: var(--yd-green);
   font-size: 19rpx;
 }
 .student-id,
 .bio {
   margin-top: 6rpx;
-  color: rgba(255, 255, 255, 0.68);
+  color: #657970;
   font-size: 21rpx;
 }
 .edit {
   align-self: flex-start;
   padding: 8rpx 14rpx;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.14);
+  color: var(--yd-green-dark);
+  background: rgba(255, 253, 248, 0.72);
   font-size: 20rpx;
 }
 .stats {
@@ -301,7 +309,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   grid-template-columns: repeat(4, 1fr);
   margin-top: 28rpx;
   padding-top: 24rpx;
-  border-top: 1rpx solid rgba(255, 255, 255, 0.13);
+  border-top: 1rpx dashed #9fc6b7;
 }
 .stats view {
   display: flex;
@@ -313,7 +321,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 .stats span {
   margin-top: 5rpx;
-  color: rgba(255, 255, 255, 0.62);
+  color: #71837c;
   font-size: 20rpx;
 }
 .campus-pass {
@@ -329,9 +337,9 @@ function handleMenu(action: string, requiresLogin: boolean) {
   width: 72rpx;
   height: 72rpx;
   margin-right: 16rpx;
-  border-radius: 22rpx;
+  border-radius: 16rpx 16rpx 16rpx 5rpx;
   color: #fff;
-  background: #1f675f;
+  background: var(--yd-green-dark);
   font-size: 24rpx;
   font-weight: 800;
 }
@@ -390,8 +398,8 @@ function handleMenu(action: string, requiresLogin: boolean) {
   width: 46rpx;
   height: 46rpx;
   border-radius: 14rpx;
-  color: #0f766e;
-  background: #e8f5f1;
+  color: var(--yd-green-dark);
+  background: var(--yd-mint);
   font-size: 20rpx;
   font-weight: 800;
 }
@@ -415,5 +423,35 @@ function handleMenu(action: string, requiresLogin: boolean) {
   color: #a1a9a6;
   font-size: 20rpx;
   text-align: center;
+}
+
+/* Apple-inspired glass theme */
+.message,
+.profile-card,
+.guest-card,
+.campus-pass,
+.quick-grid view,
+.menu-card {
+  border: 1rpx solid rgba(255, 255, 255, 0.72);
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 18rpx 44rpx rgba(33, 50, 86, 0.085);
+  backdrop-filter: blur(30rpx) saturate(155%);
+  -webkit-backdrop-filter: blur(30rpx) saturate(155%);
+}
+.guest-avatar,
+.profile-avatar,
+.pass-icon,
+.menu-icon {
+  background: rgba(10, 132, 255, 0.1);
+  color: var(--yd-green-dark);
+}
+.guest-card button,
+.edit {
+  background: var(--yd-green);
+  box-shadow: 0 10rpx 24rpx rgba(10, 132, 255, 0.2);
+}
+.menu-row {
+  border-color: rgba(60, 60, 67, 0.1);
 }
 </style>

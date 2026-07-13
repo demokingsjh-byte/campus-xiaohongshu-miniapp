@@ -37,16 +37,15 @@ onLoad(async (query) => {
   editing.value = query?.mode === 'edit';
   if (!editing.value)
     return;
-  if (!uni.getStorageSync('yd-demo-login')) {
-    editing.value = false;
-    return;
-  }
-  step.value = 'profile';
   if (!userStore.userInfo) {
     try {
       await userStore.initUserInfo();
-    } catch {}
+    } catch {
+      editing.value = false;
+      return;
+    }
   }
+  step.value = 'profile';
   fillForm();
 });
 
@@ -108,7 +107,6 @@ async function finishProfile() {
     const matchedTenant = campusTenants.find(item => item.name === form.schoolName);
     if (matchedTenant)
       tenantStore.selectTenant(matchedTenant);
-    uni.setStorageSync('yd-demo-login', '1');
     step.value = 'done';
   } catch {
     uni.showToast({ title: '资料保存失败，请稍后重试', icon: 'none' });
@@ -161,7 +159,13 @@ function finish() {
         </view>
       </button>
       <view v-if="loginError" class="login-error" @click="loginDemo">
-        <text class="login-error-icon">!</text><text>{{ loginError }}</text><text class="retry">重试</text>
+        <text class="login-error-icon">
+          !
+        </text><text>
+          {{ loginError }}
+        </text><text class="retry">
+          重试
+        </text>
       </view>
       <view class="privacy" @click="agreed = !agreed">
         <view :class="{ checked: agreed }">
@@ -225,7 +229,7 @@ function finish() {
 .login-page {
   min-height: 100vh;
   padding: 0 44rpx 44rpx;
-  background: #faf8f3;
+  background: var(--yd-paper);
 }
 .login-status {
   height: calc(28rpx + env(safe-area-inset-top));
@@ -236,8 +240,9 @@ function finish() {
   justify-content: center;
   width: 66rpx;
   height: 66rpx;
-  border-radius: 22rpx;
-  background: #fff;
+  border: 1rpx solid var(--yd-line);
+  border-radius: 14rpx;
+  background: var(--yd-card);
   font-size: 46rpx;
 }
 .login-content,
@@ -252,10 +257,10 @@ function finish() {
   width: 118rpx;
   height: 118rpx;
   margin: 0 auto;
-  border-radius: 38rpx;
+  border-radius: 32rpx 32rpx 32rpx 9rpx;
   color: #fff;
-  background: #16a085;
-  box-shadow: 0 18rpx 34rpx rgba(22, 160, 133, 0.2);
+  background: var(--yd-green);
+  box-shadow: 10rpx 12rpx 0 #c9dfd6;
   font-size: 48rpx;
   font-weight: 900;
 }
@@ -284,8 +289,10 @@ function finish() {
   display: flex;
   align-items: center;
   padding: 22rpx;
-  border-radius: 22rpx;
-  background: #fff;
+  border: 1rpx solid var(--yd-line);
+  border-radius: 16rpx;
+  background: var(--yd-card);
+  box-shadow: 5rpx 6rpx 0 rgba(75, 59, 44, 0.035);
 }
 .feature-list > view > text {
   display: flex;
@@ -293,8 +300,8 @@ function finish() {
   justify-content: center;
   width: 72rpx;
   height: 72rpx;
-  border-radius: 22rpx;
-  background: #e8f5f1;
+  border-radius: 14rpx 14rpx 14rpx 4rpx;
+  background: var(--yd-mint);
   font-size: 34rpx;
 }
 .feature-list span {
@@ -319,11 +326,11 @@ function finish() {
   height: 94rpx;
   margin-top: 48rpx;
   padding: 0 34rpx;
-  border: 1rpx solid rgba(8, 117, 94, 0.12);
-  border-radius: 26rpx;
+  border: 1rpx solid rgba(10, 132, 255, 0.16);
+  border-radius: 18rpx;
   color: #fff;
-  background: #10967a;
-  box-shadow: 0 14rpx 30rpx rgba(15, 133, 108, 0.22);
+  background: var(--yd-green);
+  box-shadow: 0 14rpx 32rpx rgba(10, 132, 255, 0.25);
   font-size: 30rpx;
   font-weight: 650;
   line-height: 1.2;
@@ -335,7 +342,7 @@ function finish() {
 }
 .wechat-btn[disabled] {
   opacity: 0.72;
-  box-shadow: 0 8rpx 18rpx rgba(15, 133, 108, 0.14);
+  box-shadow: 0 8rpx 18rpx rgba(10, 132, 255, 0.16);
 }
 .button-inner {
   display: flex;
@@ -350,8 +357,8 @@ function finish() {
   width: 38rpx;
   height: 38rpx;
   border-radius: 13rpx;
-  color: #10967a;
-  background: #fff;
+  color: var(--yd-green);
+  background: var(--yd-card);
   font-size: 20rpx;
   font-weight: 800;
   line-height: 1;
@@ -365,7 +372,9 @@ function finish() {
   animation: button-spin 0.8s linear infinite;
 }
 @keyframes button-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 .login-error {
   display: flex;
@@ -377,7 +386,7 @@ function finish() {
   border: 1rpx solid rgba(227, 101, 85, 0.18);
   border-radius: 16rpx;
   color: #8f463e;
-  background: #fff1ed;
+  background: var(--yd-coral-soft);
   font-size: 22rpx;
   line-height: 1.4;
   text-align: left;
@@ -420,15 +429,15 @@ function finish() {
   border-radius: 8rpx;
 }
 .privacy .checked {
-  border-color: #16a085;
+  border-color: var(--yd-green);
   color: #fff;
-  background: #16a085;
+  background: var(--yd-green);
 }
 .profile-content {
   padding-top: 22rpx;
 }
 .step-note {
-  color: #16a085;
+  color: var(--yd-coral);
   font-size: 22rpx;
   font-weight: 700;
 }
@@ -437,7 +446,7 @@ function finish() {
   flex-direction: column;
   align-items: center;
   margin: 32rpx 0;
-  color: #16a085;
+  color: var(--yd-green);
   font-size: 21rpx;
   line-height: 1.4;
   background: transparent;
@@ -451,8 +460,8 @@ function finish() {
   height: 110rpx;
   margin-bottom: 10rpx;
   border-radius: 50%;
-  color: #174f48;
-  background: #dcefe9;
+  color: var(--yd-green-dark);
+  background: var(--yd-mint);
   font-size: 38rpx;
   font-weight: 900;
 }
@@ -461,8 +470,10 @@ function finish() {
 }
 .profile-form {
   overflow: hidden;
-  border-radius: 24rpx;
-  background: #fff;
+  border: 1rpx solid var(--yd-line);
+  border-radius: 18rpx;
+  background: var(--yd-card);
+  box-shadow: 0 5rpx 0 rgba(75, 59, 44, 0.035);
 }
 .profile-form label {
   display: flex;
@@ -503,10 +514,45 @@ function finish() {
   width: 120rpx;
   height: 120rpx;
   margin: 0 auto;
-  border-radius: 40rpx;
+  border-radius: 32rpx 32rpx 32rpx 9rpx;
   color: #fff;
-  background: #16a085;
+  background: var(--yd-green);
+  box-shadow: 10rpx 12rpx 0 #c9dfd6;
   font-size: 54rpx;
   font-weight: 900;
+}
+
+/* Apple-inspired glass theme */
+.back,
+.feature-list > view,
+.profile-form,
+.login-error {
+  border: 1rpx solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 18rpx 44rpx rgba(33, 50, 86, 0.085);
+  backdrop-filter: blur(28rpx) saturate(155%);
+  -webkit-backdrop-filter: blur(28rpx) saturate(155%);
+}
+.logo,
+.done-icon {
+  border-radius: 30rpx;
+  background: var(--yd-green);
+  box-shadow: 0 18rpx 38rpx rgba(10, 132, 255, 0.24);
+}
+.wechat-btn {
+  border: 1rpx solid rgba(255, 255, 255, 0.32);
+  border-radius: 22rpx;
+  background: var(--yd-green);
+  box-shadow: 0 14rpx 32rpx rgba(10, 132, 255, 0.25);
+}
+.feature-list > view,
+.profile-form {
+  border-radius: 24rpx;
+}
+.feature-list > view > text,
+.avatar-upload > view,
+.picker,
+.profile-form input {
+  background: rgba(118, 118, 128, 0.08);
 }
 </style>

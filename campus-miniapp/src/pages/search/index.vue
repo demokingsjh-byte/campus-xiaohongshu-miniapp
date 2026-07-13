@@ -1,11 +1,12 @@
 <script lang="ts" setup>
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
-import { useCampusContentStore } from '@/stores/modules/tenant';
+import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 
 const keyword = ref('');
 const searched = ref(false);
 const onlyMine = ref(false);
+const favoritesMode = ref(false);
 const activeTab = ref('全部');
 const activeFilter = ref('综合');
 const cachedRecent = uni.getStorageSync('campus-search-recent');
@@ -14,11 +15,14 @@ const hot = ['毕业闲置', '校园卡', '周末活动', '校门口美食', '�
 const tabs = ['全部', '二手', '互助', '活动', '用户'];
 const tabChannels: Record<string, string[]> = { 二手: ['二手'], 互助: ['互助'], 活动: ['社团'] };
 const contentStore = useCampusContentStore();
+const tenantStore = useTenantStore();
 const results = computed(() => {
   const query = keyword.value.trim().toLowerCase();
-  const source = onlyMine.value ? contentStore.publishedPosts : contentStore.allPosts;
+  const source = onlyMine.value
+    ? contentStore.publishedPosts
+    : (favoritesMode.value ? contentStore.favoritePosts : contentStore.allPosts);
   if (!query)
-    return onlyMine.value ? source : [];
+    return onlyMine.value || favoritesMode.value ? source : [];
 
   const matched = source.filter((item) => {
     const content = [item.title, item.content, item.author, item.school, item.channel, ...item.tags].join(' ').toLowerCase();
@@ -36,7 +40,7 @@ const results = computed(() => {
     return [...matched].sort((a, b) => b.id - a.id);
   return matched;
 });
-function search(value?: string) {
+async function search(value?: string) {
   if (value)
     keyword.value = value;
   keyword.value = keyword.value.trim();
@@ -45,6 +49,16 @@ function search(value?: string) {
     return;
   }
   searched.value = true;
+  if (!onlyMine.value && !favoritesMode.value) {
+    try {
+      await contentStore.loadPosts({
+        tenantId: tenantStore.tenantId || undefined,
+        keyword: keyword.value,
+      });
+    } catch {
+      uni.showToast({ title: '搜索失败，请检查网络', icon: 'none' });
+    }
+  }
   if (!recent.value.includes(keyword.value)) {
     recent.value.unshift(keyword.value);
     recent.value = recent.value.slice(0, 8);
@@ -59,13 +73,29 @@ function clearRecent() {
   recent.value = [];
   uni.removeStorageSync('campus-search-recent');
 }
-onLoad((query) => {
+onLoad(async (query) => {
   onlyMine.value = query?.mine === '1';
+  favoritesMode.value = query?.favorites === '1';
+  if (onlyMine.value) {
+    searched.value = true;
+    try {
+      await contentStore.loadMyPosts();
+    } catch {
+      uni.showToast({ title: '我的发布加载失败', icon: 'none' });
+    }
+  } else if (favoritesMode.value) {
+    searched.value = true;
+    try {
+      await contentStore.loadFavorites();
+    } catch {
+      uni.showToast({ title: '收藏加载失败', icon: 'none' });
+    }
+  }
   if (query?.keyword) {
     keyword.value = decodeURIComponent(query.keyword);
     searched.value = true;
-  } else if (onlyMine.value) {
-    searched.value = true;
+    if (!onlyMine.value && !favoritesMode.value)
+      await search();
   }
 });
 </script>
@@ -127,13 +157,13 @@ onLoad((query) => {
         </text>
       </view>
       <StatePanel
-        v-if="!results.length" :title="onlyMine ? '还没有发布内容' : '没有找到相关内容'"
-        :description="onlyMine ? '完成第一次分享后，可以在这里管理自己发布的内容。' : `换个关键词试试，或者去发布「${keyword}」相关内容。`"
+        v-if="!results.length" :title="onlyMine ? '还没有发布内容' : (favoritesMode ? '还没有收藏内容' : '没有找到相关内容')"
+        :description="onlyMine ? '完成第一次分享后，可以在这里管理自己发布的内容。' : (favoritesMode ? '在内容详情点击收藏后，会同步保存在这里。' : `换个关键词试试，或者去发布「${keyword}」相关内容。`)"
         action="去发布" @action="uni.switchTab({ url: '/pages/publish/index' })"
       />
       <template v-else>
         <view class="result-count">
-          {{ onlyMine ? `我的发布共 ${results.length} 条` : `找到 ${results.length} 条与“${keyword}”相关的内容` }}
+          {{ onlyMine ? `我的发布共 ${results.length} 条` : (favoritesMode ? `我的收藏共 ${results.length} 条` : `找到 ${results.length} 条与“${keyword}”相关的内容`) }}
         </view><view class="result-grid">
           <view class="column">
             <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" />
@@ -149,7 +179,7 @@ onLoad((query) => {
 <style lang="scss" scoped>
 .search-page {
   min-height: 100vh;
-  background: #faf8f3;
+  background: var(--yd-paper);
 }
 .search-status {
   height: calc(28rpx + env(safe-area-inset-top));
@@ -169,9 +199,10 @@ onLoad((query) => {
   align-items: center;
   height: 72rpx;
   padding: 0 20rpx;
-  border-radius: 22rpx;
-  background: #eeece6;
-  color: #16a085;
+  border: 1rpx solid var(--yd-line);
+  border-radius: 15rpx;
+  background: var(--yd-card);
+  color: var(--yd-green);
 }
 .search-input input {
   flex: 1;
@@ -189,7 +220,7 @@ onLoad((query) => {
   background: #aeb6b2;
 }
 .search-text {
-  color: #0f766e;
+  color: var(--yd-green-dark);
   font-size: 24rpx;
   font-weight: 700;
 }
@@ -219,9 +250,10 @@ onLoad((query) => {
 }
 .chip-list text {
   padding: 13rpx 22rpx;
-  border-radius: 999rpx;
+  border: 1rpx solid var(--yd-line);
+  border-radius: 10rpx;
   color: #65706c;
-  background: #eeece6;
+  background: var(--yd-card);
   font-size: 22rpx;
 }
 .recent-empty {
@@ -247,7 +279,7 @@ onLoad((query) => {
   font-weight: 800;
 }
 .rank.top {
-  color: #ff6b5e;
+  color: var(--yd-coral);
 }
 .hot-list span {
   flex: 1;
@@ -255,13 +287,13 @@ onLoad((query) => {
 .hot-list i {
   padding: 3rpx 7rpx;
   border-radius: 7rpx;
-  color: #ff6b5e;
-  background: #fff0ed;
+  color: var(--yd-coral);
+  background: var(--yd-coral-soft);
   font-size: 17rpx;
   font-style: normal;
 }
 .tab-scroll {
-  border-bottom: 1rpx solid #e8e5de;
+  border-bottom: 1rpx solid var(--yd-line);
   white-space: nowrap;
 }
 .tabs {
@@ -276,7 +308,7 @@ onLoad((query) => {
   font-size: 25rpx;
 }
 .tabs .active {
-  color: #18201e;
+  color: var(--yd-ink);
   font-weight: 800;
 }
 .tabs .active::after {
@@ -286,7 +318,7 @@ onLoad((query) => {
   width: 34rpx;
   height: 5rpx;
   border-radius: 999rpx;
-  background: #16a085;
+  background: var(--yd-green);
   content: '';
   transform: translateX(-50%);
 }
@@ -298,7 +330,7 @@ onLoad((query) => {
   font-size: 22rpx;
 }
 .filters .active {
-  color: #0f766e;
+  color: var(--yd-green-dark);
   font-weight: 700;
 }
 .filters i {
@@ -314,5 +346,26 @@ onLoad((query) => {
   grid-template-columns: repeat(2, 1fr);
   gap: 18rpx;
   padding: 0 20rpx 30rpx;
+}
+
+/* Apple-inspired glass theme */
+.search-input,
+.discover-section,
+.hot-list,
+.filters {
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 16rpx 40rpx rgba(33, 50, 86, 0.08);
+  backdrop-filter: blur(28rpx) saturate(155%);
+  -webkit-backdrop-filter: blur(28rpx) saturate(155%);
+}
+.chip-list text,
+.filters > view {
+  border-color: rgba(60, 60, 67, 0.1);
+  background: rgba(118, 118, 128, 0.08);
+}
+.tabs .active::after {
+  background: var(--yd-green);
 }
 </style>

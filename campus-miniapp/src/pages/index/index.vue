@@ -5,7 +5,7 @@ import { campusChannels, campusTenants, getDefaultTenant } from '@/mock/campus';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 
 const activeChannel = ref('推荐');
-const state = ref<'content' | 'loading' | 'empty' | 'error'>('content');
+const state = ref<'content' | 'loading' | 'empty' | 'error'>('loading');
 const refreshing = ref(false);
 const tenantStore = useTenantStore();
 const contentStore = useCampusContentStore();
@@ -35,23 +35,39 @@ function switchCampus() {
 function goPublish() {
   uni.switchTab({ url: '/pages/publish/index' });
 }
+async function loadFeed(showLoading = true) {
+  if (showLoading)
+    state.value = 'loading';
+  try {
+    await contentStore.loadPosts({ tenantId: tenantStore.tenantId || undefined });
+    state.value = visiblePosts.value.length ? 'content' : 'empty';
+  } catch {
+    state.value = contentStore.allPosts.length ? 'content' : 'error';
+  }
+}
 function retry() {
   state.value = 'loading';
-  setTimeout(() => state.value = 'content', 650);
+  loadFeed();
 }
-function onRefresh() {
+async function onRefresh() {
   refreshing.value = true;
-  setTimeout(() => refreshing.value = false, 700);
+  try {
+    await loadFeed(false);
+  } finally {
+    refreshing.value = false;
+  }
 }
-onShow(() => {
+onShow(async () => {
   const channel = uni.getStorageSync('campus-home-channel');
   if (campusChannels.includes(channel))
     chooseChannel(channel);
   uni.removeStorageSync('campus-home-channel');
+  await loadFeed();
 });
-watch([() => tenantStore.tenantId, activeChannel], () => {
+watch(activeChannel, () => {
   state.value = visiblePosts.value.length ? 'content' : 'empty';
-}, { immediate: true });
+});
+watch(() => tenantStore.tenantId, () => loadFeed());
 </script>
 
 <template>
@@ -64,7 +80,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
         </view>
         <view>
           <view class="brand-name">
-            云点
+            逛校园
           </view>
           <view class="campus-line">
             {{ tenantStore.tenantName || '全部校园' }} <text>⌄</text>
@@ -150,7 +166,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
 <style lang="scss" scoped>
 .home-page {
   min-height: 100vh;
-  background: #f7f7f3;
+  background: var(--yd-paper);
 }
 .status-space {
   height: calc(78rpx + env(safe-area-inset-top));
@@ -173,9 +189,10 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   justify-content: center;
   width: 62rpx;
   height: 62rpx;
-  border-radius: 19rpx;
+  border-radius: 16rpx 16rpx 16rpx 5rpx;
   color: #fff;
-  background: #16a085;
+  background: var(--yd-green);
+  box-shadow: 5rpx 6rpx 0 #c7ded5;
   font-size: 29rpx;
   font-weight: 900;
 }
@@ -185,23 +202,23 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   bottom: -3rpx;
   width: 15rpx;
   height: 15rpx;
-  border: 4rpx solid #f7f7f3;
+  border: 4rpx solid var(--yd-paper);
   border-radius: 50%;
-  background: #ff765f;
+  background: var(--yd-coral);
 }
 .brand-name {
-  color: #18201e;
-  font-size: 34rpx;
+  color: var(--yd-ink);
+  font-size: 35rpx;
   font-weight: 900;
   letter-spacing: 1rpx;
 }
 .campus-line {
   margin-top: 1rpx;
-  color: #6b7672;
+  color: var(--yd-muted);
   font-size: 20rpx;
 }
 .campus-line text {
-  color: #16a085;
+  color: var(--yd-green);
 }
 .top-actions {
   display: none;
@@ -222,7 +239,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   position: relative;
   width: 24rpx;
   height: 24rpx;
-  border: 3rpx solid #273632;
+  border: 3rpx solid #3a3a3c;
   border-radius: 50%;
 }
 .search-glyph::after {
@@ -232,7 +249,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   width: 11rpx;
   height: 3rpx;
   border-radius: 9rpx;
-  background: #273632;
+  background: #3a3a3c;
   content: '';
   transform: rotate(45deg);
 }
@@ -240,7 +257,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   position: relative;
   width: 26rpx;
   height: 28rpx;
-  border: 3rpx solid #273632;
+  border: 3rpx solid #3a3a3c;
   border-top-left-radius: 16rpx;
   border-top-right-radius: 16rpx;
   border-bottom: 0;
@@ -252,7 +269,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   width: 34rpx;
   height: 3rpx;
   border-radius: 9rpx;
-  background: #273632;
+  background: #3a3a3c;
   content: '';
 }
 .bell-glyph::after {
@@ -262,7 +279,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   width: 8rpx;
   height: 5rpx;
   border-radius: 0 0 8rpx 8rpx;
-  background: #273632;
+  background: #3a3a3c;
   content: '';
 }
 .dot {
@@ -273,7 +290,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   height: 14rpx;
   border: 3rpx solid #fff;
   border-radius: 50%;
-  background: #ff6b5e;
+  background: var(--yd-coral);
 }
 .search-entry {
   display: flex;
@@ -281,11 +298,11 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   height: 70rpx;
   margin: 0 24rpx;
   padding: 0 19rpx;
-  border: 1rpx solid #e8e5de;
-  border-radius: 20rpx;
+  border: 1rpx solid var(--yd-line);
+  border-radius: 15rpx;
   color: #8b9591;
-  background: #fff;
-  box-shadow: 0 5rpx 18rpx rgba(31, 56, 49, 0.035);
+  background: var(--yd-card);
+  box-shadow: 0 4rpx 0 rgba(75, 59, 44, 0.035);
   font-size: 24rpx;
 }
 .search-small {
@@ -305,8 +322,8 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
 .hot-word {
   padding: 6rpx 12rpx;
   border-radius: 999rpx;
-  color: #ff6b5e;
-  background: #fff0ed;
+  color: var(--yd-coral);
+  background: var(--yd-coral-soft);
   font-size: 19rpx;
   font-weight: 600;
 }
@@ -330,7 +347,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   font-size: 25rpx;
 }
 .channel.active {
-  color: #18201e;
+  color: var(--yd-ink);
   background: transparent;
   font-weight: 700;
 }
@@ -341,7 +358,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   width: 28rpx;
   height: 6rpx;
   border-radius: 9rpx;
-  background: #16a085;
+  background: var(--yd-green);
   content: '';
   transform: translateX(-50%);
 }
@@ -351,24 +368,24 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   height: 66rpx;
   margin: 2rpx 20rpx 0;
   padding: 0 16rpx;
-  border: 1rpx solid #e7e6df;
-  border-radius: 17rpx;
-  background: #fff;
-  box-shadow: 0 4rpx 14rpx rgba(31, 56, 49, 0.03);
+  border: 1rpx dashed #d7b863;
+  border-radius: 12rpx;
+  background: #fff3c9;
+  box-shadow: 5rpx 6rpx 0 rgba(116, 89, 27, 0.06);
 }
 .trend-badge {
   flex: 0 0 auto;
   padding: 6rpx 10rpx;
-  border-radius: 8rpx;
-  color: #fff;
-  background: #18201e;
+  border-radius: 6rpx;
+  color: var(--yd-ink);
+  background: var(--yd-yellow);
   font-size: 18rpx;
   font-weight: 700;
 }
 .trend-text {
   flex: 1;
   margin-left: 13rpx;
-  color: #27332f;
+  color: var(--yd-ink);
   font-size: 23rpx;
   font-weight: 600;
 }
@@ -395,7 +412,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   height: 12rpx;
   margin-right: 8rpx;
   border-radius: 50%;
-  background: #16a085;
+  background: var(--yd-green);
 }
 .note-side {
   color: #9aa39f;
@@ -416,10 +433,10 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   gap: 13rpx;
   margin: 0 16rpx 16rpx;
   padding: 17rpx 18rpx;
-  border: 1rpx solid #cfe4dd;
-  border-radius: 22rpx;
-  background: #f0f8f5;
-  box-shadow: 0 7rpx 20rpx rgba(29, 78, 67, 0.06);
+  border: 1rpx solid #efc1b6;
+  border-radius: 16rpx;
+  background: var(--yd-coral-soft);
+  box-shadow: 5rpx 6rpx 0 rgba(116, 55, 43, 0.055);
 }
 .inspire-avatar {
   display: flex;
@@ -427,9 +444,9 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   justify-content: center;
   width: 58rpx;
   height: 58rpx;
-  border-radius: 18rpx;
+  border-radius: 14rpx 14rpx 14rpx 4rpx;
   color: #fff;
-  background: #15967f;
+  background: var(--yd-coral);
   font-size: 34rpx;
   font-weight: 500;
 }
@@ -455,7 +472,7 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   padding: 0 18rpx;
   border-radius: 999rpx;
   color: #fff;
-  background: #ff6b5e;
+  background: var(--yd-green-dark);
   font-size: 20rpx;
   font-weight: 800;
   line-height: 54rpx;
@@ -498,5 +515,40 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   to {
     opacity: 0.45;
   }
+}
+
+/* Apple-inspired glass theme */
+.brand-mark {
+  background: var(--yd-green);
+  box-shadow: 0 12rpx 28rpx rgba(10, 132, 255, 0.2);
+}
+.icon-btn,
+.search-entry,
+.trend-card,
+.campus-note,
+.publish-inspire {
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 16rpx 38rpx rgba(33, 50, 86, 0.08);
+  backdrop-filter: blur(28rpx) saturate(155%);
+  -webkit-backdrop-filter: blur(28rpx) saturate(155%);
+}
+.search-glyph,
+.bell-glyph {
+  border-color: #3a3a3c;
+}
+.trend-card,
+.campus-note,
+.publish-inspire {
+  border-radius: 24rpx;
+}
+.publish-inspire button {
+  background: var(--yd-green);
+  box-shadow: 0 10rpx 24rpx rgba(10, 132, 255, 0.22);
+}
+.skeleton-card,
+.sk-cover,
+.sk-line {
+  background: rgba(118, 118, 128, 0.1);
 }
 </style>

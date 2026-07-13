@@ -79,6 +79,7 @@ jobs:
           cp scripts/deploy/update-server.sh release/update-server.sh
           cp scripts/deploy/migrate-server.sh release/migrate-server.sh
           cp campus-platform/sql/mysql/campus-student-user-upgrade.sql release/migrations/
+          cp campus-platform/sql/mysql/campus-community-upgrade.sql release/migrations/
           cp campus-platform/sql/mysql/campus-menu-encoding-repair.sql release/migrations/
           cp campus-platform/sql/mysql/campus-menu.sql release/migrations/
           cp campus-platform/sql/mysql/campus-school-data-upgrade.sql release/migrations/
@@ -131,3 +132,11 @@ jobs:
             exit 1
           fi
           echo "Public login error contract verified."
+
+          post_page="$(curl --fail --silent --show-error --max-time 20 \
+            'https://huanwoshidai.com.cn/app-api/campus/post/page?tenantId=201&pageNo=1&pageSize=1')"
+          if ! jq -e '.code == 0 and (.data.list | type == "array") and (.data.total | type == "number")' <<<"$post_page" >/dev/null; then
+            echo "::error title=Public campus post smoke test failed::Unexpected response: $post_page"
+            exit 1
+          fi
+          echo "Public campus post page verified."

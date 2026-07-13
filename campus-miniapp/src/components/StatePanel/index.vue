@@ -37,13 +37,15 @@ const icons = { empty: '🗂', error: '⚠', offline: '☁', login: '👋' };
   justify-content: center;
   width: 112rpx;
   height: 112rpx;
-  border-radius: 36rpx;
-  background: #e8f5f1;
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
+  border-radius: 32rpx;
+  background: var(--yd-mint);
+  box-shadow: 0 16rpx 38rpx rgba(43, 82, 126, 0.1);
   font-size: 52rpx;
 }
 .state-title {
   margin-top: 28rpx;
-  color: #18201e;
+  color: var(--yd-ink);
   font-size: 32rpx;
   font-weight: 800;
 }
@@ -58,9 +60,10 @@ const icons = { empty: '🗂', error: '⚠', offline: '☁', login: '👋' };
   min-width: 220rpx;
   margin-top: 30rpx;
   padding: 0 34rpx;
-  border-radius: 999rpx;
+  border-radius: 20rpx;
   color: #fff;
-  background: #16a085;
+  background: var(--yd-green);
+  box-shadow: 0 10rpx 24rpx rgba(10, 132, 255, 0.22);
   font-size: 26rpx;
   font-weight: 700;
 }

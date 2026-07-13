@@ -11,6 +11,7 @@
 - 校区租户：`campus_tenant_profile`
 - 校区代理：`campus_agent`
 - 商品管理：`campus_product`
+- 内容管理：`campus_post`
 
 已预留业务数据表：
 
@@ -19,6 +20,8 @@
 - 交易订单：`campus_trade_order`
 - 分润规则：`campus_commission_rule`
 - 分润记录：`campus_commission_record`
+- 社区发布：`campus_post`
+- 点赞收藏关系：`campus_post_interaction`
 
 ## 设计重点
 
@@ -89,6 +92,7 @@
 - `tenant-profile`
 - `agent`
 - `product`
+- `post`
 
 接口做了资源和字段白名单，避免外部传入任意表名或任意字段。
 
@@ -112,6 +116,11 @@ API 封装路径：
 2. `campus-platform/sql/mysql/campus-extension.sql`
 3. `campus-platform/sql/mysql/campus-menu-prune.sql`
 4. `campus-platform/sql/mysql/campus-menu.sql`
+5. `campus-platform/sql/mysql/campus-school-data-upgrade.sql`
+
+已有数据库升级时，额外执行 `campus-platform/sql/mysql/campus-community-upgrade.sql`；GitHub 主分支自动部署会先备份相关表并自动执行该迁移。
+
+已存在乱码菜单的数据库，先执行 `campus-menu-encoding-repair.sql`，再重新执行 `campus-menu.sql`。
 
 ## 验证命令
 

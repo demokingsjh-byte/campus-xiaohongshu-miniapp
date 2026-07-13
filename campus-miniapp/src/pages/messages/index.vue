@@ -16,7 +16,7 @@ const messages = reactive([
 const filtered = computed(() => activeTab.value === '全部' ? messages : messages.filter(item => item.type === activeTab.value));
 const unreadCount = computed(() => messages.filter(item => item.unread).length);
 const commentUnreadCount = computed(() => messages.filter(item => item.type === '评论' && item.unread).length);
-onShow(() => loggedIn.value = userStore.loggedIn || Boolean(uni.getStorageSync('yd-demo-login')));
+onShow(() => loggedIn.value = userStore.loggedIn);
 function markRead() {
   if (!unreadCount.value)
     return;
@@ -74,7 +74,7 @@ function markSingle(item: typeof messages[number]) {
 <style lang="scss" scoped>
 .messages-page {
   min-height: 100vh;
-  background: #faf8f3;
+  background: var(--yd-paper);
 }
 .message-actions {
   display: flex;
@@ -85,13 +85,15 @@ function markSingle(item: typeof messages[number]) {
   font-size: 21rpx;
 }
 .message-actions text:last-child {
-  color: #0f766e;
+  color: var(--yd-green-dark);
 }
 .message-actions .disabled {
   color: #aab2af;
 }
 .message-tabs {
-  background: #fff;
+  border-top: 1rpx solid var(--yd-line);
+  border-bottom: 1rpx solid var(--yd-line);
+  background: var(--yd-card);
   white-space: nowrap;
 }
 .message-tabs > view {
@@ -106,7 +108,7 @@ function markSingle(item: typeof messages[number]) {
   font-size: 24rpx;
 }
 .message-tabs .active {
-  color: #18201e;
+  color: var(--yd-ink);
   font-weight: 800;
 }
 .message-tabs .active::after {
@@ -116,7 +118,7 @@ function markSingle(item: typeof messages[number]) {
   width: 36rpx;
   height: 5rpx;
   border-radius: 999rpx;
-  background: #16a085;
+  background: var(--yd-green);
   content: '';
   transform: translateX(-50%);
 }
@@ -129,23 +131,26 @@ function markSingle(item: typeof messages[number]) {
   margin-left: 6rpx;
   border-radius: 999rpx;
   color: #fff;
-  background: #ff6b5e;
+  background: var(--yd-coral);
   font-size: 17rpx;
   font-style: normal;
 }
 .message-list {
-  padding: 16rpx 0 40rpx;
+  padding: 16rpx 18rpx 40rpx;
 }
 .message-row {
   position: relative;
   display: flex;
   align-items: flex-start;
   padding: 24rpx;
-  border-bottom: 1rpx solid #eeeae3;
-  background: #fff;
+  margin-bottom: 12rpx;
+  border: 1rpx solid var(--yd-line);
+  border-radius: 16rpx;
+  background: var(--yd-card);
 }
 .message-row.unread {
-  background: #f6fbf9;
+  border-color: #b8d9cc;
+  background: #eef8f3;
 }
 .message-icon {
   display: flex;
@@ -153,8 +158,8 @@ function markSingle(item: typeof messages[number]) {
   justify-content: center;
   width: 84rpx;
   height: 84rpx;
-  border-radius: 26rpx;
-  color: #174f48;
+  border-radius: 17rpx 17rpx 17rpx 5rpx;
+  color: var(--yd-green-dark);
   font-size: 26rpx;
   font-weight: 900;
 }
@@ -185,14 +190,15 @@ function markSingle(item: typeof messages[number]) {
   height: 14rpx;
   margin-top: 8rpx;
   border-radius: 50%;
-  background: #ff6b5e;
+  background: var(--yd-coral);
 }
 .security-card {
-  margin: 22rpx 24rpx;
+  margin: 22rpx 6rpx;
   padding: 24rpx;
-  border-radius: 22rpx;
-  color: #174f48;
-  background: #dff1ec;
+  border: 1rpx dashed #9fc8b9;
+  border-radius: 15rpx;
+  color: var(--yd-green-dark);
+  background: var(--yd-mint);
   font-size: 24rpx;
   font-weight: 800;
 }
@@ -202,5 +208,34 @@ function markSingle(item: typeof messages[number]) {
   color: #648079;
   font-size: 20rpx;
   font-weight: 400;
+}
+
+/* Apple-inspired glass theme */
+.message-actions,
+.message-tabs,
+.message-list,
+.message-row,
+.security-card {
+  border-color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 16rpx 40rpx rgba(33, 50, 86, 0.08);
+  backdrop-filter: blur(28rpx) saturate(155%);
+  -webkit-backdrop-filter: blur(28rpx) saturate(155%);
+}
+.message-tabs,
+.message-list,
+.security-card {
+  border-radius: 24rpx;
+}
+.message-row {
+  border-color: rgba(60, 60, 67, 0.1);
+  box-shadow: none;
+}
+.message-tabs .active::after,
+.unread-dot {
+  background: var(--yd-green);
+}
+.security-card {
+  color: var(--yd-green-dark);
 }
 </style>

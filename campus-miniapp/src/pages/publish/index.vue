@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { campusPublishTypes, getDefaultTenant } from '@/mock/campus';
+import { uploadCampusPostImage } from '@/services/api/file';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 
@@ -137,10 +138,10 @@ function saveDraft() {
   uni.setStorageSync('campus-publish-draft', { ...form, images: images.value, activeType: activeType.value });
   uni.showToast({ title: '草稿已保存', icon: 'none' });
 }
-function submit() {
+async function submit() {
   if (submitting.value)
     return;
-  if (!userStore.loggedIn && !uni.getStorageSync('yd-demo-login')) {
+  if (!userStore.loggedIn) {
     uni.showModal({
       title: '登录后才能发布',
       content: '登录并完善校园资料后，内容会优先展示给同校同学。',
@@ -149,29 +150,54 @@ function submit() {
     });
     return;
   }
+  if (!userStore.userInfo?.schoolName || !userStore.userInfo?.campusName) {
+    uni.showModal({
+      title: '先完善校园资料',
+      content: '学校和校区会用于确认内容归属，完善后即可发布。',
+      confirmText: '去完善',
+      success: res => res.confirm && uni.navigateTo({ url: '/pages/login/index?mode=edit' }),
+    });
+    return;
+  }
   if (!validate()) {
     uni.showToast({ title: '还有必填内容未完成', icon: 'none' });
     return;
   }
   submitting.value = true;
-  setTimeout(() => {
-    submitting.value = false;
-    uni.removeStorageSync('campus-publish-draft');
-    const created = contentStore.publishPost({
-      tenantId: currentTenant.value.id,
-      school: currentTenant.value.name,
+  try {
+    const uploadedImages = await Promise.all(images.value.map((image) => {
+      if (/^https?:\/\//i.test(image))
+        return image;
+      return uploadCampusPostImage(image);
+    }));
+    const created = await contentStore.publishPost({
       type: activeType.value,
-      title: form.title,
-      content: form.content,
-      price: form.price,
-      tags: form.tags,
-      images: images.value,
-      author: userStore.userInfo?.nickname || '同校同学',
+      title: form.title.trim(),
+      content: form.content.trim(),
+      price: form.price.trim() || undefined,
+      originalPrice: form.originalPrice.trim() || undefined,
+      location: form.location,
+      tradeMode: form.tradeMode,
+      visibleRange: form.visibleRange,
+      contact: form.contact.trim() || undefined,
+      tags: [...form.tags],
+      images: uploadedImages,
       anonymous: form.anonymous,
     });
+    uni.removeStorageSync('campus-publish-draft');
     createdPostId.value = created.id;
     showSuccess.value = true;
-  }, 900);
+  } catch (error) {
+    const message = error instanceof Error ? error.message.replace(/^.*：/, '') : '请检查网络后重试';
+    uni.showModal({
+      title: '发布失败，内容未保存',
+      content: message || '请检查网络后重试，当前填写内容仍为你保留。',
+      showCancel: false,
+      confirmText: '知道了',
+    });
+  } finally {
+    submitting.value = false;
+  }
 }
 function viewPublished() {
   if (!createdPostId.value) {
@@ -224,16 +250,19 @@ function reset() {
       <view class="block-head">
         <text>选择发布类型</text><text>发布后不可修改</text>
       </view>
-      <scroll-view scroll-x class="type-scroll" :show-scrollbar="false">
-        <view class="type-track">
-          <view v-for="item in campusPublishTypes" :key="item.key" class="type-item" :class="{ active: activeType === item.key }" @click="chooseType(item.key)">
-            <view class="type-symbol">
-              {{ item.title.slice(0, 1) }}
-            </view>
-            <text>{{ item.title.replace('校园', '').replace('出行', '').replace('种草', '').replace('闲置', '') }}</text>
+      <view class="type-track">
+        <view v-for="item in campusPublishTypes" :key="item.key" class="type-item" :class="{ active: activeType === item.key }" @click="chooseType(item.key)">
+          <view class="type-symbol">
+            {{ item.icon }}
+          </view>
+          <view class="type-copy">
+            <text>{{ item.title }}</text><text>{{ item.desc }}</text>
+          </view>
+          <view class="type-check">
+            ✓
           </view>
         </view>
-      </scroll-view>
+      </view>
       <view class="type-helper">
         <text>{{ currentDetail.eyebrow }}</text><view>{{ currentDetail.hint }}</view>
       </view>
@@ -253,7 +282,7 @@ function reset() {
             ×
           </text>
         </view>
-        <view v-if="images.length < 9" class="add-image" @click="addImage">
+        <view v-if="images.length < 9" class="add-image" :class="{ 'wide-add': !images.length }" @click="addImage">
           <view class="camera-icon">
             <i />
           </view>
@@ -363,7 +392,7 @@ function reset() {
         <view class="setting-main">
           <text>匿名发布</text><text>昵称将显示为“同校同学”</text>
         </view>
-        <switch :checked="form.anonymous" color="#15967f" @change="form.anonymous = $event.detail.value" />
+        <switch :checked="form.anonymous" color="#0a84ff" @change="form.anonymous = $event.detail.value" />
       </view>
     </view>
 
@@ -380,10 +409,12 @@ function reset() {
 
     <view class="submit-bar">
       <button class="preview-btn" @click="preview">
-        <view class="preview-icon" />预览
+        <view class="preview-icon" /><text>预览</text>
       </button>
-      <button class="publish-btn" :loading="submitting" @click="submit">
-        {{ submitting ? '发布中…' : `发布${currentType.title}` }}
+      <button class="publish-btn" :disabled="submitting" @click="submit">
+        <view v-if="submitting" class="submit-spinner" /><text>
+          {{ submitting ? '正在发布…' : `发布${currentType.title}` }}
+        </text>
       </button>
     </view>
 
@@ -416,7 +447,7 @@ function reset() {
 .publish-page {
   min-height: 100vh;
   padding: 18rpx 22rpx 0;
-  background: #f5f5f1;
+  background: var(--yd-paper);
 }
 .publish-head {
   display: flex;
@@ -425,13 +456,14 @@ function reset() {
   padding: 8rpx 4rpx 22rpx;
 }
 .head-title {
-  color: #17201d;
-  font-size: 34rpx;
+  color: var(--yd-ink);
+  font-size: 38rpx;
   font-weight: 900;
+  letter-spacing: -1rpx;
 }
 .head-subtitle {
   margin-top: 6rpx;
-  color: #7c8783;
+  color: var(--yd-muted);
   font-size: 21rpx;
 }
 .draft-entry {
@@ -439,10 +471,13 @@ function reset() {
   align-items: center;
   gap: 8rpx;
   padding: 12rpx 16rpx;
-  border: 1rpx solid #e2e2dc;
+  border: 1rpx solid var(--yd-line);
   border-radius: 999rpx;
-  color: #53615d;
-  background: #fff;
+  color: var(--yd-green-dark);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 10rpx 28rpx rgba(30, 49, 86, 0.08);
+  backdrop-filter: blur(22rpx);
+  -webkit-backdrop-filter: blur(22rpx);
   font-size: 21rpx;
 }
 .draft-icon {
@@ -468,10 +503,13 @@ function reset() {
   margin-bottom: 18rpx;
   padding: 22rpx 24rpx;
   overflow: hidden;
-  border-radius: 25rpx;
-  color: #fff;
-  background: #174f48;
-  box-shadow: 0 11rpx 28rpx rgba(23, 79, 72, 0.15);
+  border: 1rpx solid rgba(10, 132, 255, 0.16);
+  border-radius: 26rpx;
+  color: var(--yd-ink);
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: 0 18rpx 44rpx rgba(42, 65, 106, 0.08);
+  backdrop-filter: blur(28rpx) saturate(150%);
+  -webkit-backdrop-filter: blur(28rpx) saturate(150%);
 }
 .quality-copy {
   display: flex;
@@ -483,15 +521,15 @@ function reset() {
 }
 .quality-copy text:last-child {
   margin-top: 6rpx;
-  color: rgba(255, 255, 255, 0.67);
+  color: var(--yd-muted);
   font-size: 18rpx;
 }
 .quality-score {
   align-self: start;
   padding: 7rpx 11rpx;
   border-radius: 999rpx;
-  color: #174f48;
-  background: #d8f0e9;
+  color: #fff;
+  background: var(--yd-green-dark);
   font-size: 20rpx;
   font-weight: 900;
 }
@@ -500,21 +538,23 @@ function reset() {
   height: 8rpx;
   overflow: hidden;
   border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(10, 132, 255, 0.12);
 }
 .quality-track view {
   height: 100%;
   border-radius: inherit;
-  background: #74d4bd;
+  background: var(--yd-green);
   transition: width 0.25s ease;
 }
 .card-block {
   margin-bottom: 18rpx;
   padding: 24rpx;
-  border: 1rpx solid #e8e7e1;
+  border: 1rpx solid var(--yd-line);
   border-radius: 26rpx;
-  background: #fff;
-  box-shadow: 0 5rpx 18rpx rgba(26, 44, 39, 0.035);
+  background: var(--yd-card);
+  box-shadow: 0 18rpx 46rpx rgba(35, 52, 88, 0.085);
+  backdrop-filter: blur(28rpx) saturate(145%);
+  -webkit-backdrop-filter: blur(28rpx) saturate(145%);
 }
 .block-head {
   display: flex;
@@ -532,73 +572,100 @@ function reset() {
   font-size: 19rpx;
 }
 .type-card {
-  padding-right: 0;
-  padding-left: 0;
-}
-.type-card .block-head {
-  padding: 0 24rpx;
-}
-.type-scroll {
-  width: 100%;
-  white-space: nowrap;
+  padding: 24rpx;
 }
 .type-track {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12rpx;
-  padding: 0 24rpx 5rpx;
 }
 .type-item {
-  display: inline-flex;
-  flex: 0 0 auto;
-  flex-direction: column;
+  position: relative;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 104rpx;
-  height: 102rpx;
-  border: 2rpx solid transparent;
-  border-radius: 20rpx;
-  color: #6a7571;
-  background: #f3f3ef;
+  min-width: 0;
+  min-height: 104rpx;
+  padding: 15rpx 14rpx;
+  border: 1rpx solid var(--yd-line);
+  border-radius: 16rpx;
+  color: var(--yd-muted);
+  background: rgba(247, 248, 251, 0.74);
   font-size: 20rpx;
 }
 .type-symbol {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42rpx;
-  height: 42rpx;
-  margin-bottom: 7rpx;
-  border-radius: 14rpx;
-  color: #fff;
-  background: #34423e;
-  font-size: 20rpx;
+  flex: 0 0 auto;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 16rpx;
+  color: var(--yd-ink);
+  background: rgba(118, 118, 128, 0.1);
+  font-size: 27rpx;
   font-weight: 800;
 }
+.type-copy {
+  display: flex;
+  min-width: 0;
+  margin-left: 11rpx;
+  flex-direction: column;
+}
+.type-copy text:first-child {
+  color: var(--yd-ink);
+  font-size: 22rpx;
+  font-weight: 800;
+}
+.type-copy text:last-child {
+  overflow: hidden;
+  margin-top: 4rpx;
+  color: #929b97;
+  font-size: 16rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.type-check {
+  position: absolute;
+  top: 7rpx;
+  right: 8rpx;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--yd-green);
+  font-size: 16rpx;
+}
 .type-item.active {
-  border-color: #15967f;
-  color: #0d7565;
-  background: #eaf6f2;
+  border-color: rgba(10, 132, 255, 0.42);
+  color: var(--yd-green-dark);
+  background: var(--yd-mint);
   font-weight: 700;
 }
 .type-item.active .type-symbol {
-  background: #15967f;
+  background: rgba(255, 255, 255, 0.88);
+}
+.type-item.active .type-check {
+  display: flex;
 }
 .type-helper {
   display: flex;
   align-items: center;
-  margin: 17rpx 24rpx 0;
+  margin: 17rpx 0 0;
   padding: 16rpx 18rpx;
   border-radius: 16rpx;
-  color: #73807b;
-  background: #f6faf8;
+  color: var(--yd-muted);
+  background: rgba(118, 118, 128, 0.08);
   font-size: 20rpx;
 }
 .type-helper > text {
   flex: 0 0 auto;
   margin-right: 14rpx;
   padding-right: 14rpx;
-  border-right: 1rpx solid #d5e4df;
-  color: #0e7666;
+  border-right: 1rpx solid rgba(60, 60, 67, 0.12);
+  color: var(--yd-green-dark);
   font-weight: 700;
 }
 .media-head {
@@ -614,7 +681,7 @@ function reset() {
   position: relative;
   height: 190rpx;
   overflow: hidden;
-  border-radius: 18rpx;
+  border-radius: 15rpx;
 }
 .image-item image {
   width: 100%;
@@ -649,10 +716,14 @@ function reset() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 2rpx dashed #bdcac5;
-  color: #5f6d68;
-  background: #f5faf8;
+  border: 2rpx dashed rgba(10, 132, 255, 0.32);
+  color: #64748b;
+  background: rgba(239, 246, 255, 0.52);
   font-size: 20rpx;
+}
+.add-image.wide-add {
+  grid-column: 1 / -1;
+  height: 236rpx;
 }
 .add-image > text:last-child {
   margin-top: 3rpx;
@@ -674,14 +745,14 @@ function reset() {
 .photo-tips text:not(:first-child) {
   padding: 6rpx 10rpx;
   border-radius: 999rpx;
-  background: #f1f5f2;
+  background: rgba(118, 118, 128, 0.08);
 }
 .camera-icon {
   position: relative;
   width: 47rpx;
   height: 35rpx;
   margin-bottom: 12rpx;
-  border: 4rpx solid #188f7b;
+  border: 4rpx solid var(--yd-green);
   border-radius: 10rpx;
 }
 .camera-icon::before {
@@ -691,7 +762,7 @@ function reset() {
   width: 18rpx;
   height: 10rpx;
   border-radius: 5rpx 5rpx 0 0;
-  background: #188f7b;
+  background: var(--yd-green);
   content: '';
 }
 .camera-icon i {
@@ -700,13 +771,13 @@ function reset() {
   left: 13rpx;
   width: 13rpx;
   height: 13rpx;
-  border: 4rpx solid #188f7b;
+  border: 4rpx solid var(--yd-green);
   border-radius: 50%;
 }
 .editor-divider {
   height: 1rpx;
   margin: 25rpx 0;
-  background: #eeece7;
+  background: rgba(60, 60, 67, 0.1);
 }
 .title-editor {
   display: flex;
@@ -760,16 +831,16 @@ function reset() {
 .tag-chip {
   flex: 0 0 auto;
   padding: 11rpx 16rpx;
-  border: 1rpx solid #e4e4df;
+  border: 1rpx solid rgba(60, 60, 67, 0.12);
   border-radius: 999rpx;
   color: #68736f;
-  background: #f8f8f5;
+  background: rgba(118, 118, 128, 0.08);
   font-size: 20rpx;
 }
 .tag-chip.active {
-  border-color: #aad8cd;
-  color: #0d7565;
-  background: #e6f4f0;
+  border-color: rgba(10, 132, 255, 0.35);
+  color: var(--yd-green-dark);
+  background: rgba(10, 132, 255, 0.1);
   font-weight: 700;
 }
 .price-row {
@@ -831,7 +902,7 @@ function reset() {
   display: flex;
   align-items: center;
   padding: 12rpx 17rpx;
-  border: 1rpx solid #e1e2dc;
+  border: 1rpx solid rgba(60, 60, 67, 0.12);
   border-radius: 15rpx;
   color: #64706b;
   font-size: 20rpx;
@@ -844,12 +915,12 @@ function reset() {
   border-radius: 50%;
 }
 .mode-list .active {
-  border-color: #92cfc0;
-  color: #0d7565;
-  background: #ebf6f3;
+  border-color: rgba(10, 132, 255, 0.35);
+  color: var(--yd-green-dark);
+  background: rgba(10, 132, 255, 0.1);
 }
 .mode-list .active i {
-  border: 4rpx solid #15967f;
+  border: 4rpx solid var(--yd-green);
 }
 .setting-card {
   padding-top: 0;
@@ -859,7 +930,7 @@ function reset() {
   display: flex;
   align-items: center;
   min-height: 104rpx;
-  border-bottom: 1rpx solid #eeece7;
+  border-bottom: 1rpx solid rgba(60, 60, 67, 0.1);
 }
 .last-row {
   border-bottom: 0;
@@ -873,22 +944,22 @@ function reset() {
   height: 52rpx;
   margin-right: 17rpx;
   border-radius: 16rpx;
-  color: #0d7565;
-  background: #e8f4f0;
+  color: var(--yd-green-dark);
+  background: rgba(10, 132, 255, 0.1);
   font-size: 20rpx;
   font-weight: 800;
 }
 .pin-icon i {
   width: 14rpx;
   height: 14rpx;
-  border: 4rpx solid #15967f;
+  border: 4rpx solid var(--yd-green);
   border-radius: 50% 50% 50% 0;
   transform: rotate(-45deg);
 }
 .eye-icon i {
   width: 25rpx;
   height: 16rpx;
-  border: 3rpx solid #15967f;
+  border: 3rpx solid var(--yd-green);
   border-radius: 50%;
 }
 .setting-main {
@@ -934,49 +1005,58 @@ function reset() {
   border-radius: 8rpx;
 }
 .check.checked {
-  border-color: #15967f;
+  border-color: var(--yd-green);
   color: #fff;
-  background: #15967f;
+  background: var(--yd-green);
 }
 .agreement-error {
   margin-left: 8rpx;
 }
 .bottom-spacer {
-  height: 190rpx;
+  height: 164rpx;
 }
 .submit-bar {
   position: fixed;
-  z-index: 10;
-  right: 22rpx;
-  bottom: 18rpx;
-  left: 22rpx;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: grid;
-  grid-template-columns: 168rpx 1fr;
-  gap: 13rpx;
-  padding: 12rpx;
-  border: 1rpx solid rgba(225, 226, 220, 0.9);
-  border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 12rpx 38rpx rgba(22, 47, 40, 0.14);
+  grid-template-columns: 190rpx minmax(0, 1fr);
+  gap: 14rpx;
+  padding: 14rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid rgba(255, 255, 255, 0.68);
+  background: rgba(246, 248, 252, 0.76);
+  box-shadow: 0 -12rpx 34rpx rgba(31, 47, 80, 0.09);
+  backdrop-filter: blur(34rpx) saturate(165%);
+  -webkit-backdrop-filter: blur(34rpx) saturate(165%);
 }
 .submit-bar button {
   display: flex;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0 20rpx;
+  box-sizing: border-box;
   align-items: center;
   justify-content: center;
-  height: 82rpx;
-  border-radius: 20rpx;
-  font-size: 25rpx;
+  height: 88rpx;
+  border-radius: 18rpx;
+  font-size: 26rpx;
   font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
 }
 .preview-btn {
-  gap: 8rpx;
-  color: #0d7565;
-  background: #edf6f3;
+  gap: 10rpx;
+  border: 1rpx solid rgba(60, 60, 67, 0.14);
+  color: var(--yd-green-dark);
+  background: rgba(255, 255, 255, 0.72);
 }
 .preview-icon {
   width: 27rpx;
   height: 17rpx;
-  border: 3rpx solid #178c79;
+  border: 3rpx solid var(--yd-green);
   border-radius: 50%;
 }
 .preview-icon::after {
@@ -985,12 +1065,31 @@ function reset() {
   height: 7rpx;
   margin: 2rpx auto;
   border-radius: 50%;
-  background: #178c79;
+  background: var(--yd-green);
   content: '';
 }
 .publish-btn {
+  gap: 10rpx;
   color: #fff;
-  background: #15967f;
+  background: var(--yd-green);
+  box-shadow: 0 12rpx 28rpx rgba(10, 132, 255, 0.26);
+}
+.publish-btn[disabled] {
+  color: rgba(255, 255, 255, 0.86);
+  background: #8ebfee;
+}
+.submit-spinner {
+  width: 26rpx;
+  height: 26rpx;
+  border: 3rpx solid rgba(255, 255, 255, 0.38);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: submit-spin 0.8s linear infinite;
+}
+@keyframes submit-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .success-mask {
   position: fixed;
@@ -1000,13 +1099,19 @@ function reset() {
   align-items: center;
   justify-content: center;
   padding: 44rpx;
-  background: rgba(17, 28, 25, 0.52);
+  background: rgba(20, 25, 36, 0.42);
+  backdrop-filter: blur(18rpx);
+  -webkit-backdrop-filter: blur(18rpx);
 }
 .success-card {
   width: 100%;
   padding: 48rpx 34rpx 30rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
   border-radius: 34rpx;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 34rpx 80rpx rgba(23, 38, 70, 0.18);
+  backdrop-filter: blur(36rpx) saturate(160%);
+  -webkit-backdrop-filter: blur(36rpx) saturate(160%);
   text-align: center;
 }
 .success-mark {
@@ -1015,7 +1120,7 @@ function reset() {
   height: 104rpx;
   margin: 0 auto;
   border-radius: 34rpx;
-  background: #15967f;
+  background: var(--yd-green);
 }
 .success-mark i {
   position: absolute;
@@ -1047,20 +1152,20 @@ function reset() {
   padding: 18rpx;
   border-radius: 18rpx;
   color: #56706a;
-  background: #f0f7f5;
+  background: rgba(118, 118, 128, 0.08);
   font-size: 20rpx;
 }
 .view-content {
   height: 84rpx;
   border-radius: 999rpx;
   color: #fff;
-  background: #15967f;
+  background: var(--yd-green);
   font-size: 26rpx;
   font-weight: 800;
 }
 .again {
   margin-top: 10rpx;
-  color: #0d7565;
+  color: var(--yd-green-dark);
   background: transparent;
   font-size: 22rpx;
 }

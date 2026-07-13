@@ -33,13 +33,13 @@ function openDetail(id: number) {
           {{ post.coverEmoji }}
         </text>
         <view class="photo-caption">
-          校园实拍
+          {{ post.school.slice(0, 2) }} · 同校
         </view>
       </view>
       <text class="cover-label">
         {{ post.coverLabel }}
       </text>
-      <text class="photo-count">
+      <text v-if="post.coverImage" class="photo-count">
         1/3
       </text>
     </view>
@@ -65,7 +65,7 @@ function openDetail(id: number) {
           {{ post.avatarText }}
         </view>
         <text class="author">
-          {{ post.author }}
+          {{ post.author }} · {{ post.time }}
         </text>
         <text class="like">
           ♡ {{ post.likes }}
@@ -78,11 +78,13 @@ function openDetail(id: number) {
 <style lang="scss" scoped>
 .post-card {
   overflow: hidden;
-  margin-bottom: 16rpx;
-  border: 1rpx solid #e5e5df;
+  margin-bottom: 14rpx;
+  border: 1rpx solid var(--yd-line);
   border-radius: 24rpx;
-  background: #fff;
-  box-shadow: 0 8rpx 26rpx rgba(28, 45, 40, 0.065);
+  background: var(--yd-card);
+  box-shadow: 0 14rpx 34rpx rgba(33, 50, 86, 0.09);
+  backdrop-filter: blur(24rpx) saturate(145%);
+  -webkit-backdrop-filter: blur(24rpx) saturate(145%);
 }
 .cover {
   position: relative;
@@ -96,7 +98,7 @@ function openDetail(id: number) {
   position: absolute;
   z-index: 0;
   inset: 0;
-  border: 1rpx solid rgba(255, 255, 255, 0.42);
+  border: 1rpx solid rgba(255, 255, 255, 0.28);
   content: '';
 }
 .cover-image {
@@ -109,7 +111,7 @@ function openDetail(id: number) {
   position: absolute;
   z-index: 1;
   inset: 0;
-  background: rgba(21, 31, 28, 0.08);
+  background: rgba(16, 28, 52, 0.05);
 }
 .cover-short {
   height: 206rpx;
@@ -133,14 +135,18 @@ function openDetail(id: number) {
 .channel-badge {
   top: 14rpx;
   color: #fff;
-  background: rgba(24, 32, 30, 0.74);
-  backdrop-filter: blur(8rpx);
+  background: rgba(20, 24, 33, 0.64);
+  backdrop-filter: blur(18rpx) saturate(145%);
+  -webkit-backdrop-filter: blur(18rpx) saturate(145%);
 }
 .cover-label {
   bottom: 14rpx;
-  color: #24332f;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 4rpx 12rpx rgba(32, 48, 43, 0.08);
+  border-radius: 7rpx;
+  color: var(--yd-ink);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 8rpx 22rpx rgba(20, 35, 67, 0.1);
+  backdrop-filter: blur(18rpx);
+  -webkit-backdrop-filter: blur(18rpx);
 }
 .photo-count {
   position: absolute;
@@ -155,7 +161,7 @@ function openDetail(id: number) {
   position: absolute;
   z-index: 0;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 253, 248, 0.38);
 }
 .glow-one {
   top: -48rpx;
@@ -168,7 +174,7 @@ function openDetail(id: number) {
   left: -28rpx;
   width: 138rpx;
   height: 138rpx;
-  background: rgba(22, 118, 104, 0.08);
+  background: rgba(10, 132, 255, 0.1);
 }
 .cover-art {
   position: relative;
@@ -177,13 +183,15 @@ function openDetail(id: number) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 124rpx;
-  height: 144rpx;
+  width: 132rpx;
+  height: 150rpx;
   padding: 12rpx 10rpx 10rpx;
-  border: 6rpx solid rgba(255, 255, 255, 0.96);
-  border-radius: 16rpx;
-  background: rgba(255, 255, 255, 0.56);
-  box-shadow: 0 16rpx 34rpx rgba(28, 69, 61, 0.16);
+  border: 3rpx solid rgba(255, 255, 255, 0.82);
+  border-radius: 20rpx;
+  background: rgba(255, 255, 255, 0.48);
+  box-shadow: 0 18rpx 34rpx rgba(30, 47, 82, 0.14);
+  backdrop-filter: blur(16rpx);
+  -webkit-backdrop-filter: blur(16rpx);
   transform: rotate(-3deg);
 }
 .photo-corner {
@@ -193,7 +201,7 @@ function openDetail(id: number) {
   width: 30rpx;
   height: 11rpx;
   border-radius: 3rpx;
-  background: rgba(255, 118, 95, 0.86);
+  background: rgba(255, 107, 95, 0.88);
   transform: rotate(4deg);
 }
 .cover-emoji {
@@ -203,7 +211,7 @@ function openDetail(id: number) {
 }
 .photo-caption {
   margin-top: 11rpx;
-  color: #41504b;
+  color: var(--yd-green-dark);
   font-size: 17rpx;
   font-weight: 800;
   letter-spacing: 1rpx;
@@ -225,14 +233,14 @@ function openDetail(id: number) {
   transform: rotate(-5deg);
 }
 .body {
-  padding: 18rpx 17rpx 16rpx;
+  padding: 17rpx 16rpx 15rpx;
 }
 .post-title {
   display: -webkit-box;
   overflow: hidden;
-  color: #18201e;
+  color: var(--yd-ink);
   font-size: 27rpx;
-  font-weight: 700;
+  font-weight: 750;
   line-height: 1.42;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -245,18 +253,18 @@ function openDetail(id: number) {
   margin-top: 11rpx;
 }
 .tag {
-  color: #0f766e;
+  color: var(--yd-green);
   font-size: 21rpx;
 }
 .distance {
   padding: 4rpx 8rpx;
   border-radius: 999rpx;
-  color: #687570;
-  background: #f1f4f1;
+  color: #6e6e73;
+  background: rgba(118, 118, 128, 0.1);
   font-size: 18rpx;
 }
 .price {
-  color: #ff6b5e;
+  color: var(--yd-coral);
   font-size: 30rpx;
   font-weight: 800;
 }
@@ -269,8 +277,8 @@ function openDetail(id: number) {
   align-items: center;
   margin-top: 12rpx;
   padding-top: 12rpx;
-  border-top: 1rpx solid #f0eee8;
-  color: #7a8581;
+  border-top: 1rpx solid rgba(60, 60, 67, 0.1);
+  color: var(--yd-muted);
   font-size: 20rpx;
 }
 .avatar {
@@ -281,8 +289,8 @@ function openDetail(id: number) {
   height: 34rpx;
   margin-right: 8rpx;
   border-radius: 50%;
-  color: #0f766e;
-  background: #e8f5f1;
+  color: var(--yd-green-dark);
+  background: var(--yd-mint);
   font-size: 18rpx;
   font-weight: 700;
 }

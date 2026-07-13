@@ -2,9 +2,11 @@
 import StatePanel from '@/components/StatePanel/index.vue';
 import { campusRegions, campusTenants, getDefaultTenant } from '@/mock/campus';
 import { useTenantStore } from '@/stores/modules/tenant';
+import { useUserStore } from '@/stores/modules/user';
 
 const keyword = ref('');
 const tenantStore = useTenantStore();
+const userStore = useUserStore();
 if (!tenantStore.currentTenant || !campusTenants.some(item => item.id === tenantStore.tenantId))
   tenantStore.selectTenant(getDefaultTenant());
 const activeRegionId = ref(tenantStore.tenantId || campusRegions[0].id);
@@ -24,7 +26,27 @@ const campuses = computed(() => campusTenants.filter((item) => {
   const matchesKeyword = !query || `${item.name}${item.areaName}`.includes(query);
   return matchesRegion && matchesKeyword;
 }));
-function selectCampus(campus: typeof campusTenants[number]) {
+async function selectCampus(campus: typeof campusTenants[number]) {
+  if (userStore.loggedIn) {
+    uni.showLoading({ title: '正在切换校园' });
+    try {
+      await userStore.silentLogin({ tenantId: campus.id });
+      await userStore.updateProfile({
+        nickname: userStore.userInfo?.nickname,
+        avatar: userStore.userInfo?.avatar,
+        schoolName: campus.name,
+        campusName: campus.name === '吉首大学' ? '吉首校区' : '主校区',
+        grade: userStore.userInfo?.grade,
+        gender: userStore.userInfo?.gender,
+        roleType: userStore.userInfo?.roleType || 'student',
+      });
+    } catch {
+      uni.hideLoading();
+      uni.showToast({ title: '校园切换失败，请重试', icon: 'none' });
+      return;
+    }
+    uni.hideLoading();
+  }
   tenantStore.selectTenant(campus);
   uni.showToast({ title: `已切换到${campus.name}`, icon: 'success' });
   setTimeout(() => uni.switchTab({ url: '/pages/index/index' }), 600);
@@ -133,18 +155,28 @@ function openService(channel: string) {
 <style lang="scss" scoped>
 .region-page {
   padding-top: 24rpx;
-  background: #f7f7f3;
+  background: var(--yd-paper);
 }
 .current-card {
+  position: relative;
   overflow: hidden;
   padding: 28rpx;
-  border: 0;
-  color: #fff;
-  background: #174f48;
-  box-shadow: 0 12rpx 30rpx rgba(23, 79, 72, 0.16);
+  border: 1rpx solid #b9d6ca;
+  color: var(--yd-ink);
+  background: var(--yd-mint);
+  box-shadow: 0 12rpx 30rpx rgba(33, 50, 86, 0.08);
+}
+.current-card::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 10rpx;
+  background: var(--yd-green);
+  content: '';
 }
 .current-label {
-  color: rgba(255, 255, 255, 0.64);
+  color: var(--yd-green-dark);
   font-size: 23rpx;
 }
 .current-main {
@@ -159,27 +191,27 @@ function openService(channel: string) {
 }
 .current-meta {
   margin-top: 8rpx;
-  color: rgba(255, 255, 255, 0.68);
+  color: #637b73;
   font-size: 23rpx;
 }
 .verified {
   padding: 10rpx 18rpx;
   border-radius: 999rpx;
-  color: #174f48;
-  background: #d7f0e9;
+  color: #fff;
+  background: var(--yd-green-dark);
   font-size: 22rpx;
   font-weight: 700;
 }
 .campus-weather {
   margin-top: 24rpx;
   padding-top: 20rpx;
-  border-top: 1rpx solid rgba(255, 255, 255, 0.16);
-  color: rgba(255, 255, 255, 0.72);
+  border-top: 1rpx dashed #9fc6b7;
+  color: #677d75;
   font-size: 22rpx;
 }
 .campus-weather text {
   margin: 0 8rpx;
-  color: rgba(255, 255, 255, 0.3);
+  color: #a1b5ae;
 }
 .search-box {
   display: flex;
@@ -187,10 +219,10 @@ function openService(channel: string) {
   height: 76rpx;
   margin-top: 22rpx;
   padding: 0 22rpx;
-  border-radius: 20rpx;
-  border: 1rpx solid #e5e5df;
-  background: #fff;
-  box-shadow: 0 4rpx 14rpx rgba(31, 56, 49, 0.03);
+  border-radius: 15rpx;
+  border: 1rpx solid var(--yd-line);
+  background: var(--yd-card);
+  box-shadow: 0 4rpx 0 rgba(75, 59, 44, 0.035);
 }
 .search-symbol {
   position: relative;
@@ -228,7 +260,7 @@ function openService(channel: string) {
 }
 .service-card {
   padding: 20rpx 8rpx;
-  border-radius: 22rpx;
+  border-radius: 17rpx;
   text-align: center;
 }
 .service-icon {
@@ -238,9 +270,9 @@ function openService(channel: string) {
   width: 54rpx;
   height: 54rpx;
   margin: 0 auto;
-  border-radius: 18rpx;
+  border-radius: 14rpx 14rpx 14rpx 4rpx;
   color: #fff;
-  background: #1f675f;
+  background: var(--yd-green);
   font-size: 22rpx;
   font-weight: 800;
 }
@@ -291,7 +323,7 @@ function openService(channel: string) {
   background: #fff;
 }
 .region-tabs .active {
-  color: #16a085;
+  color: var(--yd-green);
   border-color: #a8d7cc;
   background: #eaf6f2;
   font-weight: 700;
@@ -312,9 +344,9 @@ function openService(channel: string) {
   justify-content: center;
   width: 80rpx;
   height: 80rpx;
-  border-radius: 24rpx;
+  border-radius: 18rpx 18rpx 18rpx 6rpx;
   color: #fff;
-  background: #16a085;
+  background: var(--yd-green);
   font-size: 30rpx;
   font-weight: 900;
 }
@@ -343,7 +375,7 @@ function openService(channel: string) {
   white-space: nowrap;
 }
 .enter {
-  color: #16a085;
+  color: var(--yd-green);
   font-size: 23rpx;
 }
 .activity-card {
@@ -351,15 +383,17 @@ function openService(channel: string) {
   overflow: hidden;
   margin-top: 22rpx;
   padding: 28rpx;
-  background: #174f48;
-  color: #fff;
+  border: 1rpx dashed #e5a89a;
+  background: var(--yd-coral-soft);
+  color: var(--yd-ink);
+  box-shadow: 7rpx 8rpx 0 rgba(107, 59, 47, 0.06);
 }
 .activity-tag {
   display: inline-block;
   padding: 7rpx 14rpx;
   border-radius: 999rpx;
-  color: #174f48;
-  background: #d7f0e9;
+  color: #fff;
+  background: var(--yd-coral);
   font-size: 20rpx;
 }
 .activity-title {
@@ -369,15 +403,41 @@ function openService(channel: string) {
 }
 .activity-meta {
   margin-top: 10rpx;
-  color: rgba(255, 255, 255, 0.72);
+  color: #7d6b65;
   font-size: 22rpx;
 }
 .activity-card button {
   width: 170rpx;
   margin-top: 22rpx;
   border-radius: 999rpx;
-  color: #174f48;
-  background: #fff;
+  color: #fff;
+  background: var(--yd-green-dark);
   font-size: 23rpx;
+}
+
+/* Apple-inspired glass theme */
+.current-card,
+.search-box,
+.service-card,
+.region-tabs,
+.campus-row,
+.activity-card {
+  border: 1rpx solid rgba(255, 255, 255, 0.72);
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 18rpx 44rpx rgba(33, 50, 86, 0.085);
+  backdrop-filter: blur(28rpx) saturate(150%);
+  -webkit-backdrop-filter: blur(28rpx) saturate(150%);
+}
+.current-card::before,
+.verified,
+.region-tabs .active,
+.enter,
+.activity-card button {
+  background: var(--yd-green);
+}
+.service-icon,
+.school-logo {
+  box-shadow: 0 10rpx 24rpx rgba(35, 52, 88, 0.1);
 }
 </style>

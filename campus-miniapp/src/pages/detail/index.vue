@@ -1,25 +1,37 @@
 <script lang="ts" setup>
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
+import { campusPosts } from '@/mock/campus';
 import { useCampusContentStore } from '@/stores/modules/tenant';
+import { useUserStore } from '@/stores/modules/user';
 
 const postId = ref(2001);
 const liked = ref(false);
 const collected = ref(false);
+const followed = ref(false);
+const interactionBusy = ref(false);
 const pageState = ref<'loading' | 'content' | 'error'>('loading');
 const comment = ref('');
 const contentStore = useCampusContentStore();
-const post = computed(() => contentStore.getPost(postId.value) || contentStore.allPosts[0]);
+const userStore = useUserStore();
+const post = computed(() => contentStore.getPost(postId.value) || campusPosts[0]);
 const related = computed(() => contentStore.allPosts.filter(item => item.id !== post.value.id && item.tenantId === post.value.tenantId).slice(0, 2));
 const comments = ref([{ name: '小满同学', avatar: '满', time: '8分钟前', content: '请问具体时间和地点方便再确认一下吗？', likes: 3 }, { name: '山风同学', avatar: '山', time: '刚刚', content: '可以的，直接点下方联系我就好。', likes: 1 }]);
 
-onLoad((query) => {
+onLoad(async (query) => {
   postId.value = Number(query?.id || 2001);
-  const exists = Boolean(contentStore.getPost(postId.value));
-  setTimeout(() => pageState.value = exists ? 'content' : 'error', 500);
+  pageState.value = 'loading';
+  try {
+    const loaded = await contentStore.loadPost(postId.value);
+    liked.value = Boolean(loaded.liked);
+    collected.value = Boolean(loaded.collected);
+    pageState.value = 'content';
+  } catch {
+    pageState.value = 'error';
+  }
 });
 function ensureLogin() {
-  if (uni.getStorageSync('yd-demo-login'))
+  if (userStore.loggedIn)
     return true;
   uni.showModal({ title: '登录后参与互动', content: '登录后可以评论、收藏和联系发布者。', confirmText: '去登录', success: res => res.confirm && uni.navigateTo({ url: '/pages/login/index' }) });
   return false;
@@ -37,13 +49,62 @@ function contact() {
   if (ensureLogin())
     uni.showToast({ title: '已发送联系请求', icon: 'success' });
 }
-function toggleLike() {
-  if (ensureLogin())
-    liked.value = !liked.value;
+async function toggleLike() {
+  if (!ensureLogin() || interactionBusy.value)
+    return;
+  interactionBusy.value = true;
+  try {
+    const updated = await contentStore.setPostLike(postId.value, !liked.value);
+    liked.value = Boolean(updated.liked);
+  } catch {
+    uni.showToast({ title: '点赞失败，请重试', icon: 'none' });
+  } finally {
+    interactionBusy.value = false;
+  }
 }
-function toggleCollect() {
+async function toggleCollect() {
+  if (!ensureLogin() || interactionBusy.value)
+    return;
+  interactionBusy.value = true;
+  try {
+    const updated = await contentStore.setPostCollect(postId.value, !collected.value);
+    collected.value = Boolean(updated.collected);
+    uni.showToast({ title: collected.value ? '已加入收藏' : '已取消收藏', icon: 'none' });
+  } catch {
+    uni.showToast({ title: '收藏失败，请重试', icon: 'none' });
+  } finally {
+    interactionBusy.value = false;
+  }
+}
+function toggleFollow() {
   if (ensureLogin())
-    collected.value = !collected.value;
+    followed.value = !followed.value;
+}
+function managePost() {
+  uni.showActionSheet({
+    itemList: ['删除这条发布'],
+    success: ({ tapIndex }) => {
+      if (tapIndex !== 0)
+        return;
+      uni.showModal({
+        title: '删除发布',
+        content: '删除后无法恢复，确定继续吗？',
+        confirmText: '删除',
+        confirmColor: '#FF453A',
+        success: async (result) => {
+          if (!result.confirm)
+            return;
+          try {
+            await contentStore.removePost(postId.value);
+            uni.showToast({ title: '已删除', icon: 'success' });
+            setTimeout(() => uni.navigateBack(), 500);
+          } catch {
+            uni.showToast({ title: '删除失败，请重试', icon: 'none' });
+          }
+        },
+      });
+    },
+  });
 }
 </script>
 
@@ -58,7 +119,7 @@ function toggleCollect() {
       @action="uni.switchTab({ url: '/pages/index/index' })"
     />
     <template v-else>
-      <swiper class="media" indicator-dots indicator-active-color="#16A085">
+      <swiper class="media" indicator-dots indicator-active-color="#0A84FF">
         <swiper-item>
           <image v-if="post.coverImage" class="detail-photo" :src="post.coverImage" mode="aspectFill" />
           <view v-else class="media-item" :style="{ background: post.coverColor }">
@@ -75,8 +136,16 @@ function toggleCollect() {
           <view class="author-avatar">
             {{ post.avatarText }}
           </view><view class="author-main">
-            <view>{{ post.author }} <text>✓ 同校</text></view><span>{{ post.school }} · {{ post.time }}</span>
-          </view><button>＋ 关注</button>
+            <view class="author-name">
+              <text>{{ post.author }}</text><text class="verified-badge">
+                ✓ 同校
+              </text>
+            </view><view class="author-sub">
+              {{ post.school }} · {{ post.time }}
+            </view>
+          </view><button class="follow-btn" :class="{ followed: followed || post.owner }" @click="post.owner ? managePost() : toggleFollow()">
+            {{ post.owner ? '管理' : (followed ? '已关注' : '＋ 关注') }}
+          </button>
         </view>
         <view v-if="post.price" class="price">
           <text>¥</text>{{ post.price }}
@@ -91,7 +160,7 @@ function toggleCollect() {
           </text>
         </view>
         <view class="meta">
-          📍 {{ post.school }} · 校内 <text>浏览 {{ 86 + post.likes * 2 }}</text>
+          📍 {{ post.location || `${post.school} · 校内` }} <text>浏览 {{ post.views || 0 }}</text>
         </view>
       </view>
 
@@ -127,10 +196,10 @@ function toggleCollect() {
         <view class="comment-input">
           <input v-model="comment" placeholder="友善评论一下…" confirm-type="send" @confirm="sendComment">
         </view><view class="action" :class="{ active: liked }" @click="toggleLike">
-          <text>{{ liked ? '♥' : '♡' }}</text><span>{{ post.likes + (liked ? 1 : 0) }}</span>
+          <text>{{ liked ? '♥' : '♡' }}</text><span>{{ post.likes }}</span>
         </view><view class="action" :class="{ active: collected }" @click="toggleCollect">
-          <text>☆</text><span>收藏</span>
-        </view><button @click="contact">
+          <text>{{ collected ? '★' : '☆' }}</text><span>收藏</span>
+        </view><button class="contact-btn" @click="contact">
           联系TA
         </button>
       </view>
@@ -141,8 +210,8 @@ function toggleCollect() {
 <style lang="scss" scoped>
 .detail-page {
   min-height: 100vh;
-  padding-bottom: 140rpx;
-  background: #faf8f3;
+  padding-bottom: 190rpx;
+  background: var(--yd-paper);
 }
 .media {
   height: 620rpx;
@@ -168,8 +237,8 @@ function toggleCollect() {
   left: 28rpx;
   bottom: 28rpx;
   padding: 10rpx 20rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.88);
+  border-radius: 8rpx;
+  background: rgba(255, 253, 248, 0.9);
   font-size: 22rpx;
   font-weight: 700;
 }
@@ -178,55 +247,90 @@ function toggleCollect() {
 }
 .content-card,
 .comments-card {
-  margin-top: 16rpx;
+  margin: 16rpx 18rpx 0;
   padding: 28rpx 24rpx;
-  background: #fff;
+  border: 1rpx solid var(--yd-line);
+  border-radius: 26rpx;
+  background: var(--yd-card);
+  box-shadow: 0 5rpx 0 rgba(75, 59, 44, 0.035);
 }
 .author-row {
   display: flex;
   align-items: center;
+  min-width: 0;
+  padding-bottom: 22rpx;
+  border-bottom: 1rpx solid rgba(60, 60, 67, 0.1);
 }
 .author-avatar,
 .comment-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 78rpx;
-  height: 78rpx;
+  width: 72rpx;
+  height: 72rpx;
   border-radius: 50%;
-  color: #0f766e;
-  background: #e2f2ed;
+  color: var(--yd-green-dark);
+  background: var(--yd-mint);
   font-size: 28rpx;
   font-weight: 800;
 }
 .author-main {
   flex: 1;
+  min-width: 0;
   margin-left: 16rpx;
   font-size: 27rpx;
   font-weight: 800;
 }
-.author-main text {
-  color: #16a085;
+.author-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8rpx;
+}
+.author-name > text:first-child {
+  overflow: hidden;
+  color: var(--yd-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.author-main .verified-badge {
+  flex: 0 0 auto;
+  color: var(--yd-green);
   font-size: 19rpx;
 }
-.author-main span {
+.author-sub {
   display: block;
   margin-top: 6rpx;
   color: #8a9490;
   font-size: 20rpx;
   font-weight: 400;
 }
-.author-row button {
-  padding: 0 22rpx;
-  border: 1rpx solid #16a085;
-  border-radius: 999rpx;
-  color: #0f766e;
-  background: #fff;
+.follow-btn {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 126rpx;
+  height: 58rpx;
+  margin-left: 16rpx;
+  padding: 0;
+  border: 1rpx solid var(--yd-green);
+  border-radius: 16rpx;
+  color: var(--yd-green-dark);
+  background: rgba(255, 255, 255, 0.72);
   font-size: 22rpx;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+.follow-btn.followed {
+  border-color: rgba(60, 60, 67, 0.12);
+  color: var(--yd-muted);
+  background: rgba(118, 118, 128, 0.09);
 }
 .price {
   margin-top: 28rpx;
-  color: #ff6b5e;
+  color: var(--yd-coral);
   font-size: 46rpx;
   font-weight: 900;
 }
@@ -255,9 +359,9 @@ function toggleCollect() {
 }
 .tags text {
   padding: 9rpx 15rpx;
-  border-radius: 999rpx;
-  color: #0f766e;
-  background: #e8f5f1;
+  border-radius: 8rpx;
+  color: var(--yd-green-dark);
+  background: var(--yd-mint);
   font-size: 21rpx;
 }
 .meta {
@@ -285,6 +389,7 @@ function toggleCollect() {
 }
 .comment-main {
   flex: 1;
+  min-width: 0;
   margin-left: 14rpx;
 }
 .comment-name {
@@ -304,12 +409,16 @@ function toggleCollect() {
   line-height: 1.55;
 }
 .comment-like {
+  flex: 0 0 auto;
+  min-width: 52rpx;
+  margin-left: 10rpx;
   color: #87918d;
   font-size: 20rpx;
+  text-align: right;
 }
 .all-comments {
   margin-top: 28rpx;
-  color: #16a085;
+  color: var(--yd-green);
   font-size: 23rpx;
   text-align: center;
 }
@@ -330,19 +439,20 @@ function toggleCollect() {
   right: 0;
   bottom: 0;
   left: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(172rpx, 1fr) 70rpx 70rpx 198rpx;
   align-items: center;
-  gap: 14rpx;
-  padding: 16rpx 20rpx calc(16rpx + env(safe-area-inset-bottom));
-  border-top: 1rpx solid #eeeae3;
-  background: #fff;
+  gap: 10rpx;
+  padding: 14rpx 22rpx calc(16rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid var(--yd-line);
+  background: rgba(246, 248, 252, 0.76);
 }
 .comment-input {
-  flex: 1;
-  height: 68rpx;
+  min-width: 0;
+  height: 76rpx;
   padding: 0 18rpx;
   border-radius: 999rpx;
-  background: #f1f0eb;
+  background: var(--yd-paper-deep);
 }
 .comment-input input {
   height: 100%;
@@ -350,24 +460,38 @@ function toggleCollect() {
 }
 .action {
   display: flex;
+  width: 70rpx;
+  height: 76rpx;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   color: #717c77;
-  font-size: 18rpx;
+  font-size: 17rpx;
+  line-height: 1.05;
 }
 .action > text {
-  font-size: 30rpx;
+  margin-bottom: 5rpx;
+  font-size: 29rpx;
+  line-height: 1;
 }
 .action.active {
-  color: #ff6b5e;
+  color: var(--yd-coral);
 }
-.bottom-bar button {
-  padding: 0 24rpx;
-  border-radius: 999rpx;
+.contact-btn {
+  display: flex;
+  width: 100%;
+  height: 76rpx;
+  margin: 0;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20rpx;
   color: #fff;
-  background: #16a085;
-  font-size: 23rpx;
+  background: var(--yd-green);
+  font-size: 25rpx;
   font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
 }
 .detail-loading {
   padding: 24rpx;
@@ -396,5 +520,30 @@ function toggleCollect() {
   to {
     opacity: 0.45;
   }
+}
+
+/* Apple-inspired glass theme */
+.content-card,
+.comments-card,
+.related,
+.bottom-bar {
+  border-color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 18rpx 46rpx rgba(33, 50, 86, 0.09);
+  backdrop-filter: blur(30rpx) saturate(155%);
+  -webkit-backdrop-filter: blur(30rpx) saturate(155%);
+}
+.content-card,
+.comments-card {
+  border-radius: 26rpx;
+}
+.tags text,
+.comment-input {
+  border-color: rgba(60, 60, 67, 0.1);
+  background: rgba(118, 118, 128, 0.08);
+}
+.contact-btn {
+  background: var(--yd-green);
+  box-shadow: 0 10rpx 26rpx rgba(10, 132, 255, 0.24);
 }
 </style>

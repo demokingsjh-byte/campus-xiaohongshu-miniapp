@@ -8,7 +8,7 @@ interface UploadResult {
   message?: string
 }
 
-export function uploadCampusAvatar(filePath: string) {
+function uploadCampusFile(filePath: string, directory: string, errorLabel: string) {
   if (isUseMock())
     return Promise.resolve(filePath);
 
@@ -19,7 +19,7 @@ export function uploadCampusAvatar(filePath: string) {
       url: `${getBaseUrl()}/infra/file/upload`,
       filePath,
       name: 'file',
-      formData: { directory: 'campus/avatar' },
+      formData: { directory },
       header: {
         ...(authorization ? { Authorization: authorization } : {}),
         ...(tenantId ? { 'tenant-id': String(tenantId) } : {}),
@@ -31,12 +31,20 @@ export function uploadCampusAvatar(filePath: string) {
             resolve(result.data);
             return;
           }
-          reject(new Error(result.message || '头像上传失败'));
+          reject(new Error(result.message || `${errorLabel}上传失败`));
         } catch {
-          reject(new Error('头像上传响应格式错误'));
+          reject(new Error(`${errorLabel}上传响应格式错误`));
         }
       },
       fail: reject,
     });
   });
+}
+
+export function uploadCampusAvatar(filePath: string) {
+  return uploadCampusFile(filePath, 'campus/avatar', '头像');
+}
+
+export function uploadCampusPostImage(filePath: string) {
+  return uploadCampusFile(filePath, 'campus/post', '内容图片');
 }

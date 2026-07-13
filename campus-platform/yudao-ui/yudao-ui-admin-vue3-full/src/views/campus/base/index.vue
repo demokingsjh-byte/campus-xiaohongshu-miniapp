@@ -289,6 +289,53 @@ const metas: Record<string, PageMeta> = {
       { label: '租户ID', prop: 'tenant_id', type: 'number' }
     ]
   },
+  post: {
+    title: '内容管理',
+    searchKey: 'title',
+    searchLabel: '内容标题',
+    statusKey: 'status',
+    allowCreate: false,
+    filters: [
+      { label: '用户ID', prop: 'user_id', type: 'number' },
+      { label: '学校', prop: 'school_name' },
+      { label: '校区', prop: 'campus_name' },
+      { label: '频道', prop: 'channel', options: [
+        { label: '二手', value: '二手' },
+        { label: '互助', value: '互助' },
+        { label: '拼车', value: '拼车' },
+        { label: '探店', value: '探店' },
+        { label: '失物', value: '失物' },
+        { label: '社团', value: '社团' }
+      ] },
+      { label: '租户ID', prop: 'tenant_id', type: 'number' }
+    ],
+    columns: [
+      { label: '标题', prop: 'title' },
+      { label: '发布用户', prop: 'user_id' },
+      { label: '学校', prop: 'school_name' },
+      { label: '校区', prop: 'campus_name' },
+      { label: '频道', prop: 'channel' },
+      { label: '价格', prop: 'price' },
+      { label: '点赞', prop: 'like_count' },
+      { label: '收藏', prop: 'collect_count' },
+      { label: '状态', prop: 'status' }
+    ],
+    fields: [
+      { label: '标题', prop: 'title' },
+      { label: '正文', prop: 'content', type: 'textarea' },
+      { label: '价格', prop: 'price', type: 'decimal' },
+      { label: '原价', prop: 'original_price', type: 'decimal' },
+      { label: '位置', prop: 'location' },
+      { label: '交易/参与方式', prop: 'trade_mode' },
+      { label: '可见范围', prop: 'visible_range' },
+      { label: '状态', prop: 'status', options: [
+        { label: '审核中', value: 0 },
+        { label: '已发布', value: 1 },
+        { label: '已下架', value: 2 }
+      ] },
+      { label: '租户ID', prop: 'tenant_id', type: 'number' }
+    ]
+  },
   'miniapp-user': {
     title: '学生用户',
     searchKey: 'nickname',

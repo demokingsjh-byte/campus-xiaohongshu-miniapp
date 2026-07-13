@@ -160,6 +160,7 @@ spring:
 2. campus-platform/sql/mysql/campus-extension.sql
 3. campus-platform/sql/mysql/campus-menu-prune.sql
 4. campus-platform/sql/mysql/campus-menu.sql
+5. campus-platform/sql/mysql/campus-school-data-upgrade.sql
 ```
 
 说明：
@@ -168,6 +169,9 @@ spring:
 - `campus-extension.sql` 是校园业务扩展表。
 - `campus-menu-prune.sql` 是后台菜单精简脚本，只隐藏并禁用非 MVP 菜单，不物理删除。
 - `campus-menu.sql` 是校园运营菜单和按钮权限。
+- `campus-school-data-upgrade.sql` 会以幂等方式加入吉首大学和长沙学院。
+- 已有数据库升级时执行 `campus-community-upgrade.sql`，创建社区发布和点赞收藏关系表；主分支自动部署会自动执行。
+- 已存在乱码菜单时，先执行 `campus-menu-encoding-repair.sql`，再执行 `campus-menu.sql` 刷新校园菜单。
 - 当前云数据库已经执行成功，一共 58 张表。
 
 当前后台保留栏目：

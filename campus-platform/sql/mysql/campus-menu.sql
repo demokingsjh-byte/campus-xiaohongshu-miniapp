@@ -18,7 +18,8 @@ VALUES
     (900400, '校区代理', 'campus:agent:query', 2, 4, 900000, 'agent', 'ep:user-filled', 'campus/base/index', 'CampusAgent', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900500, '商品管理', 'campus:product:query', 2, 5, 900000, 'product', 'ep:goods', 'campus/base/index', 'CampusProduct', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900600, '学生用户', 'campus:miniapp-user:query', 2, 6, 900000, 'miniapp-user', 'ep:user', 'campus/base/index', 'CampusStudentUser', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900700, '数据日志', 'system:operate-log:query', 2, 7, 900000, 'data-log', 'ep:notebook', 'campus/log/index', 'CampusDataLog', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
+    (900700, '数据日志', 'system:operate-log:query', 2, 8, 900000, 'data-log', 'ep:notebook', 'campus/log/index', 'CampusDataLog', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900800, '内容管理', 'campus:post:query', 2, 7, 900000, 'post', 'ep:document', 'campus/base/index', 'CampusPost', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
 ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), sort = VALUES(sort), parent_id = VALUES(parent_id), path = VALUES(path), icon = VALUES(icon), component = VALUES(component), component_name = VALUES(component_name), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';
 
 INSERT INTO system_menu
@@ -41,5 +42,7 @@ VALUES
     (900503, '商品删除', 'campus:product:delete', 3, 3, 900500, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900601, '学生用户修改', 'campus:miniapp-user:update', 3, 1, 900600, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900602, '学生用户删除', 'campus:miniapp-user:delete', 3, 2, 900600, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900701, '日志导出', 'system:operate-log:export', 3, 1, 900700, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
+    (900701, '日志导出', 'system:operate-log:export', 3, 1, 900700, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900801, '内容修改', 'campus:post:update', 3, 1, 900800, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900802, '内容删除', 'campus:post:delete', 3, 2, 900800, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
 ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), parent_id = VALUES(parent_id), sort = VALUES(sort), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';

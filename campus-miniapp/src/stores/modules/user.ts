@@ -1,4 +1,5 @@
 import type { UserInfoModel } from '@/services/model/userModel';
+import { defineStore } from 'pinia';
 import { TOKEN_KEY } from '@/enums/cacheEnum';
 import {
   bindCampusPhone,
@@ -11,7 +12,6 @@ import { getToken, isLogin, removeToken, setToken } from '@/utils/auth';
 import { removeCache } from '@/utils/cache';
 import { isUseMock } from '@/utils/env';
 import { getCampusTenantId } from '@/utils/tenant';
-import { defineStore } from 'pinia';
 
 function uniLoginCode() {
   return new Promise<string>((resolve, reject) => {
@@ -32,20 +32,30 @@ function uniLoginCode() {
 export const useUserStore = defineStore('UserStore', () => {
   const token = ref<string | null>(null);
   const userInfo = ref<UserInfoModel | null>(null);
+  let initialization: Promise<void> | null = null;
 
   async function initUserInfo() {
-    if (isLogin()) {
-      token.value = getToken();
-      try {
-        await getUserInfo();
-        return;
-      } catch {
-        removeToken();
-        token.value = null;
-        userInfo.value = null;
+    if (initialization)
+      return initialization;
+    initialization = (async () => {
+      if (isLogin()) {
+        token.value = getToken();
+        try {
+          await getUserInfo();
+          return;
+        } catch {
+          removeToken();
+          token.value = null;
+          userInfo.value = null;
+        }
       }
+      await silentLogin();
+    })();
+    try {
+      await initialization;
+    } finally {
+      initialization = null;
     }
-    await silentLogin();
   }
 
   const loggedIn = computed(() => !!token.value);
