@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.biz.system.oauth2.OAuth2TokenCommonApi;
 import cn.iocoder.yudao.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenCreateReqDTO;
 import cn.iocoder.yudao.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenRespDTO;
 import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
+import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusAuthLoginRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusPhoneBindReqVO;
@@ -17,6 +18,7 @@ import cn.iocoder.yudao.module.system.api.social.dto.SocialUserRespDTO;
 import cn.iocoder.yudao.module.system.api.social.dto.SocialWxPhoneNumberInfoRespDTO;
 import cn.iocoder.yudao.module.system.enums.oauth2.OAuth2ClientConstants;
 import cn.iocoder.yudao.module.system.enums.social.SocialTypeEnum;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -36,6 +38,7 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 
 @Service
 @Validated
+@Slf4j
 public class CampusAppAuthServiceImpl implements CampusAppAuthService {
 
     private static final String TABLE = "campus_miniapp_user";
@@ -53,8 +56,17 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CampusAuthLoginRespVO wechatLogin(CampusWechatLoginReqVO reqVO) {
-        SocialUserRespDTO socialUser = socialUserApi.getSocialUserByCode(
-                UserTypeEnum.MEMBER.getValue(), SocialTypeEnum.WECHAT_MINI_PROGRAM.getType(), reqVO.getCode(), null);
+        SocialUserRespDTO socialUser;
+        try {
+            socialUser = socialUserApi.getSocialUserByCode(
+                    UserTypeEnum.MEMBER.getValue(), SocialTypeEnum.WECHAT_MINI_PROGRAM.getType(), reqVO.getCode(), null);
+        } catch (ServiceException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.warn("[wechatLogin][获取微信用户失败 tenantId({})]", reqVO.getTenantId(), ex);
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(),
+                    "微信登录凭证无效，请重新进入小程序后重试");
+        }
         if (socialUser == null || StrUtil.isBlank(socialUser.getOpenid())) {
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "微信登录失败，未获取到 openid");
         }
