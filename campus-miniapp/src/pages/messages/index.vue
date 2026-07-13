@@ -10,7 +10,7 @@ const tabs = ['全部', '评论', '赞与收藏', '系统'];
 const messages = reactive([
   { type: '评论', icon: '评', color: '#DFF1EC', title: '小满同学 评论了你的发布', content: '请问桌子的尺寸大概是多少呀？', time: '8分钟前', unread: true },
   { type: '赞与收藏', icon: '♡', color: '#FFF0ED', title: '3 位同学赞了你的内容', content: '毕业出九成新折叠桌和台灯', time: '32分钟前', unread: true },
-  { type: '系统', icon: '云', color: '#E8EFF0', title: '校园认证已通过', content: '你已获得浙江理工大学同校标识', time: '昨天', unread: false },
+  { type: '系统', icon: '云', color: '#E8EFF0', title: '校园认证已通过', content: '你已获得当前学校的同校认证标识', time: '昨天', unread: false },
   { type: '评论', icon: '复', color: '#FFF0D9', title: '赶高铁 回复了你', content: '可以的，周五 18:20 东门见。', time: '周五', unread: false },
 ]);
 const filtered = computed(() => activeTab.value === '全部' ? messages : messages.filter(item => item.type === activeTab.value));
@@ -23,7 +23,9 @@ function markRead() {
   messages.forEach(item => item.unread = false);
   uni.showToast({ title: '已全部标为已读', icon: 'none' });
 }
-function markSingle(item: typeof messages[number]) { item.unread = false; }
+function markSingle(item: typeof messages[number]) {
+  item.unread = false;
+}
 </script>
 
 <template>
@@ -41,7 +43,11 @@ function markSingle(item: typeof messages[number]) { item.unread = false; }
       </view>
     </scroll-view>
 
-    <StatePanel v-if="!loggedIn" type="login" title="登录后查看消息" description="评论、点赞、交易回应和校园通知都会出现在这里。" action="去登录" @action="uni.navigateTo({ url: '/pages/login/index' })" />
+    <StatePanel
+      v-if="!loggedIn" type="login" title="登录后查看消息"
+      description="评论、点赞、交易回应和校园通知都会出现在这里。" action="去登录"
+      @action="uni.navigateTo({ url: '/pages/login/index' })"
+    />
     <StatePanel v-else-if="networkError" type="offline" title="网络连接不可用" description="检查网络后重试，消息不会丢失。" action="重新连接" @action="networkError = false" />
     <StatePanel v-else-if="!filtered.length" title="暂时没有新消息" description="参与评论或发布内容后，校园里的回应会出现在这里。" />
     <view v-else class="message-list">
@@ -60,9 +66,6 @@ function markSingle(item: typeof messages[number]) { item.unread = false; }
       </view>
       <view class="security-card">
         <view>🔔 开启微信服务通知</view><text>及时收到交易和重要校园消息 ›</text>
-      </view>
-      <view class="debug-error" @click="networkError = true">
-        模拟离线状态
       </view>
     </view>
   </view>
@@ -84,7 +87,9 @@ function markSingle(item: typeof messages[number]) { item.unread = false; }
 .message-actions text:last-child {
   color: #0f766e;
 }
-.message-actions .disabled { color: #aab2af; }
+.message-actions .disabled {
+  color: #aab2af;
+}
 .message-tabs {
   background: #fff;
   white-space: nowrap;
@@ -197,11 +202,5 @@ function markSingle(item: typeof messages[number]) { item.unread = false; }
   color: #648079;
   font-size: 20rpx;
   font-weight: 400;
-}
-.debug-error {
-  margin-top: 30rpx;
-  color: #b2b8b5;
-  font-size: 18rpx;
-  text-align: center;
 }
 </style>

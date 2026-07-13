@@ -26,6 +26,7 @@ export interface CampusPost {
   coverEmoji: string
   coverLabel: string
   height: 'short' | 'medium' | 'tall'
+  coverImage?: string
 }
 
 export interface CampusPublishType {
@@ -36,26 +37,28 @@ export interface CampusPublishType {
 }
 
 export const campusRegions: CampusRegion[] = [
-  { id: 1, name: '杭州大学城', city: '杭州', campusCount: 6, agentName: '宋佳豪' },
-  { id: 2, name: '滨江高校圈', city: '杭州', campusCount: 4, agentName: '李同学' },
-  { id: 3, name: '下沙生活区', city: '杭州', campusCount: 8, agentName: '陈同学' },
+  { id: 201, name: '湘西高校圈', city: '吉首', campusCount: 1, agentName: '湘西校园站' },
+  { id: 202, name: '长沙高校圈', city: '长沙', campusCount: 1, agentName: '长沙校园站' },
 ];
 
 export const campusTenants: CampusTenant[] = [
-  { id: 1, name: '浙江理工大学', areaName: '杭州大学城', agentName: '宋佳豪', inviteCode: 'YD1001', slogan: '今天也在认真生活，顺便认识新同学' },
-  { id: 121, name: '杭州电子科技大学', areaName: '下沙生活区', agentName: '李同学', inviteCode: 'YD121', slogan: '二手、拼车、互助，都在校园附近完成' },
-  { id: 122, name: '浙江传媒学院', areaName: '下沙生活区', agentName: '陈同学', inviteCode: 'YD122', slogan: '发现校门口真实好吃、好玩和好活动' },
+  { id: 201, name: '吉首大学', areaName: '湘西高校圈', agentName: '湘西校园站', inviteCode: 'YD201', slogan: '在熟悉的校园里，遇见靠谱同学和真实生活' },
+  { id: 202, name: '长沙学院', areaName: '长沙高校圈', agentName: '长沙校园站', inviteCode: 'YD202', slogan: '好物、搭子和活动，都从同校的一次分享开始' },
 ];
 
 export const campusChannels = ['推荐', '二手', '互助', '拼车', '探店', '失物', '社团'];
 
 export const campusPosts: CampusPost[] = [
-  { id: 1001, tenantId: 1, channel: '二手', title: '毕业出九成新折叠桌和台灯', content: '宿舍自提，桌面很稳，适合备考和临时办公。两件一起带走再减 10 元。', author: '晚风同学', avatarText: '晚', school: '浙江理工大学', time: '12分钟前', price: '36', tags: ['宿舍自提', '可小刀'], likes: 128, comments: 16, coverColor: '#DDEFE8', coverEmoji: '🪑', coverLabel: '九成新｜实拍', height: 'tall' },
-  { id: 1002, tenantId: 1, channel: '失物', title: '图书馆三楼捡到校园卡', content: '透明卡套，里面有饭卡和门禁卡，已经交到一楼服务台。', author: '找卡中的小周', avatarText: '周', school: '浙江理工大学', time: '28分钟前', tags: ['失物招领', '急'], likes: 32, comments: 9, coverColor: '#FFF0D9', coverEmoji: '🪪', coverLabel: '已交服务台', height: 'short' },
-  { id: 1003, tenantId: 1, channel: '探店', title: '东门新开的轻食店可以冲', content: '鸡胸肉不柴，学生证有折扣，午饭高峰要早点去。人均 22。', author: '番茄不加糖', avatarText: '茄', school: '浙江理工大学', time: '1小时前', price: '22/人', tags: ['东门', '学生折扣'], likes: 246, comments: 38, coverColor: '#FCE7DE', coverEmoji: '🥗', coverLabel: '今日探店', height: 'medium' },
-  { id: 1004, tenantId: 121, channel: '拼车', title: '周五晚下沙到杭州东站拼车', content: '18:30 左右出发，还差两位，行李不要太多。', author: '赶高铁', avatarText: '赶', school: '杭州电子科技大学', time: '2小时前', price: '22/人', tags: ['杭州东站', '女生优先'], likes: 41, comments: 12, coverColor: '#DCEEF3', coverEmoji: '🚕', coverLabel: '周五 18:30', height: 'medium' },
-  { id: 1005, tenantId: 1, channel: '互助', title: '求借一晚计算器，明早高数考试', content: '卡西欧 991 或同类都可以，今晚东门取，奶茶答谢。', author: '不想挂科', avatarText: '数', school: '浙江理工大学', time: '3小时前', tags: ['考试互助', '奶茶答谢'], likes: 18, comments: 21, coverColor: '#E6EEE0', coverEmoji: '🧮', coverLabel: '今晚求借', height: 'short' },
-  { id: 1006, tenantId: 122, channel: '社团', title: '周日草坪飞盘，新手也欢迎', content: '下午三点操场集合，自带水，飞盘和分队背心我们准备。', author: '飞盘社阿杰', avatarText: '飞', school: '浙江传媒学院', time: '昨天', tags: ['社团活动', '零基础'], likes: 87, comments: 24, coverColor: '#E7E4F0', coverEmoji: '🥏', coverLabel: '周日 15:00', height: 'tall' },
+  { id: 2001, tenantId: 201, channel: '二手', title: '出四六级真题和听力耳机', content: '真题只写了两套，耳机功能正常，校内方便时可以当面取。', author: '山风同学', avatarText: '山', school: '吉首大学', time: '18分钟前', price: '28', tags: ['考试资料', '校内自提'], likes: 36, comments: 8, coverColor: '#E4EEE8', coverEmoji: '🎧', coverLabel: '实拍｜可自提', height: 'medium' },
+  { id: 2002, tenantId: 201, channel: '失物', title: '图书馆二楼捡到校园卡', content: '蓝色卡套，已经交到一楼服务台，失主带姓名信息去认领。', author: '路过的阿青', avatarText: '青', school: '吉首大学', time: '26分钟前', tags: ['失物招领', '已交服务台'], likes: 22, comments: 6, coverColor: '#FFF0D9', coverEmoji: '🪪', coverLabel: '已交服务台', height: 'short' },
+  { id: 2003, tenantId: 201, channel: '拼车', title: '周五晚吉首校区去高铁站拼车', content: '18:10 从东门出发，还差两位，行李箱可以放后备箱。', author: '赶车小杨', avatarText: '杨', school: '吉首大学', time: '45分钟前', price: '18/人', tags: ['吉首东站', '费用均摊'], likes: 41, comments: 12, coverColor: '#DCEEF3', coverEmoji: '🚕', coverLabel: '周五 18:10', height: 'tall' },
+  { id: 2004, tenantId: 201, channel: '探店', title: '校门口这家湘西小炒很下饭', content: '两个人点三个菜刚好，酸辣口很正，学生证还能送饮料。', author: '米饭加一碗', avatarText: '饭', school: '吉首大学', time: '1小时前', price: '24/人', tags: ['校门口', '学生折扣'], likes: 126, comments: 21, coverColor: '#FCE7DE', coverEmoji: '🍲', coverLabel: '本周探店', height: 'tall' },
+  { id: 2005, tenantId: 201, channel: '互助', title: '求借一晚计算器，明早考试', content: '卡西欧 991 或同类都可以，今晚宿舍区取，奶茶答谢。', author: '不想挂科', avatarText: '数', school: '吉首大学', time: '2小时前', tags: ['考试互助', '奶茶答谢'], likes: 18, comments: 21, coverColor: '#E6EEE0', coverEmoji: '🧮', coverLabel: '今晚求借', height: 'short' },
+  { id: 2101, tenantId: 202, channel: '互助', title: '周三晚找羽毛球搭子', content: '水平普通，主要想运动一下，球拍和球都可以带，时间可以商量。', author: '橘子汽水', avatarText: '橘', school: '长沙学院', time: '12分钟前', tags: ['找搭子', '新手友好'], likes: 52, comments: 17, coverColor: '#FFF0D9', coverEmoji: '🏸', coverLabel: '今晚约球', height: 'tall' },
+  { id: 2102, tenantId: 202, channel: '二手', title: '毕业出九成新折叠桌和台灯', content: '宿舍自提，桌面很稳，适合备考和临时办公。两件一起带走再减 10 元。', author: '晚风同学', avatarText: '晚', school: '长沙学院', time: '29分钟前', price: '36', tags: ['宿舍自提', '可小刀'], likes: 128, comments: 16, coverColor: '#DDEFE8', coverEmoji: '🪑', coverLabel: '九成新｜实拍', height: 'tall' },
+  { id: 2103, tenantId: 202, channel: '社团', title: '周日草坪飞盘，新手也欢迎', content: '下午三点操场集合，自带水，飞盘和分队背心我们准备。', author: '飞盘社阿杰', avatarText: '飞', school: '长沙学院', time: '1小时前', tags: ['社团活动', '零基础'], likes: 87, comments: 24, coverColor: '#E7EFE8', coverEmoji: '🥏', coverLabel: '周日 15:00', height: 'medium' },
+  { id: 2104, tenantId: 202, channel: '探店', title: '洪山路新开的轻食店可以冲', content: '鸡胸肉不柴，学生证有折扣，午饭高峰要早点去。', author: '番茄不加糖', avatarText: '茄', school: '长沙学院', time: '2小时前', price: '22/人', tags: ['洪山路', '学生折扣'], likes: 96, comments: 18, coverColor: '#FCE7DE', coverEmoji: '🥗', coverLabel: '今日探店', height: 'medium' },
+  { id: 2105, tenantId: 202, channel: '失物', title: '体育馆门口捡到一串钥匙', content: '有一个小熊挂件，先放在体育馆前台，需要说出钥匙数量认领。', author: '今天也运动', avatarText: '动', school: '长沙学院', time: '3小时前', tags: ['失物招领', '体育馆'], likes: 31, comments: 9, coverColor: '#DDECE8', coverEmoji: '🔑', coverLabel: '等待认领', height: 'short' },
 ];
 
 export const campusPublishTypes: CampusPublishType[] = [
@@ -67,7 +70,9 @@ export const campusPublishTypes: CampusPublishType[] = [
   { key: 'club', title: '社团活动', desc: '招新、比赛、线下活动', icon: '🎉' },
 ];
 
-export function getDefaultTenant() { return campusTenants[0]; }
+export function getDefaultTenant() {
+  return campusTenants[0];
+}
 
 export function getPostsByTenant(tenantId?: number | null, channel = '推荐') {
   const list = tenantId ? campusPosts.filter(item => item.tenantId === tenantId) : campusPosts;

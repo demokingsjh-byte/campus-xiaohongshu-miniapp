@@ -1,28 +1,54 @@
 <script lang="ts" setup>
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
-import { campusChannels, getDefaultTenant, getPostsByTenant } from '@/mock/campus';
-import { useTenantStore } from '@/stores/modules/tenant';
+import { campusChannels, campusTenants, getDefaultTenant } from '@/mock/campus';
+import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 
 const activeChannel = ref('推荐');
 const state = ref<'content' | 'loading' | 'empty' | 'error'>('content');
 const refreshing = ref(false);
 const tenantStore = useTenantStore();
-if (!tenantStore.currentTenant)
+const contentStore = useCampusContentStore();
+if (!tenantStore.currentTenant || !campusTenants.some(item => item.id === tenantStore.tenantId))
   tenantStore.selectTenant(getDefaultTenant());
-const visiblePosts = computed(() => getPostsByTenant(tenantStore.tenantId, activeChannel.value));
+const visiblePosts = computed(() => contentStore.allPosts.filter((item) => {
+  const matchesTenant = !tenantStore.tenantId || item.tenantId === tenantStore.tenantId;
+  const matchesChannel = activeChannel.value === '推荐' || item.channel === activeChannel.value;
+  return matchesTenant && matchesChannel;
+}));
 const leftPosts = computed(() => visiblePosts.value.filter((_, index) => index % 2 === 0));
 const rightPosts = computed(() => visiblePosts.value.filter((_, index) => index % 2 === 1));
 
 function chooseChannel(channel: string) {
   activeChannel.value = channel;
-  state.value = getPostsByTenant(tenantStore.tenantId, channel).length ? 'content' : 'empty';
+  state.value = visiblePosts.value.length ? 'content' : 'empty';
 }
-function goSearch() { uni.navigateTo({ url: '/pages/search/index' }); }
-function goMessages() { uni.navigateTo({ url: '/pages/messages/index' }); }
-function switchCampus() { uni.switchTab({ url: '/pages/demo/index' }); }
-function retry() { state.value = 'loading'; setTimeout(() => state.value = 'content', 650); }
-function onRefresh() { refreshing.value = true; setTimeout(() => refreshing.value = false, 700); }
+function goSearch() {
+  uni.navigateTo({ url: '/pages/search/index' });
+}
+function goMessages() {
+  uni.navigateTo({ url: '/pages/messages/index' });
+}
+function switchCampus() {
+  uni.switchTab({ url: '/pages/demo/index' });
+}
+function goPublish() {
+  uni.switchTab({ url: '/pages/publish/index' });
+}
+function retry() {
+  state.value = 'loading';
+  setTimeout(() => state.value = 'content', 650);
+}
+function onRefresh() {
+  refreshing.value = true;
+  setTimeout(() => refreshing.value = false, 700);
+}
+onShow(() => {
+  const channel = uni.getStorageSync('campus-home-channel');
+  if (campusChannels.includes(channel))
+    chooseChannel(channel);
+  uni.removeStorageSync('campus-home-channel');
+});
 watch([() => tenantStore.tenantId, activeChannel], () => {
   state.value = visiblePosts.value.length ? 'content' : 'empty';
 }, { immediate: true });
@@ -48,7 +74,11 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
     </view>
 
     <view class="search-entry" @click="goSearch">
-      <view class="search-glyph search-small" /><text class="search-placeholder">搜二手、拼车、活动或同学</text><text class="hot-word" @click.stop="goMessages">消息 3</text>
+      <view class="search-glyph search-small" /><text class="search-placeholder">
+        搜二手、拼车、活动或同学
+      </text><text class="hot-word" @click.stop="goMessages">
+        消息 3
+      </text>
     </view>
 
     <scroll-view class="channel-scroll" scroll-x :show-scrollbar="false">
@@ -60,10 +90,18 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
     </scroll-view>
 
     <view class="trend-card" @click="chooseChannel('二手')">
-      <text class="trend-badge">校园热榜</text>
-      <text class="trend-text">毕业季闲置交换周</text>
-      <text class="trend-count">328 人在看</text>
-      <text class="trend-arrow">›</text>
+      <text class="trend-badge">
+        校园热榜
+      </text>
+      <text class="trend-text">
+        毕业季闲置交换周
+      </text>
+      <text class="trend-count">
+        328 人在看
+      </text>
+      <text class="trend-arrow">
+        ›
+      </text>
     </view>
 
     <view class="campus-note">
@@ -74,12 +112,25 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
     </view>
 
     <scroll-view scroll-y class="feed-scroll" refresher-enabled :refresher-triggered="refreshing" @refresherrefresh="onRefresh">
+      <view class="publish-inspire" @click="goPublish">
+        <view class="inspire-avatar">
+          ＋
+        </view>
+        <view class="inspire-copy">
+          <text>今天校园里有什么新鲜事？</text><text>一张实拍，也能帮到同校同学</text>
+        </view>
+        <button>去分享</button>
+      </view>
       <view v-if="state === 'loading'" class="feed-grid skeleton-wrap">
         <view v-for="n in 6" :key="n" class="skeleton-card">
           <view class="sk-cover" /><view class="sk-line wide" /><view class="sk-line" />
         </view>
       </view>
-      <StatePanel v-else-if="state === 'empty'" title="这个分区还很安静" description="做第一个分享校园生活的人吧，真实内容会优先推荐给同校同学。" action="去发布" @action="uni.switchTab({ url: '/pages/publish/index' })" />
+      <StatePanel
+        v-else-if="state === 'empty'" title="这个分区还很安静"
+        description="做第一个分享校园生活的人吧，真实内容会优先推荐给同校同学。" action="去发布"
+        @action="uni.switchTab({ url: '/pages/publish/index' })"
+      />
       <StatePanel v-else-if="state === 'error'" type="error" title="内容暂时加载失败" description="可能是网络开小差了，稍后重试就好。" action="重新加载" @action="retry" />
       <view v-else class="feed-grid">
         <view class="feed-column">
@@ -128,7 +179,16 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   font-size: 29rpx;
   font-weight: 900;
 }
-.brand-mark i { position: absolute; right: -3rpx; bottom: -3rpx; width: 15rpx; height: 15rpx; border: 4rpx solid #f7f7f3; border-radius: 50%; background: #ff765f; }
+.brand-mark i {
+  position: absolute;
+  right: -3rpx;
+  bottom: -3rpx;
+  width: 15rpx;
+  height: 15rpx;
+  border: 4rpx solid #f7f7f3;
+  border-radius: 50%;
+  background: #ff765f;
+}
 .brand-name {
   color: #18201e;
   font-size: 34rpx;
@@ -140,7 +200,9 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   color: #6b7672;
   font-size: 20rpx;
 }
-.campus-line text { color: #16a085; }
+.campus-line text {
+  color: #16a085;
+}
 .top-actions {
   display: none;
 }
@@ -156,11 +218,53 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   background: #fff;
   box-shadow: 0 4rpx 14rpx rgba(31, 56, 49, 0.04);
 }
-.search-glyph { position: relative; width: 24rpx; height: 24rpx; border: 3rpx solid #273632; border-radius: 50%; }
-.search-glyph::after { position: absolute; right: -9rpx; bottom: -6rpx; width: 11rpx; height: 3rpx; border-radius: 9rpx; background: #273632; content: ''; transform: rotate(45deg); }
-.bell-glyph { position: relative; width: 26rpx; height: 28rpx; border: 3rpx solid #273632; border-top-left-radius: 16rpx; border-top-right-radius: 16rpx; border-bottom: 0; }
-.bell-glyph::before { position: absolute; left: -7rpx; bottom: -5rpx; width: 34rpx; height: 3rpx; border-radius: 9rpx; background: #273632; content: ''; }
-.bell-glyph::after { position: absolute; left: 8rpx; bottom: -11rpx; width: 8rpx; height: 5rpx; border-radius: 0 0 8rpx 8rpx; background: #273632; content: ''; }
+.search-glyph {
+  position: relative;
+  width: 24rpx;
+  height: 24rpx;
+  border: 3rpx solid #273632;
+  border-radius: 50%;
+}
+.search-glyph::after {
+  position: absolute;
+  right: -9rpx;
+  bottom: -6rpx;
+  width: 11rpx;
+  height: 3rpx;
+  border-radius: 9rpx;
+  background: #273632;
+  content: '';
+  transform: rotate(45deg);
+}
+.bell-glyph {
+  position: relative;
+  width: 26rpx;
+  height: 28rpx;
+  border: 3rpx solid #273632;
+  border-top-left-radius: 16rpx;
+  border-top-right-radius: 16rpx;
+  border-bottom: 0;
+}
+.bell-glyph::before {
+  position: absolute;
+  left: -7rpx;
+  bottom: -5rpx;
+  width: 34rpx;
+  height: 3rpx;
+  border-radius: 9rpx;
+  background: #273632;
+  content: '';
+}
+.bell-glyph::after {
+  position: absolute;
+  left: 8rpx;
+  bottom: -11rpx;
+  width: 8rpx;
+  height: 5rpx;
+  border-radius: 0 0 8rpx 8rpx;
+  background: #273632;
+  content: '';
+}
 .dot {
   position: absolute;
   top: 7rpx;
@@ -184,10 +288,28 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   box-shadow: 0 5rpx 18rpx rgba(31, 56, 49, 0.035);
   font-size: 24rpx;
 }
-.search-small { flex: 0 0 auto; width: 20rpx; height: 20rpx; margin-right: 15rpx; border-width: 3rpx; border-color: #71807b; }
-.search-small::after { background: #71807b; }
-.search-placeholder { flex: 1; }
-.hot-word { padding: 6rpx 12rpx; border-radius: 999rpx; color: #ff6b5e; background: #fff0ed; font-size: 19rpx; font-weight: 600; }
+.search-small {
+  flex: 0 0 auto;
+  width: 20rpx;
+  height: 20rpx;
+  margin-right: 15rpx;
+  border-width: 3rpx;
+  border-color: #71807b;
+}
+.search-small::after {
+  background: #71807b;
+}
+.search-placeholder {
+  flex: 1;
+}
+.hot-word {
+  padding: 6rpx 12rpx;
+  border-radius: 999rpx;
+  color: #ff6b5e;
+  background: #fff0ed;
+  font-size: 19rpx;
+  font-weight: 600;
+}
 .channel-scroll {
   height: 72rpx;
   margin-top: 17rpx;
@@ -212,12 +334,53 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   background: transparent;
   font-weight: 700;
 }
-.channel.active::after { position: absolute; left: 50%; bottom: 0; width: 28rpx; height: 6rpx; border-radius: 9rpx; background: #16a085; content: ''; transform: translateX(-50%); }
-.trend-card { display: flex; align-items: center; height: 66rpx; margin: 2rpx 20rpx 0; padding: 0 16rpx; border: 1rpx solid #e7e6df; border-radius: 17rpx; background: #fff; box-shadow: 0 4rpx 14rpx rgba(31, 56, 49, 0.03); }
-.trend-badge { flex: 0 0 auto; padding: 6rpx 10rpx; border-radius: 8rpx; color: #fff; background: #18201e; font-size: 18rpx; font-weight: 700; }
-.trend-text { flex: 1; margin-left: 13rpx; color: #27332f; font-size: 23rpx; font-weight: 600; }
-.trend-count { color: #9aa39f; font-size: 18rpx; }
-.trend-arrow { margin-left: 8rpx; color: #89938f; font-size: 30rpx; }
+.channel.active::after {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 28rpx;
+  height: 6rpx;
+  border-radius: 9rpx;
+  background: #16a085;
+  content: '';
+  transform: translateX(-50%);
+}
+.trend-card {
+  display: flex;
+  align-items: center;
+  height: 66rpx;
+  margin: 2rpx 20rpx 0;
+  padding: 0 16rpx;
+  border: 1rpx solid #e7e6df;
+  border-radius: 17rpx;
+  background: #fff;
+  box-shadow: 0 4rpx 14rpx rgba(31, 56, 49, 0.03);
+}
+.trend-badge {
+  flex: 0 0 auto;
+  padding: 6rpx 10rpx;
+  border-radius: 8rpx;
+  color: #fff;
+  background: #18201e;
+  font-size: 18rpx;
+  font-weight: 700;
+}
+.trend-text {
+  flex: 1;
+  margin-left: 13rpx;
+  color: #27332f;
+  font-size: 23rpx;
+  font-weight: 600;
+}
+.trend-count {
+  color: #9aa39f;
+  font-size: 18rpx;
+}
+.trend-arrow {
+  margin-left: 8rpx;
+  color: #89938f;
+  font-size: 30rpx;
+}
 .campus-note {
   display: flex;
   align-items: center;
@@ -246,6 +409,56 @@ watch([() => tenantStore.tenantId, activeChannel], () => {
   gap: 14rpx;
   padding: 0 16rpx;
   align-items: start;
+}
+.publish-inspire {
+  display: flex;
+  align-items: center;
+  gap: 13rpx;
+  margin: 0 16rpx 16rpx;
+  padding: 17rpx 18rpx;
+  border: 1rpx solid #cfe4dd;
+  border-radius: 22rpx;
+  background: #f0f8f5;
+  box-shadow: 0 7rpx 20rpx rgba(29, 78, 67, 0.06);
+}
+.inspire-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 18rpx;
+  color: #fff;
+  background: #15967f;
+  font-size: 34rpx;
+  font-weight: 500;
+}
+.inspire-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.inspire-copy text:first-child {
+  color: #24312d;
+  font-size: 23rpx;
+  font-weight: 800;
+}
+.inspire-copy text:last-child {
+  margin-top: 4rpx;
+  color: #71807a;
+  font-size: 18rpx;
+}
+.publish-inspire button {
+  flex: 0 0 auto;
+  height: 54rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  color: #fff;
+  background: #ff6b5e;
+  font-size: 20rpx;
+  font-weight: 800;
+  line-height: 54rpx;
 }
 .feed-column {
   min-width: 0;

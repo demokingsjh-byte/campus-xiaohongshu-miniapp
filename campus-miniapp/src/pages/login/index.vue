@@ -1,5 +1,7 @@
 <script lang="ts" setup>
+import { campusTenants, getDefaultTenant } from '@/mock/campus';
 import { uploadCampusAvatar } from '@/services/api/file';
+import { useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 
 const step = ref<'login' | 'profile' | 'done'>('login');
@@ -8,10 +10,15 @@ const agreed = ref(true);
 const loading = ref(false);
 const avatarUploading = ref(false);
 const userStore = useUserStore();
-const campusOptions = ['下沙校区', '临平校区', '延安路校区'];
+const tenantStore = useTenantStore();
 const gradeOptions = ['2026级', '2025级', '2024级', '2023级', '2022级及以前', '研究生'];
 const genderOptions = ['不公开', '男', '女'];
-const form = reactive({ avatar: '', nickname: '', schoolName: '浙江理工大学', campusName: '下沙校区', grade: '2023级', gender: '不公开', roleType: 'student' });
+const initialTenant = tenantStore.currentTenant && campusTenants.some(item => item.id === tenantStore.tenantId)
+  ? tenantStore.currentTenant
+  : getDefaultTenant();
+const form = reactive({ avatar: '', nickname: '', schoolName: initialTenant.name, campusName: initialTenant.name === '吉首大学' ? '吉首校区' : '主校区', grade: '2023级', gender: '不公开', roleType: 'student' });
+const schoolOptions = campusTenants.map(item => item.name);
+const campusOptions = computed(() => form.schoolName === '吉首大学' ? ['吉首校区'] : ['主校区']);
 
 function fillForm() {
   const user = userStore.userInfo;
@@ -43,10 +50,13 @@ onLoad(async (query) => {
 });
 
 async function loginDemo() {
-  if (!agreed.value) { uni.showToast({ title: '请先同意用户协议与隐私政策', icon: 'none' }); return; }
+  if (!agreed.value) {
+    uni.showToast({ title: '请先同意用户协议与隐私政策', icon: 'none' });
+    return;
+  }
   loading.value = true;
   try {
-    await userStore.silentLogin({ tenantId: 1 });
+    await userStore.silentLogin();
     fillForm();
     step.value = 'profile';
   } catch {
@@ -70,11 +80,20 @@ async function chooseAvatar(event: any) {
   }
 }
 async function finishProfile() {
-  if (!form.avatar) { uni.showToast({ title: '请选择微信头像', icon: 'none' }); return; }
-  if (!form.nickname || !form.schoolName || !form.campusName) { uni.showToast({ title: '请完善昵称、学校和校区', icon: 'none' }); return; }
+  if (!form.avatar) {
+    uni.showToast({ title: '请选择微信头像', icon: 'none' });
+    return;
+  }
+  if (!form.nickname || !form.schoolName || !form.campusName) {
+    uni.showToast({ title: '请完善昵称、学校和校区', icon: 'none' });
+    return;
+  }
   loading.value = true;
   try {
     await userStore.updateProfile(form);
+    const matchedTenant = campusTenants.find(item => item.name === form.schoolName);
+    if (matchedTenant)
+      tenantStore.selectTenant(matchedTenant);
     uni.setStorageSync('yd-demo-login', '1');
     step.value = 'done';
   } catch {
@@ -83,7 +102,13 @@ async function finishProfile() {
     loading.value = false;
   }
 }
-function selectOption(key: 'campusName' | 'grade' | 'gender', options: string[], event: any) { form[key] = options[Number(event.detail.value)]; }
+function selectOption(key: 'campusName' | 'grade' | 'gender', options: string[], event: any) {
+  form[key] = options[Number(event.detail.value)];
+}
+function selectSchool(event: any) {
+  form.schoolName = schoolOptions[Number(event.detail.value)];
+  form.campusName = form.schoolName === '吉首大学' ? '吉首校区' : '主校区';
+}
 function finish() {
   setTimeout(() => {
     if (editing.value)
@@ -108,7 +133,9 @@ function finish() {
         同校同学的真实生活社区
       </view>
       <view class="feature-list">
-        <view><text>♻</text><span><b>闲置好物，就近交易</b><i>同校自提更放心</i></span></view><view><text>🙌</text><span><b>校园互助，及时回应</b><i>问题总有同学懂</i></span></view><view><text>🎉</text><span><b>活动与新鲜事</b><i>不错过校园每个瞬间</i></span></view>
+        <view><text>♻</text><span><b>闲置好物，就近交易</b><i>同校自提更放心</i></span></view>
+        <view><text>🙌</text><span><b>校园互助，及时回应</b><i>问题总有同学懂</i></span></view>
+        <view><text>🎉</text><span><b>活动与新鲜事</b><i>不错过校园每个瞬间</i></span></view>
       </view>
       <button class="wechat-btn" :loading="loading" @click="loginDemo">
         微信一键登录
@@ -130,14 +157,24 @@ function finish() {
       </view>
       <button class="avatar-upload" open-type="chooseAvatar" :loading="avatarUploading" @chooseavatar="chooseAvatar">
         <image v-if="form.avatar" :src="form.avatar" mode="aspectFill" />
-        <view v-else>云</view><text>{{ form.avatar ? '更换微信头像' : '选择微信头像' }}</text>
+        <view v-else>
+          云
+        </view><text>{{ form.avatar ? '更换微信头像' : '选择微信头像' }}</text>
       </button>
       <view class="profile-form">
         <label>昵称<input v-model="form.nickname" type="nickname" placeholder="请输入微信昵称"></label>
-        <label>学校<view class="picker">{{ form.schoolName }}</view></label>
-        <picker :range="campusOptions" @change="selectOption('campusName', campusOptions, $event)"><label>校区<view class="picker">{{ form.campusName }} <text>›</text></view></label></picker>
-        <picker :range="gradeOptions" @change="selectOption('grade', gradeOptions, $event)"><label>年级<view class="picker">{{ form.grade }} <text>›</text></view></label></picker>
-        <picker :range="genderOptions" @change="selectOption('gender', genderOptions, $event)"><label>性别（选填）<view class="picker">{{ form.gender }} <text>›</text></view></label></picker>
+        <picker :range="schoolOptions" @change="selectSchool">
+          <label>学校<view class="picker">{{ form.schoolName }} <text>›</text></view></label>
+        </picker>
+        <picker :range="campusOptions" @change="selectOption('campusName', campusOptions, $event)">
+          <label>校区<view class="picker">{{ form.campusName }} <text>›</text></view></label>
+        </picker>
+        <picker :range="gradeOptions" @change="selectOption('grade', gradeOptions, $event)">
+          <label>年级<view class="picker">{{ form.grade }} <text>›</text></view></label>
+        </picker>
+        <picker :range="genderOptions" @change="selectOption('gender', genderOptions, $event)">
+          <label>性别（选填）<view class="picker">{{ form.gender }} <text>›</text></view></label>
+        </picker>
       </view>
       <button class="wechat-btn" :loading="loading" @click="finishProfile">
         {{ editing ? '保存修改' : '完成并进入校园' }}
@@ -150,7 +187,7 @@ function finish() {
       </view><view class="title">
         {{ editing ? '资料已更新' : '资料已完善' }}
       </view><view class="subtitle">
-        正在带你进入浙江理工大学校园社区
+        正在带你进入{{ form.schoolName }}校园社区
       </view><button class="wechat-btn" @click="finish">
         {{ editing ? '返回我的' : '开始逛校园' }}
       </button>
@@ -313,7 +350,9 @@ function finish() {
   font-size: 38rpx;
   font-weight: 900;
 }
-.avatar-upload > image { display: block; }
+.avatar-upload > image {
+  display: block;
+}
 .profile-form {
   overflow: hidden;
   border-radius: 24rpx;

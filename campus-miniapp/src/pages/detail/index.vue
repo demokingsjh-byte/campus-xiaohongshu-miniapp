@@ -1,20 +1,21 @@
 <script lang="ts" setup>
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
-import { campusPosts } from '@/mock/campus';
+import { useCampusContentStore } from '@/stores/modules/tenant';
 
-const postId = ref(1001);
+const postId = ref(2001);
 const liked = ref(false);
 const collected = ref(false);
 const pageState = ref<'loading' | 'content' | 'error'>('loading');
 const comment = ref('');
-const post = computed(() => campusPosts.find(item => item.id === postId.value) || campusPosts[0]);
-const related = computed(() => campusPosts.filter(item => item.id !== post.value.id).slice(0, 2));
-const comments = ref([{ name: '小满同学', avatar: '满', time: '8分钟前', content: '请问桌子的尺寸大概是多少呀？宿舍上床下桌旁边能放吗？', likes: 3 }, { name: '晚风同学', avatar: '晚', time: '刚刚', content: '回复 @小满同学：80×50cm，床边可以放，我之前就是这样用的。', likes: 1 }]);
+const contentStore = useCampusContentStore();
+const post = computed(() => contentStore.getPost(postId.value) || contentStore.allPosts[0]);
+const related = computed(() => contentStore.allPosts.filter(item => item.id !== post.value.id && item.tenantId === post.value.tenantId).slice(0, 2));
+const comments = ref([{ name: '小满同学', avatar: '满', time: '8分钟前', content: '请问具体时间和地点方便再确认一下吗？', likes: 3 }, { name: '山风同学', avatar: '山', time: '刚刚', content: '可以的，直接点下方联系我就好。', likes: 1 }]);
 
 onLoad((query) => {
-  postId.value = Number(query?.id || 1001);
-  const exists = campusPosts.some(item => item.id === postId.value);
+  postId.value = Number(query?.id || 2001);
+  const exists = Boolean(contentStore.getPost(postId.value));
   setTimeout(() => pageState.value = exists ? 'content' : 'error', 500);
 });
 function ensureLogin() {
@@ -51,11 +52,16 @@ function toggleCollect() {
     <view v-if="pageState === 'loading'" class="detail-loading">
       <view class="hero-sk" /><view class="line-sk w80" /><view class="line-sk" /><view class="line-sk w60" />
     </view>
-    <StatePanel v-else-if="pageState === 'error'" type="error" title="内容不见了" description="这条内容可能已下架或被作者删除。" action="返回首页" @action="uni.switchTab({ url: '/pages/index/index' })" />
+    <StatePanel
+      v-else-if="pageState === 'error'" type="error" title="内容不见了"
+      description="这条内容可能已下架或被作者删除。" action="返回首页"
+      @action="uni.switchTab({ url: '/pages/index/index' })"
+    />
     <template v-else>
       <swiper class="media" indicator-dots indicator-active-color="#16A085">
         <swiper-item>
-          <view class="media-item" :style="{ background: post.coverColor }">
+          <image v-if="post.coverImage" class="detail-photo" :src="post.coverImage" mode="aspectFill" />
+          <view v-else class="media-item" :style="{ background: post.coverColor }">
             <text>{{ post.coverEmoji }}</text><view>{{ post.coverLabel }}</view>
           </view>
         </swiper-item><swiper-item>
@@ -78,9 +84,6 @@ function toggleCollect() {
           {{ post.title }}
         </view><view class="body">
           {{ post.content }}
-          <text v-if="post.id === 1001">
-            \n\n桌子无明显磕碰，台灯三档亮度都正常。毕业离校前出掉，生活二区宿舍楼下自提，爽快的同学可小刀。
-          </text>
         </view>
         <view class="tags">
           <text v-for="tag in post.tags" :key="tag">
@@ -88,7 +91,7 @@ function toggleCollect() {
           </text>
         </view>
         <view class="meta">
-          📍 浙江理工大学 · 生活二区 <text>浏览 386</text>
+          📍 {{ post.school }} · 校内 <text>浏览 {{ 86 + post.likes * 2 }}</text>
         </view>
       </view>
 
@@ -143,6 +146,11 @@ function toggleCollect() {
 }
 .media {
   height: 620rpx;
+}
+.detail-photo {
+  width: 100%;
+  height: 100%;
+  background: #eef0eb;
 }
 .media-item {
   position: relative;

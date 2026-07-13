@@ -1,22 +1,26 @@
 <script lang="ts" setup>
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
-import { campusPosts } from '@/mock/campus';
+import { useCampusContentStore } from '@/stores/modules/tenant';
 
 const keyword = ref('');
 const searched = ref(false);
+const onlyMine = ref(false);
 const activeTab = ref('全部');
 const activeFilter = ref('综合');
-const recent = ref(['折叠桌', '杭州东站拼车', '计算器']);
-const hot = ['毕业闲置', '校园卡', '周末活动', '东门美食', '四六级资料', '找搭子'];
+const cachedRecent = uni.getStorageSync('campus-search-recent');
+const recent = ref<string[]>(Array.isArray(cachedRecent) ? cachedRecent : ['折叠桌', '高铁站拼车', '计算器']);
+const hot = ['毕业闲置', '校园卡', '周末活动', '校门口美食', '四六级', '找搭子'];
 const tabs = ['全部', '二手', '互助', '活动', '用户'];
 const tabChannels: Record<string, string[]> = { 二手: ['二手'], 互助: ['互助'], 活动: ['社团'] };
+const contentStore = useCampusContentStore();
 const results = computed(() => {
   const query = keyword.value.trim().toLowerCase();
+  const source = onlyMine.value ? contentStore.publishedPosts : contentStore.allPosts;
   if (!query)
-    return [];
+    return onlyMine.value ? source : [];
 
-  const matched = campusPosts.filter((item) => {
+  const matched = source.filter((item) => {
     const content = [item.title, item.content, item.author, item.school, item.channel, ...item.tags].join(' ').toLowerCase();
     if (!content.includes(query))
       return false;
@@ -41,10 +45,29 @@ function search(value?: string) {
     return;
   }
   searched.value = true;
-  if (!recent.value.includes(keyword.value))
+  if (!recent.value.includes(keyword.value)) {
     recent.value.unshift(keyword.value);
+    recent.value = recent.value.slice(0, 8);
+    uni.setStorageSync('campus-search-recent', recent.value);
+  }
 }
-function clear() { keyword.value = ''; searched.value = false; }
+function clear() {
+  keyword.value = '';
+  searched.value = false;
+}
+function clearRecent() {
+  recent.value = [];
+  uni.removeStorageSync('campus-search-recent');
+}
+onLoad((query) => {
+  onlyMine.value = query?.mine === '1';
+  if (query?.keyword) {
+    keyword.value = decodeURIComponent(query.keyword);
+    searched.value = true;
+  } else if (onlyMine.value) {
+    searched.value = true;
+  }
+});
 </script>
 
 <template>
@@ -53,7 +76,9 @@ function clear() { keyword.value = ''; searched.value = false; }
       <view class="back" @click="uni.navigateBack()">
         ‹
       </view><view class="search-input">
-        <text>⌕</text><input v-model="keyword" autofocus placeholder="搜校园内容和同学" confirm-type="search" @confirm="search()"><text v-if="keyword" class="clear" @click="clear">
+        <text>⌕</text>
+        <input v-model="keyword" autofocus placeholder="搜校园内容和同学" confirm-type="search" @confirm="search()">
+        <text v-if="keyword" class="clear" @click="clear">
           ×
         </text>
       </view><text class="search-text" @click="search()">
@@ -64,7 +89,7 @@ function clear() { keyword.value = ''; searched.value = false; }
     <view v-if="!searched" class="discover">
       <view class="discover-section">
         <view class="discover-head">
-          <b>最近搜索</b><text @click="recent = []">
+          <b>最近搜索</b><text @click="clearRecent">
             清空
           </text>
         </view><view v-if="recent.length" class="chip-list">
@@ -101,10 +126,14 @@ function clear() { keyword.value = ''; searched.value = false; }
           {{ filter }}<i v-if="filter === '价格'">↕</i>
         </text>
       </view>
-      <StatePanel v-if="!results.length" title="没有找到相关内容" :description="`换个关键词试试，或者去发布「${keyword}」相关内容。`" action="去发布" @action="uni.switchTab({ url: '/pages/publish/index' })" />
+      <StatePanel
+        v-if="!results.length" :title="onlyMine ? '还没有发布内容' : '没有找到相关内容'"
+        :description="onlyMine ? '完成第一次分享后，可以在这里管理自己发布的内容。' : `换个关键词试试，或者去发布「${keyword}」相关内容。`"
+        action="去发布" @action="uni.switchTab({ url: '/pages/publish/index' })"
+      />
       <template v-else>
         <view class="result-count">
-          找到 {{ results.length }} 条与“{{ keyword }}”相关的内容
+          {{ onlyMine ? `我的发布共 ${results.length} 条` : `找到 ${results.length} 条与“${keyword}”相关的内容` }}
         </view><view class="result-grid">
           <view class="column">
             <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" />

@@ -1,12 +1,19 @@
 <script lang="ts" setup>
+import { getDefaultTenant } from '@/mock/campus';
+import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 
 const userStore = useUserStore();
+const tenantStore = useTenantStore();
+const contentStore = useCampusContentStore();
 const loggedIn = ref(Boolean(uni.getStorageSync('yd-demo-login')));
 const profile = computed(() => userStore.userInfo);
+const currentSchool = computed(() => profile.value?.schoolName || tenantStore.tenantName || getDefaultTenant().name);
+const currentCampus = computed(() => profile.value?.campusName || (currentSchool.value === '吉首大学' ? '吉首校区' : '主校区'));
+const myPublishCount = computed(() => contentStore.publishedPosts.length);
 const menuGroups = [
-  [{ icon: '📦', label: '我的交易', note: '待确认 1' }, { icon: '✎', label: '我的发布', note: '12' }, { icon: '♡', label: '收藏与足迹', note: '36' }],
-  [{ icon: '🎓', label: '校园认证', note: '已认证' }, { icon: '⚙', label: '设置与隐私', note: '' }, { icon: '◉', label: '帮助与反馈', note: '' }],
+  [{ label: '我的交易', note: '查看回应', action: 'messages' }, { label: '我的发布', note: '', action: 'published' }, { label: '收藏与足迹', note: '最近浏览', action: 'favorites' }],
+  [{ label: '校园认证', note: '已认证', action: 'profile' }, { label: '设置与隐私', note: '', action: 'settings' }, { label: '帮助与反馈', note: '', action: 'help' }],
 ];
 onShow(async () => {
   const hasLoginMarker = Boolean(uni.getStorageSync('yd-demo-login'));
@@ -19,6 +26,33 @@ onShow(async () => {
 });
 function goLogin(mode: 'login' | 'edit' = 'login') {
   uni.navigateTo({ url: `/pages/login/index${mode === 'edit' ? '?mode=edit' : ''}` });
+}
+function handleMenu(action: string, requiresLogin: boolean) {
+  if (requiresLogin && !loggedIn.value) {
+    goLogin();
+    return;
+  }
+  if (action === 'messages') {
+    uni.navigateTo({ url: '/pages/messages/index' });
+  } else if (action === 'published') {
+    uni.navigateTo({ url: '/pages/search/index?mine=1' });
+  } else if (action === 'favorites') {
+    uni.navigateTo({ url: '/pages/search/index?keyword=校园' });
+  } else if (action === 'profile') {
+    goLogin('edit');
+  } else if (action === 'settings') {
+    uni.showActionSheet({ itemList: ['隐私设置', '清理搜索记录', '退出登录'], success: async (res) => {
+      if (res.tapIndex === 1) {
+        uni.removeStorageSync('campus-search-recent');
+        uni.showToast({ title: '搜索记录已清理', icon: 'none' });
+      } else if (res.tapIndex === 2) {
+        await userStore.logout();
+        loggedIn.value = false;
+      }
+    } });
+  } else {
+    uni.showModal({ title: '帮助与反馈', content: '遇到问题可以在校园运营后台留言，我们会尽快处理。', showCancel: false });
+  }
 }
 </script>
 
@@ -46,12 +80,14 @@ function goLogin(mode: 'login' | 'edit' = 'login') {
       <view class="profile-head">
         <view class="profile-avatar">
           <image v-if="profile?.avatar" :src="profile.avatar" mode="aspectFill" />
-          <text v-else>{{ profile?.nickname?.slice(0, 1) || '同' }}</text>
+          <text v-else>
+            {{ profile?.nickname?.slice(0, 1) || '同' }}
+          </text>
         </view><view class="profile-info">
           <view class="nickname">
             {{ profile?.nickname || '同校同学' }} <text>✓ 已认证</text>
           </view><view class="student-id">
-            {{ profile?.schoolName || '浙江理工大学' }} · {{ profile?.campusName || '下沙校区' }} · {{ profile?.grade || '学生' }}
+            {{ currentSchool }} · {{ currentCampus }} · {{ profile?.grade || '学生' }}
           </view><view class="bio">
             慢慢逛校园，也认真过生活。
           </view>
@@ -60,7 +96,10 @@ function goLogin(mode: 'login' | 'edit' = 'login') {
         </text>
       </view>
       <view class="stats">
-        <view><b>12</b><span>发布</span></view><view><b>28</b><span>收藏</span></view><view><b>168</b><span>获赞</span></view><view><b>9</b><span>关注</span></view>
+        <view><b>{{ myPublishCount }}</b><span>发布</span></view>
+        <view><b>8</b><span>收藏</span></view>
+        <view><b>36</b><span>获赞</span></view>
+        <view><b>5</b><span>关注</span></view>
       </view>
     </view>
 
@@ -69,7 +108,7 @@ function goLogin(mode: 'login' | 'edit' = 'login') {
         校
       </view><view>
         <view class="pass-title">
-          浙江理工大学校园卡
+          {{ currentSchool }}校园卡
         </view><view class="pass-note">
           同校认证 · 内容优先推荐
         </view>
@@ -81,13 +120,13 @@ function goLogin(mode: 'login' | 'edit' = 'login') {
     </view>
 
     <view v-for="(group, groupIndex) in menuGroups" :key="groupIndex" class="menu-card yd-card">
-      <view v-for="item in group" :key="item.label" class="menu-row" @click="!loggedIn && groupIndex === 0 ? goLogin() : null">
+      <view v-for="item in group" :key="item.label" class="menu-row" @click="handleMenu(item.action, groupIndex === 0)">
         <view class="menu-icon">
           {{ item.label.slice(0, 1) }}
         </view><text class="menu-label">
           {{ item.label }}
         </text><text class="menu-note">
-          {{ item.note }}
+          {{ item.action === 'published' ? `${myPublishCount}` : item.note }}
         </text><text class="arrow">
           ›
         </text>
@@ -128,9 +167,35 @@ function goLogin(mode: 'login' | 'edit' = 'login') {
   background: #fff;
   box-shadow: 0 4rpx 14rpx rgba(31, 56, 49, 0.04);
 }
-.mine-bell { position: relative; width: 25rpx; height: 27rpx; border: 3rpx solid #273632; border-bottom: 0; border-top-left-radius: 16rpx; border-top-right-radius: 16rpx; }
-.mine-bell::before { position: absolute; left: -7rpx; bottom: -5rpx; width: 33rpx; height: 3rpx; border-radius: 9rpx; background: #273632; content: ''; }
-.mine-bell::after { position: absolute; left: 8rpx; bottom: -11rpx; width: 8rpx; height: 5rpx; border-radius: 0 0 8rpx 8rpx; background: #273632; content: ''; }
+.mine-bell {
+  position: relative;
+  width: 25rpx;
+  height: 27rpx;
+  border: 3rpx solid #273632;
+  border-bottom: 0;
+  border-top-left-radius: 16rpx;
+  border-top-right-radius: 16rpx;
+}
+.mine-bell::before {
+  position: absolute;
+  left: -7rpx;
+  bottom: -5rpx;
+  width: 33rpx;
+  height: 3rpx;
+  border-radius: 9rpx;
+  background: #273632;
+  content: '';
+}
+.mine-bell::after {
+  position: absolute;
+  left: 8rpx;
+  bottom: -11rpx;
+  width: 8rpx;
+  height: 5rpx;
+  border-radius: 0 0 8rpx 8rpx;
+  background: #273632;
+  content: '';
+}
 .message i {
   position: absolute;
   top: 10rpx;
@@ -200,7 +265,11 @@ function goLogin(mode: 'login' | 'edit' = 'login') {
   font-size: 36rpx;
   font-weight: 900;
 }
-.profile-avatar image { width: 100%; height: 100%; border-radius: 50%; }
+.profile-avatar image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
 .profile-info {
   flex: 1;
   margin-left: 20rpx;

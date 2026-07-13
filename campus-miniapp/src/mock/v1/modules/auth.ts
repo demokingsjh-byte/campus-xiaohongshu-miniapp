@@ -1,13 +1,23 @@
-import { ResultEnum } from '@/enums/httpEnum';
-import { createMock } from '@/mock/utils';
-import { getRandomChsString } from '@/utils/character';
 import { defineMock } from '@alova/mock';
 import multiavatar from '@multiavatar/multiavatar';
 import { join, random, sampleSize } from 'lodash-es';
+import { ResultEnum } from '@/enums/httpEnum';
+import { createMock } from '@/mock/utils';
+import { getRandomChsString } from '@/utils/character';
 
 function createRandomToken(len = 36 * 6) {
   const token = join(sampleSize('0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ._-', len), '');
   return `eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.${token}`;
+}
+
+const MOCK_PROFILE_KEY = 'campus-mock-profile';
+function getMockProfile() {
+  const cached = uni.getStorageSync(MOCK_PROFILE_KEY);
+  return cached && typeof cached === 'object' ? cached : null;
+}
+function saveMockProfile(profile: Record<string, any>) {
+  uni.setStorageSync(MOCK_PROFILE_KEY, profile);
+  return profile;
 }
 
 export const authMocks = defineMock({
@@ -42,13 +52,19 @@ export const authMocks = defineMock({
     if (!code) {
       return createMock({ data: null, code: ResultEnum.FAIL, message: '微信 code 不能为空' });
     }
+    const tenantProfiles: Record<number, { schoolName: string, campusName: string }> = {
+      201: { schoolName: '吉首大学', campusName: '吉首校区' },
+      202: { schoolName: '长沙学院', campusName: '主校区' },
+    };
+    const tenantProfile = tenantProfiles[Number(tenantId)] || { schoolName: tenantId ? `租户 ${tenantId}` : '未选择学校', campusName: '默认校区' };
+    const cachedProfile = getMockProfile();
     const token = createRandomToken();
     return createMock({
       data: {
         token,
         refreshToken: createRandomToken(64),
         expiresTime: '2026-07-31 23:59:59',
-        userInfo: {
+        userInfo: cachedProfile || {
           id: 10001,
           openid: 'mock-openid-10001',
           unionid: '',
@@ -56,8 +72,8 @@ export const authMocks = defineMock({
           avatar: '',
           mobile: '',
           email: '',
-          schoolName: Number(tenantId) === 1 ? '浙江理工大学' : (tenantId ? `租户 ${tenantId}` : '未选择学校'),
-          campusName: scene || (Number(tenantId) === 1 ? '下沙校区' : '默认校区'),
+          schoolName: tenantProfile.schoolName,
+          campusName: scene || tenantProfile.campusName,
           grade: '2023级',
           gender: '不公开',
           roleType: 'student',
@@ -70,7 +86,7 @@ export const authMocks = defineMock({
   },
   '[GET]/api/campus/auth/me': () => {
     return createMock({
-      data: {
+      data: getMockProfile() || {
         id: 10001,
         openid: 'mock-openid-10001',
         unionid: '',
@@ -89,39 +105,36 @@ export const authMocks = defineMock({
     });
   },
   '[PUT]/api/campus/auth/profile': (params) => {
+    const profile = saveMockProfile({
+      ...(getMockProfile() || {}),
+      id: 10001,
+      openid: 'mock-openid-10001',
+      nickname: params.data?.nickname || '校园体验用户',
+      avatar: params.data?.avatar || '',
+      mobile: '',
+      schoolName: params.data?.schoolName || '未选择学校',
+      campusName: params.data?.campusName || '默认校区',
+      grade: params.data?.grade || '2023级',
+      gender: params.data?.gender || '不公开',
+      roleType: params.data?.roleType || 'student',
+      mobileBound: false,
+      lastLoginTime: '2026-07-13 10:00:00',
+    });
     return createMock({
-      data: {
-        id: 10001,
-        openid: 'mock-openid-10001',
-        nickname: params.data?.nickname || '校园体验用户',
-        avatar: params.data?.avatar || '',
-        mobile: '',
-        schoolName: params.data?.schoolName || '未选择学校',
-        campusName: params.data?.campusName || '默认校区',
-        grade: params.data?.grade || '2023级',
-        gender: params.data?.gender || '不公开',
-        roleType: params.data?.roleType || 'student',
-        mobileBound: false,
-        lastLoginTime: '2026-07-05 10:00:00',
-      },
+      data: profile,
     });
   },
   '[POST]/api/campus/auth/phone': () => {
+    const profile = saveMockProfile({
+      ...(getMockProfile() || {}),
+      id: 10001,
+      openid: 'mock-openid-10001',
+      mobile: '13800000000',
+      mobileBound: true,
+      lastLoginTime: '2026-07-13 10:00:00',
+    });
     return createMock({
-      data: {
-        id: 10001,
-        openid: 'mock-openid-10001',
-        nickname: '校园体验用户',
-        avatar: '',
-        mobile: '13800000000',
-        schoolName: '未选择学校',
-        campusName: '默认校区',
-        grade: '2023级',
-        gender: '不公开',
-        roleType: 'student',
-        mobileBound: true,
-        lastLoginTime: '2026-07-05 10:00:00',
-      },
+      data: profile,
     });
   },
 });

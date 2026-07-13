@@ -3,22 +3,25 @@ import StatePanel from '@/components/StatePanel/index.vue';
 import { campusRegions, campusTenants, getDefaultTenant } from '@/mock/campus';
 import { useTenantStore } from '@/stores/modules/tenant';
 
-const activeRegionId = ref(1);
 const keyword = ref('');
 const tenantStore = useTenantStore();
+if (!tenantStore.currentTenant || !campusTenants.some(item => item.id === tenantStore.tenantId))
+  tenantStore.selectTenant(getDefaultTenant());
+const activeRegionId = ref(tenantStore.tenantId || campusRegions[0].id);
 const services = [
-  { icon: '♻', label: '二手市场', note: '386件在售' },
-  { icon: '🙌', label: '校园互助', note: '48条求助' },
-  { icon: '🚕', label: '拼车出行', note: '周末热门' },
-  { icon: '🥤', label: '校园探店', note: '真实评价' },
-  { icon: '🔎', label: '失物招领', note: '今日12条' },
-  { icon: '🎉', label: '社团活动', note: '本周28场' },
+  { channel: '二手', label: '二手市场', note: '同校当面取' },
+  { channel: '互助', label: '校园互助', note: '有事同学帮' },
+  { channel: '拼车', label: '拼车出行', note: '周末热门' },
+  { channel: '探店', label: '校园探店', note: '真实评价' },
+  { channel: '失物', label: '失物招领', note: '及时找回' },
+  { channel: '社团', label: '社团活动', note: '认识新同学' },
 ];
 const currentTenant = computed(() => tenantStore.currentTenant || getDefaultTenant());
 const currentRegion = computed(() => campusRegions.find(item => item.id === activeRegionId.value));
 const campuses = computed(() => campusTenants.filter((item) => {
-  const matchesRegion = !currentRegion.value || item.areaName === currentRegion.value.name;
-  const matchesKeyword = !keyword.value.trim() || `${item.name}${item.areaName}`.includes(keyword.value.trim());
+  const query = keyword.value.trim();
+  const matchesRegion = Boolean(query) || !currentRegion.value || item.areaName === currentRegion.value.name;
+  const matchesKeyword = !query || `${item.name}${item.areaName}`.includes(query);
   return matchesRegion && matchesKeyword;
 }));
 function selectCampus(campus: typeof campusTenants[number]) {
@@ -27,7 +30,11 @@ function selectCampus(campus: typeof campusTenants[number]) {
   setTimeout(() => uni.switchTab({ url: '/pages/index/index' }), 600);
 }
 function regionLabel(name: string) {
-  return name.replace('杭州大学城', '大学城').replace('滨江高校圈', '滨江').replace('下沙生活区', '下沙');
+  return name.replace('高校圈', '');
+}
+function openService(channel: string) {
+  uni.setStorageSync('campus-home-channel', channel);
+  uni.switchTab({ url: '/pages/index/index' });
 }
 </script>
 
@@ -65,7 +72,7 @@ function regionLabel(name: string) {
       </view>
     </view>
     <view class="service-grid">
-      <view v-for="service in services" :key="service.label" class="service-card yd-card" @click="uni.switchTab({ url: '/pages/index/index' })">
+      <view v-for="service in services" :key="service.label" class="service-card yd-card" @click="openService(service.channel)">
         <view class="service-icon">
           {{ service.label.slice(0, 1) }}
         </view><view class="service-label">
@@ -76,15 +83,18 @@ function regionLabel(name: string) {
       </view>
     </view>
 
-    <view class="section-head">
+    <view class="section-head region-head">
       <view class="yd-section-title">
         附近校园
-      </view><view class="region-tabs">
+      </view>
+    </view>
+    <scroll-view scroll-x class="region-scroll" :show-scrollbar="false">
+      <view class="region-tabs">
         <text v-for="region in campusRegions" :key="region.id" :class="{ active: activeRegionId === region.id }" @click="activeRegionId = region.id">
           {{ regionLabel(region.name) }}
         </text>
       </view>
-    </view>
+    </scroll-view>
     <StatePanel v-if="!campuses.length" title="这个区域暂未开通校园" description="可以切换其他区域，或搜索已开通的学校和校区。" />
     <view v-else class="campus-list">
       <view v-for="(campus, index) in campuses" :key="campus.id" class="campus-row yd-card" @click="selectCampus(campus)">
@@ -110,10 +120,10 @@ function regionLabel(name: string) {
       <view class="activity-tag">
         本周活动
       </view><view class="activity-title">
-        高校草坪音乐夜
+        周日草坪飞盘体验局
       </view><view class="activity-meta">
-        周六 19:00 · 北操场 · 236人想去
-      </view><button @click="uni.navigateTo({ url: '/pages/detail/index?id=1006' })">
+        周日 15:00 · 操场 · 新手也欢迎
+      </view><button @click="uni.navigateTo({ url: '/pages/detail/index?id=2103' })">
         查看活动
       </button>
     </view>
@@ -182,8 +192,24 @@ function regionLabel(name: string) {
   background: #fff;
   box-shadow: 0 4rpx 14rpx rgba(31, 56, 49, 0.03);
 }
-.search-symbol { position: relative; width: 21rpx; height: 21rpx; border: 3rpx solid #6f7c77; border-radius: 50%; }
-.search-symbol::after { position: absolute; right: -9rpx; bottom: -6rpx; width: 11rpx; height: 3rpx; border-radius: 6rpx; background: #6f7c77; content: ''; transform: rotate(45deg); }
+.search-symbol {
+  position: relative;
+  width: 21rpx;
+  height: 21rpx;
+  border: 3rpx solid #6f7c77;
+  border-radius: 50%;
+}
+.search-symbol::after {
+  position: absolute;
+  right: -9rpx;
+  bottom: -6rpx;
+  width: 11rpx;
+  height: 3rpx;
+  border-radius: 6rpx;
+  background: #6f7c77;
+  content: '';
+  transform: rotate(45deg);
+}
 .search-box input {
   flex: 1;
   margin-left: 12rpx;
@@ -218,11 +244,21 @@ function regionLabel(name: string) {
   font-size: 22rpx;
   font-weight: 800;
 }
-.service-card:nth-child(2) .service-icon { background: #e68658; }
-.service-card:nth-child(3) .service-icon { background: #3c7f91; }
-.service-card:nth-child(4) .service-icon { background: #b27155; }
-.service-card:nth-child(5) .service-icon { background: #536c67; }
-.service-card:nth-child(6) .service-icon { background: #d6675a; }
+.service-card:nth-child(2) .service-icon {
+  background: #e68658;
+}
+.service-card:nth-child(3) .service-icon {
+  background: #3c7f91;
+}
+.service-card:nth-child(4) .service-icon {
+  background: #b27155;
+}
+.service-card:nth-child(5) .service-icon {
+  background: #536c67;
+}
+.service-card:nth-child(6) .service-icon {
+  background: #d6675a;
+}
 .service-label {
   margin-top: 10rpx;
   font-size: 25rpx;
@@ -235,12 +271,29 @@ function regionLabel(name: string) {
 }
 .region-tabs {
   display: flex;
-  gap: 16rpx;
+  gap: 12rpx;
   color: #8c9692;
   font-size: 22rpx;
 }
+.region-head {
+  margin-bottom: 12rpx;
+}
+.region-scroll {
+  width: 100%;
+  margin-bottom: 16rpx;
+  white-space: nowrap;
+}
+.region-tabs text {
+  flex: 0 0 auto;
+  padding: 11rpx 20rpx;
+  border: 1rpx solid #e1e5e0;
+  border-radius: 999rpx;
+  background: #fff;
+}
 .region-tabs .active {
   color: #16a085;
+  border-color: #a8d7cc;
+  background: #eaf6f2;
   font-weight: 700;
 }
 .campus-list {
