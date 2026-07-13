@@ -1,0 +1,72 @@
+name: Campus Nginx Domain
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/campus-nginx.yml'
+      - 'scripts/deploy/configure-nginx-domain.sh'
+      - 'scripts/deploy/nginx/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: campus-nginx-domain
+  cancel-in-progress: false
+
+env:
+  SERVER_HOST: 121.43.83.21
+  SERVER_PORT: 22
+  SERVER_USER: root
+  APP_HOME: /opt/campus-platform
+
+jobs:
+  configure:
+    name: Configure domain and HTTPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Nginx over SSH
+        shell: bash
+        env:
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          remote_dir="/tmp/campus-nginx-${GITHUB_RUN_ID}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          if [ -n "$SERVER_SSH_KEY" ]; then
+            printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/campus_nginx_key
+            chmod 600 ~/.ssh/campus_nginx_key
+            ssh_base=(ssh -i ~/.ssh/campus_nginx_key -o StrictHostKeyChecking=no -p "$SERVER_PORT")
+            scp_base=(scp -i ~/.ssh/campus_nginx_key -o StrictHostKeyChecking=no -P "$SERVER_PORT")
+          elif [ -n "$SERVER_PASSWORD" ]; then
+            sudo apt-get update
+            sudo apt-get install -y sshpass
+            ssh_base=(sshpass -p "$SERVER_PASSWORD" ssh -o StrictHostKeyChecking=no -p "$SERVER_PORT")
+            scp_base=(sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no -P "$SERVER_PORT")
+          else
+            echo "Please configure SERVER_SSH_KEY or SERVER_PASSWORD in repository secrets."
+            exit 1
+          fi
+
+          remote="${SERVER_USER}@${SERVER_HOST}"
+          "${ssh_base[@]}" "$remote" "mkdir -p '$remote_dir/nginx'"
+          "${scp_base[@]}" scripts/deploy/configure-nginx-domain.sh "$remote:$remote_dir/"
+          "${scp_base[@]}" scripts/deploy/nginx/* "$remote:$remote_dir/nginx/"
+          "${ssh_base[@]}" "$remote" "chmod +x '$remote_dir/configure-nginx-domain.sh' && APP_HOME='$APP_HOME' '$remote_dir/configure-nginx-domain.sh' '$remote_dir/nginx'"
+
+      - name: Verify public endpoints
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --max-time 20 https://huanwoshidai.com.cn/ >/dev/null
+          curl --fail --silent --show-error --max-time 20 https://huanwoshidai.com.cn/admin-api/system/auth/get-permission-info >/dev/null

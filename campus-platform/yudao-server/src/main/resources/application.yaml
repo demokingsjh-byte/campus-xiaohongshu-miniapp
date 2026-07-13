@@ -263,7 +263,7 @@ yudao:
     base-package: cn.iocoder.yudao
   web:
     admin-ui:
-      url: http://121.43.83.21:8088 # Admin 管理后台 UI 的地址
+      url: https://huanwoshidai.com.cn # Admin 管理后台 UI 的地址
   xss:
     enable: false
     exclude-urls: # 如下两个 url，仅仅是为了演示，去掉配置也没关系
