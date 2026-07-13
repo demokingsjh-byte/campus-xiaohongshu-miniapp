@@ -8,6 +8,7 @@ const step = ref<'login' | 'profile' | 'done'>('login');
 const editing = ref(false);
 const agreed = ref(true);
 const loading = ref(false);
+const loginError = ref('');
 const avatarUploading = ref(false);
 const userStore = useUserStore();
 const tenantStore = useTenantStore();
@@ -54,13 +55,26 @@ async function loginDemo() {
     uni.showToast({ title: '请先同意用户协议与隐私政策', icon: 'none' });
     return;
   }
+  loginError.value = '';
   loading.value = true;
   try {
-    await userStore.silentLogin();
+    const success = await userStore.silentLogin();
+    if (!success)
+      throw new Error('未完成微信登录');
     fillForm();
     step.value = 'profile';
-  } catch {
-    uni.showToast({ title: '微信登录失败，请稍后重试', icon: 'none' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || '');
+    if (/domain|合法域名|url not in domain list|request:fail/i.test(message)) {
+      loginError.value = '当前网络域名未完成微信配置，请联系管理员';
+    } else if (/login:fail|登录凭证|未返回 code|appid/i.test(message)) {
+      loginError.value = '微信登录凭证获取失败，请重新编译后再试';
+    } else if (/系统异常|\[500\]/.test(message)) {
+      loginError.value = '登录服务暂时繁忙，请稍后再试';
+    } else {
+      loginError.value = '微信登录失败，请检查网络后重试';
+    }
+    uni.showToast({ title: loginError.value, icon: 'none', duration: 3000 });
   } finally {
     loading.value = false;
   }
@@ -137,9 +151,18 @@ function finish() {
         <view><text>🙌</text><span><b>校园互助，及时回应</b><i>问题总有同学懂</i></span></view>
         <view><text>🎉</text><span><b>活动与新鲜事</b><i>不错过校园每个瞬间</i></span></view>
       </view>
-      <button class="wechat-btn" :loading="loading" @click="loginDemo">
-        微信一键登录
+      <button class="wechat-btn" :disabled="loading" @click="loginDemo">
+        <view class="button-inner">
+          <view v-if="loading" class="button-spinner" />
+          <view v-else class="wechat-symbol">
+            微
+          </view>
+          <text>{{ loading ? '正在安全登录…' : '微信一键登录' }}</text>
+        </view>
       </button>
+      <view v-if="loginError" class="login-error" @click="loginDemo">
+        <text class="login-error-icon">!</text><text>{{ loginError }}</text><text class="retry">重试</text>
+      </view>
       <view class="privacy" @click="agreed = !agreed">
         <view :class="{ checked: agreed }">
           {{ agreed ? '✓' : '' }}
@@ -176,8 +199,11 @@ function finish() {
           <label>性别（选填）<view class="picker">{{ form.gender }} <text>›</text></view></label>
         </picker>
       </view>
-      <button class="wechat-btn" :loading="loading" @click="finishProfile">
-        {{ editing ? '保存修改' : '完成并进入校园' }}
+      <button class="wechat-btn" :disabled="loading" @click="finishProfile">
+        <view class="button-inner">
+          <view v-if="loading" class="button-spinner" />
+          <text>{{ loading ? '正在保存…' : (editing ? '保存修改' : '完成并进入校园') }}</text>
+        </view>
       </button>
     </view>
 
@@ -286,14 +312,94 @@ function finish() {
   font-style: normal;
 }
 .wechat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  height: 90rpx;
+  height: 94rpx;
   margin-top: 48rpx;
-  border-radius: 999rpx;
+  padding: 0 34rpx;
+  border: 1rpx solid rgba(8, 117, 94, 0.12);
+  border-radius: 26rpx;
   color: #fff;
-  background: #16a085;
-  font-size: 29rpx;
+  background: #10967a;
+  box-shadow: 0 14rpx 30rpx rgba(15, 133, 108, 0.22);
+  font-size: 30rpx;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0.6rpx;
+}
+.wechat-btn:active {
+  opacity: 0.9;
+  transform: scale(0.985);
+}
+.wechat-btn[disabled] {
+  opacity: 0.72;
+  box-shadow: 0 8rpx 18rpx rgba(15, 133, 108, 0.14);
+}
+.button-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+}
+.wechat-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38rpx;
+  height: 38rpx;
+  border-radius: 13rpx;
+  color: #10967a;
+  background: #fff;
+  font-size: 20rpx;
   font-weight: 800;
+  line-height: 1;
+}
+.button-spinner {
+  width: 28rpx;
+  height: 28rpx;
+  border: 4rpx solid rgba(255, 255, 255, 0.38);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: button-spin 0.8s linear infinite;
+}
+@keyframes button-spin {
+  to { transform: rotate(360deg); }
+}
+.login-error {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  min-height: 64rpx;
+  margin-top: 18rpx;
+  padding: 12rpx 16rpx;
+  border: 1rpx solid rgba(227, 101, 85, 0.18);
+  border-radius: 16rpx;
+  color: #8f463e;
+  background: #fff1ed;
+  font-size: 22rpx;
+  line-height: 1.4;
+  text-align: left;
+}
+.login-error-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 30rpx;
+  height: 30rpx;
+  border-radius: 50%;
+  color: #fff;
+  background: #e36555;
+  font-size: 19rpx;
+  font-weight: 800;
+}
+.login-error .retry {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #c44f42;
+  font-weight: 700;
 }
 .privacy {
   display: flex;

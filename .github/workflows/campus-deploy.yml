@@ -1,6 +1,18 @@
 name: Campus Deploy
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/campus-deploy.yml'
+      - 'scripts/deploy/**'
+      - 'campus-platform/pom.xml'
+      - 'campus-platform/yudao-server/**'
+      - 'campus-platform/yudao-framework/**'
+      - 'campus-platform/yudao-module-*/**'
+      - 'campus-platform/yudao-ui/yudao-ui-admin-vue3-full/**'
+      - 'campus-platform/sql/mysql/campus-*.sql'
   workflow_dispatch:
     inputs:
       deploy_note:
@@ -70,6 +82,7 @@ jobs:
           cp campus-platform/sql/mysql/campus-menu-encoding-repair.sql release/migrations/
           cp campus-platform/sql/mysql/campus-menu.sql release/migrations/
           cp campus-platform/sql/mysql/campus-school-data-upgrade.sql release/migrations/
+          cp campus-platform/sql/mysql/campus-wechat-miniapp-config.sql release/migrations/
 
       - name: Deploy over SSH
         shell: bash

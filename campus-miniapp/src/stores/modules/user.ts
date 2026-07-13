@@ -24,7 +24,7 @@ function uniLoginCode() {
         }
         reject(new Error('微信登录未返回 code'));
       },
-      fail: reject,
+      fail: error => reject(new Error(error.errMsg || '无法获取微信登录凭证')),
     });
   });
 }
@@ -64,9 +64,9 @@ export const useUserStore = defineStore('UserStore', () => {
     if (!code) {
       try {
         code = await uniLoginCode();
-      } catch {
+      } catch (error) {
         if (!isUseMock()) {
-          return false;
+          throw error instanceof Error ? error : new Error('无法获取微信登录凭证');
         }
         code = 'mock-wechat-login-code';
       }

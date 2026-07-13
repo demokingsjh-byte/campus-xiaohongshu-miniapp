@@ -60,13 +60,14 @@ const alovaInstance = createAlova({
         if (requestType) {
           return response;
         }
-        const { code, message, data } = rawData as API;
+        const { code, msg, message, data } = rawData as API;
+        const errorMessage = msg || message || '请求失败，请稍后重试';
         if (code === ResultEnum.SUCCESS || code === 0) {
           return data as any;
         }
         // 逻辑错误处理，与业务相关
-        handleLogicError(code, message);
-        throw new Error(`请求错误[${code}]：${message}`);
+        handleLogicError(code, errorMessage);
+        throw new Error(`请求错误[${code}]：${errorMessage}`);
       }
       // 处理http状态错误
       handleHttpStatus(statusCode, errMsg || '');

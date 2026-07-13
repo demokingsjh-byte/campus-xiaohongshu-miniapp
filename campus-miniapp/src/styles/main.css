@@ -5,7 +5,16 @@ page {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
+button {
+  padding: 0;
+  border: 0;
+  font-family: inherit;
+  line-height: 1.2;
+}
+
 button::after { border: 0; }
+
+button[disabled] { opacity: 0.56; }
 
 .yd-page {
   min-height: 100vh;
@@ -28,10 +37,17 @@ button::after { border: 0; }
   height: 88rpx;
   border-radius: 999rpx;
   font-size: 30rpx;
-  font-weight: 700;
+  padding: 0 30rpx;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0.5rpx;
 }
 
-.yd-primary-btn { color: #fff; background: #16a085; }
+.yd-primary-btn {
+  color: #fff;
+  background: #10967a;
+  box-shadow: 0 12rpx 26rpx rgba(15, 133, 108, 0.18);
+}
 .yd-secondary-btn { color: #0f766e; background: #e8f5f1; }
 
 .yd-section-title {
