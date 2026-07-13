@@ -36,19 +36,19 @@ export function createCampusPost(params: CampusPostCreateParams) {
 }
 
 export function getCampusPostPage(params: CampusPostPageParams) {
-  return request.Get<CampusPostPage>(`${POST_BASE}/page`, { params, meta: { ignoreAuth: true } });
+  return request.Get<CampusPostPage>(`${POST_BASE}/page`, { params, cacheFor: 0, meta: { ignoreAuth: true } });
 }
 
 export function getMyCampusPostPage(params: Pick<CampusPostPageParams, 'pageNo' | 'pageSize'> = {}) {
-  return request.Get<CampusPostPage>(`${POST_BASE}/my-page`, { params });
+  return request.Get<CampusPostPage>(`${POST_BASE}/my-page`, { params, cacheFor: 0 });
 }
 
 export function getFavoriteCampusPostPage(params: Pick<CampusPostPageParams, 'pageNo' | 'pageSize'> = {}) {
-  return request.Get<CampusPostPage>(`${POST_BASE}/favorite-page`, { params });
+  return request.Get<CampusPostPage>(`${POST_BASE}/favorite-page`, { params, cacheFor: 0 });
 }
 
 export function getCampusPost(id: number) {
-  return request.Get<CampusPost>(`${POST_BASE}/get`, { params: { id }, meta: { ignoreAuth: true } });
+  return request.Get<CampusPost>(`${POST_BASE}/get`, { params: { id }, cacheFor: 0, meta: { ignoreAuth: true } });
 }
 
 export function setCampusPostLike(id: number, active: boolean) {

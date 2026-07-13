@@ -50,6 +50,8 @@ function retry() {
   loadFeed();
 }
 async function onRefresh() {
+  if (refreshing.value)
+    return;
   refreshing.value = true;
   try {
     await loadFeed(false);
@@ -62,7 +64,7 @@ onShow(async () => {
   if (campusChannels.includes(channel))
     chooseChannel(channel);
   uni.removeStorageSync('campus-home-channel');
-  await loadFeed();
+  await loadFeed(!contentStore.allPosts.length);
 });
 watch(activeChannel, () => {
   state.value = visiblePosts.value.length ? 'content' : 'empty';
@@ -122,9 +124,14 @@ watch(() => tenantStore.tenantId, () => loadFeed());
 
     <view class="campus-note">
       <view><text class="note-dot" />只看本校真实内容</view>
-      <text class="note-side">
-        当前校园 {{ visiblePosts.length }} 条
-      </text>
+      <view class="note-side">
+        <text>当前 {{ visiblePosts.length }} 条</text>
+        <view class="refresh-entry" :class="{ refreshing }" @click="onRefresh">
+          <text class="refresh-symbol">
+            ↻
+          </text><text>{{ refreshing ? '刷新中' : '刷新' }}</text>
+        </view>
+      </view>
     </view>
 
     <scroll-view scroll-y class="feed-scroll" refresher-enabled :refresher-triggered="refreshing" @refresherrefresh="onRefresh">
@@ -415,7 +422,35 @@ watch(() => tenantStore.tenantId, () => loadFeed());
   background: var(--yd-green);
 }
 .note-side {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
   color: #9aa39f;
+}
+.refresh-entry {
+  display: flex;
+  align-items: center;
+  gap: 5rpx;
+  min-height: 44rpx;
+  padding: 0 13rpx;
+  border: 1rpx solid rgba(60, 60, 67, 0.1);
+  border-radius: 999rpx;
+  color: var(--yd-green-dark);
+  background: rgba(255, 255, 255, 0.66);
+  font-size: 20rpx;
+  font-weight: 700;
+}
+.refresh-symbol {
+  font-size: 25rpx;
+  line-height: 1;
+}
+.refresh-entry.refreshing .refresh-symbol {
+  animation: feed-refresh-spin 0.8s linear infinite;
+}
+@keyframes feed-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .feed-scroll {
   height: calc(100vh - 432rpx - env(safe-area-inset-top));

@@ -9,6 +9,7 @@ const images = ref<string[]>([]);
 const submitting = ref(false);
 const showSuccess = ref(false);
 const createdPostId = ref<number | null>(null);
+const publishedSummary = ref<{ typeTitle: string, location: string, visibleRange: string } | null>(null);
 const agreed = ref(true);
 const errors = reactive<Record<string, string>>({});
 const userStore = useUserStore();
@@ -138,6 +139,25 @@ function saveDraft() {
   uni.setStorageSync('campus-publish-draft', { ...form, images: images.value, activeType: activeType.value });
   uni.showToast({ title: '草稿已保存', icon: 'none' });
 }
+function clearEditor() {
+  activeType.value = 'idle';
+  Object.assign(form, {
+    title: '',
+    price: '',
+    originalPrice: '',
+    content: '',
+    location: locations.value[0],
+    tags: [],
+    contact: '',
+    tradeMode: typeDetails.idle.modes[0],
+    visibleRange: visibleRanges[0],
+    anonymous: false,
+  });
+  images.value = [];
+  agreed.value = true;
+  Object.keys(errors).forEach(key => errors[key] = '');
+  uni.removeStorageSync('campus-publish-draft');
+}
 async function submit() {
   if (submitting.value)
     return;
@@ -184,8 +204,13 @@ async function submit() {
       images: uploadedImages,
       anonymous: form.anonymous,
     });
-    uni.removeStorageSync('campus-publish-draft');
     createdPostId.value = created.id;
+    publishedSummary.value = {
+      typeTitle: currentType.value.title,
+      location: form.location,
+      visibleRange: form.visibleRange,
+    };
+    clearEditor();
     showSuccess.value = true;
   } catch (error) {
     const message = error instanceof Error ? error.message.replace(/^.*：/, '') : '请检查网络后重试';
@@ -210,12 +235,8 @@ function viewPublished() {
 function reset() {
   showSuccess.value = false;
   createdPostId.value = null;
-  Object.assign(form, { title: '', price: '', originalPrice: '', content: '', location: locations.value[0], tags: [], contact: '', tradeMode: typeDetails.idle.modes[0], visibleRange: visibleRanges[0], anonymous: false });
-  images.value = [];
-  activeType.value = 'idle';
-  agreed.value = true;
-  Object.keys(errors).forEach(key => errors[key] = '');
-  uni.removeStorageSync('campus-publish-draft');
+  publishedSummary.value = null;
+  clearEditor();
 }
 </script>
 
@@ -427,10 +448,10 @@ function reset() {
           发布成功
         </view>
         <view class="success-desc">
-          内容已进入「{{ currentType.title }}」分区，新的回应会通过消息通知你。
+          内容已进入「{{ publishedSummary?.typeTitle || '校园' }}」分区，新的回应会通过消息通知你。
         </view>
         <view class="success-summary">
-          <text>{{ form.location }}</text><text>{{ form.visibleRange }}</text>
+          <text>{{ publishedSummary?.location }}</text><text>{{ publishedSummary?.visibleRange }}</text>
         </view>
         <button class="view-content" @click="viewPublished">
           查看刚刚发布的内容
