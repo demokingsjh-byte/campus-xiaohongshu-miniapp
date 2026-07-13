@@ -2,12 +2,12 @@
 -- Run after sql/mysql/ruoyi-vue-pro-cloud.sql and sql/mysql/campus-extension.sql.
 -- It can also be executed on an already initialized database to refresh the miniapp AppID.
 
-SET NAMES utf8mb4;
+SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-SET @miniapp_appid = 'wx3141ca27b55b0b9c';
-SET @miniapp_secret = '34faf6475497b6c5c9ad777b725a2ed3';
-SET @old_miniapp_appid_1 = 'wx63c280fe3248a3e7';
-SET @old_miniapp_appid_2 = 'wxc4598c446f8a9cb3';
+SET @miniapp_appid = _utf8mb4'wx3141ca27b55b0b9c' COLLATE utf8mb4_unicode_ci;
+SET @miniapp_secret = _utf8mb4'34faf6475497b6c5c9ad777b725a2ed3' COLLATE utf8mb4_unicode_ci;
+SET @old_miniapp_appid_1 = _utf8mb4'wx63c280fe3248a3e7' COLLATE utf8mb4_unicode_ci;
+SET @old_miniapp_appid_2 = _utf8mb4'wxc4598c446f8a9cb3' COLLATE utf8mb4_unicode_ci;
 
 UPDATE `system_social_client`
 SET `name` = '微信小程序',
