@@ -76,8 +76,10 @@
         <okhttp.version>4.12.0</okhttp.version>
         <californium.version>3.14.0</californium.version>
         <j2mod.version>3.3.0</j2mod.version>
-        <httpclient5.version>5.5.2</httpclient5.version> <!-- WxJava 4.8.x 需要 HttpClient5 5.4+，Spring Boot 2.7 默认 5.1.4 不兼容 -->
-        <httpcore5.version>5.3.6</httpcore5.version> <!-- 配套 httpclient5 5.5.2，Spring Boot 2.7 默认 5.1.5 不兼容 -->
+        <!-- WxJava 4.8.x 需要 HttpClient5 5.4+。5.5.x 在 Java 8 下会访问不存在的
+             ExtendedSocketOptions.TCP_KEEPIDLE，因此锁定最后一组兼容 Java 8 的配套版本。 -->
+        <httpclient5.version>5.4.4</httpclient5.version>
+        <httpcore5.version>5.3.4</httpcore5.version>
         <!-- 三方云服务相关 -->
         <awssdk.version>2.46.17</awssdk.version>
         <justauth.version>1.16.7</justauth.version>
