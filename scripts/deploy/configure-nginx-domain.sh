@@ -127,6 +127,16 @@ certbot certonly \
   --register-unsafely-without-email \
   --keep-until-expiring
 
+RENEW_HOOK_DIR=/etc/letsencrypt/renewal-hooks/deploy
+RENEW_HOOK="$RENEW_HOOK_DIR/reload-campus-nginx.sh"
+mkdir -p "$RENEW_HOOK_DIR"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -e' \
+  "if ! systemctl reload nginx 2>/dev/null; then '$NGINX_BIN' -s reload; fi" \
+  > "$RENEW_HOOK"
+chmod 0755 "$RENEW_HOOK"
+
 cp "$SSL_SOURCE" "$TARGET"
 reload_nginx
 
