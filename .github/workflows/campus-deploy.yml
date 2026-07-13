@@ -115,3 +115,19 @@ jobs:
           "${ssh_base[@]}" "$remote" "mkdir -p '$deploy_dir'"
           "${scp_base[@]}" -r release/campus-backend.jar release/campus-admin-ui-dist.tar.gz release/update-server.sh release/migrate-server.sh release/migrations "$remote:$deploy_dir/"
           "${ssh_base[@]}" "$remote" "cd '$deploy_dir' && chmod +x migrate-server.sh update-server.sh && APP_HOME='$APP_HOME' ./migrate-server.sh && APP_HOME='$APP_HOME' BACKEND_SERVICE='$BACKEND_SERVICE' NGINX_RELOAD='$NGINX_RELOAD' ./update-server.sh"
+
+      - name: Verify public login error contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          invalid_code="codex-deploy-check-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          response="$(curl --fail --silent --show-error --max-time 20 \
+            -H 'Content-Type: application/json' \
+            -X POST \
+            --data "{\"code\":\"${invalid_code}\",\"tenantId\":201}" \
+            'https://huanwoshidai.com.cn/app-api/campus/auth/wechat-login')"
+          if ! jq -e '.code == 400 and (.msg | contains("微信登录凭证无效"))' <<<"$response" >/dev/null; then
+            echo "::error title=Public login smoke test failed::Unexpected response: $response"
+            exit 1
+          fi
+          echo "Public login error contract verified."

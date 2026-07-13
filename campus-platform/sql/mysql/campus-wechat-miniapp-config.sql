@@ -19,22 +19,25 @@ SET `name` = '微信小程序',
     `update_time` = NOW()
 WHERE `social_type` = 34
   AND `user_type` = 1
-  AND `tenant_id` = 1;
+  AND `tenant_id` IN (1, 201, 202);
 
 INSERT INTO `system_social_client`
 (`name`, `social_type`, `user_type`, `client_id`, `client_secret`, `agent_id`, `public_key`, `status`, `creator`, `create_time`, `updater`, `update_time`, `deleted`, `tenant_id`)
-SELECT '微信小程序', 34, 1, @miniapp_appid, @miniapp_secret, NULL, NULL, 0, '1', NOW(), '1', NOW(), b'0', 1
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM `system_social_client`
-  WHERE `social_type` = 34
-    AND `user_type` = 1
-    AND `tenant_id` = 1
-);
+SELECT '微信小程序', 34, 1, @miniapp_appid, @miniapp_secret, NULL, NULL, 0, '1', NOW(), '1', NOW(), b'0', `tenant`.`id`
+FROM `system_tenant` AS `tenant`
+WHERE `tenant`.`id` IN (1, 201, 202)
+  AND `tenant`.`deleted` = b'0'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM `system_social_client` AS `client`
+    WHERE `client`.`social_type` = 34
+      AND `client`.`user_type` = 1
+      AND `client`.`tenant_id` = `tenant`.`id`
+  );
 
 UPDATE `system_tenant`
 SET `websites` = TRIM(BOTH ',' FROM REPLACE(REPLACE(CONCAT(',', IFNULL(`websites`, ''), ','), CONCAT(',', @old_miniapp_appid_1, ','), ','), CONCAT(',', @old_miniapp_appid_2, ','), ','))
-WHERE `id` = 1;
+WHERE `id` IN (1, 201, 202);
 
 UPDATE `system_tenant`
 SET `websites` = CASE
@@ -42,4 +45,4 @@ SET `websites` = CASE
   WHEN FIND_IN_SET(@miniapp_appid, `websites`) = 0 THEN CONCAT(`websites`, ',', @miniapp_appid)
   ELSE `websites`
 END
-WHERE `id` = 1;
+WHERE `id` IN (1, 201, 202);

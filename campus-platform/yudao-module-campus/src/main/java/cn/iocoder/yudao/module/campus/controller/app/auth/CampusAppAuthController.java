@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.campus.controller.app.auth;
 
+import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusAuthLoginRespVO;
@@ -22,6 +23,7 @@ import javax.annotation.Resource;
 import javax.annotation.security.PermitAll;
 import javax.validation.Valid;
 
+import static cn.iocoder.yudao.framework.common.pojo.CommonResult.error;
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
 
@@ -39,7 +41,32 @@ public class CampusAppAuthController {
     @TenantIgnore
     @Operation(summary = "微信小程序静默登录")
     public CommonResult<CampusAuthLoginRespVO> wechatLogin(@Valid @RequestBody CampusWechatLoginReqVO reqVO) {
-        return success(campusAppAuthService.wechatLogin(reqVO));
+        try {
+            return success(campusAppAuthService.wechatLogin(reqVO));
+        } catch (RuntimeException ex) {
+            ServiceException serviceException = findServiceException(ex);
+            if (serviceException != null) {
+                return error(serviceException);
+            }
+            throw ex;
+        }
+    }
+
+    /**
+     * 部分代理会把业务异常包裹多层；登录接口需要把原始业务码和提示稳定返回给小程序。
+     */
+    private static ServiceException findServiceException(Throwable throwable) {
+        Throwable current = throwable;
+        for (int depth = 0; current != null && depth < 8; depth++) {
+            if (current instanceof ServiceException) {
+                return (ServiceException) current;
+            }
+            if (current.getCause() == current) {
+                break;
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     @GetMapping("/me")

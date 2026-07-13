@@ -58,7 +58,7 @@ async function loginDemo() {
   loginError.value = '';
   loading.value = true;
   try {
-    const success = await userStore.silentLogin();
+    const success = await userStore.silentLogin({ tenantId: initialTenant.id });
     if (!success)
       throw new Error('未完成微信登录');
     fillForm();

@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.biz.system.oauth2.dto.OAuth2AccessToken
 import cn.iocoder.yudao.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenRespDTO;
 import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
+import cn.iocoder.yudao.framework.tenant.core.util.TenantUtils;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusAuthLoginRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusPhoneBindReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusUserProfileUpdateReqVO;
@@ -41,7 +42,7 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 public class CampusAppAuthServiceImpl implements CampusAppAuthService {
 
     private static final String TABLE = "campus_miniapp_user";
-    private static final Long DEFAULT_TENANT_ID = 0L;
+    private static final Long DEFAULT_TENANT_ID = 201L;
 
     @Resource
     private NamedParameterJdbcTemplate namedParameterJdbcTemplate;
@@ -55,6 +56,11 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public CampusAuthLoginRespVO wechatLogin(CampusWechatLoginReqVO reqVO) {
+        Long tenantId = reqVO.getTenantId() == null ? DEFAULT_TENANT_ID : reqVO.getTenantId();
+        return TenantUtils.execute(tenantId, () -> doWechatLogin(reqVO, tenantId));
+    }
+
+    private CampusAuthLoginRespVO doWechatLogin(CampusWechatLoginReqVO reqVO, Long tenantId) {
         SocialUserRespDTO socialUser;
         try {
             socialUser = socialUserApi.getSocialUserByCode(
@@ -68,7 +74,6 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "微信登录失败，未获取到 openid");
         }
 
-        Long tenantId = reqVO.getTenantId() == null ? DEFAULT_TENANT_ID : reqVO.getTenantId();
         CampusUserRespVO user = getByOpenid(socialUser.getOpenid());
         if (user == null) {
             Long userId = createUser(socialUser, reqVO, tenantId);
