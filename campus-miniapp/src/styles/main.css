@@ -14,6 +14,10 @@ page {
   --yd-coral-soft: rgba(255, 107, 95, 0.11);
   --yd-yellow: #ffd60a;
   --yd-glass-shadow: 0 18rpx 48rpx rgba(32, 47, 78, 0.1);
+  --yd-control-compact: 60rpx;
+  --yd-control-regular: 76rpx;
+  --yd-control-large: 88rpx;
+  --yd-control-radius: 18rpx;
   color: var(--yd-ink);
   background: var(--yd-paper);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -21,16 +25,25 @@ page {
 }
 
 button {
+  display: flex;
+  min-width: 0;
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  align-items: center;
+  justify-content: center;
   border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
   font-family: inherit;
+  font-size: inherit;
   line-height: 1.2;
   letter-spacing: 0;
+  text-align: center;
 }
 
-button::after { border: 0; }
+button::after { display: none; border: 0; }
 
 button[disabled] { opacity: 0.56; }
 
@@ -54,9 +67,9 @@ button[disabled] { opacity: 0.56; }
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 88rpx;
-  border-radius: 18rpx;
-  font-size: 30rpx;
+  height: var(--yd-control-large);
+  border-radius: var(--yd-control-radius);
+  font-size: 28rpx;
   padding: 0 30rpx;
   font-weight: 650;
   line-height: 1.2;

@@ -407,12 +407,16 @@ function openService(channel: string) {
   font-size: 22rpx;
 }
 .activity-card button {
-  width: 170rpx;
+  width: 176rpx;
+  height: var(--yd-control-regular);
   margin-top: 22rpx;
-  border-radius: 999rpx;
+  padding: 0 22rpx;
+  border-radius: var(--yd-control-radius);
   color: #fff;
   background: var(--yd-green-dark);
-  font-size: 23rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* Apple-inspired glass theme */

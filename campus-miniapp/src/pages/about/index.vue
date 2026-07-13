@@ -248,12 +248,15 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 .guest-card button {
   width: 300rpx;
+  height: var(--yd-control-regular);
   margin: 24rpx auto 0;
-  border-radius: 999rpx;
+  padding: 0 28rpx;
+  border-radius: var(--yd-control-radius);
   color: #fff;
   background: var(--yd-green);
   font-size: 26rpx;
   font-weight: 800;
+  line-height: 1;
 }
 .profile-head {
   display: flex;

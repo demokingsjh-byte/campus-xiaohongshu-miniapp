@@ -310,12 +310,12 @@ function managePost() {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 126rpx;
-  height: 58rpx;
+  width: 120rpx;
+  height: 64rpx;
   margin-left: 16rpx;
-  padding: 0;
+  padding: 0 14rpx;
   border: 1rpx solid var(--yd-green);
-  border-radius: 16rpx;
+  border-radius: var(--yd-control-radius);
   color: var(--yd-green-dark);
   background: rgba(255, 255, 255, 0.72);
   font-size: 22rpx;
@@ -480,15 +480,15 @@ function managePost() {
 .contact-btn {
   display: flex;
   width: 100%;
-  height: 76rpx;
+  height: var(--yd-control-regular);
   margin: 0;
   padding: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 20rpx;
+  border-radius: var(--yd-control-radius);
   color: #fff;
   background: var(--yd-green);
-  font-size: 25rpx;
+  font-size: 26rpx;
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;

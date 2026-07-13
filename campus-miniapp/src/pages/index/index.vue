@@ -468,14 +468,15 @@ watch(() => tenantStore.tenantId, () => loadFeed());
 }
 .publish-inspire button {
   flex: 0 0 auto;
-  height: 54rpx;
-  padding: 0 18rpx;
+  min-width: 112rpx;
+  height: var(--yd-control-compact);
+  padding: 0 20rpx;
   border-radius: 999rpx;
   color: #fff;
   background: var(--yd-green-dark);
-  font-size: 20rpx;
+  font-size: 22rpx;
   font-weight: 800;
-  line-height: 54rpx;
+  line-height: 1;
 }
 .feed-column {
   min-width: 0;

@@ -323,15 +323,15 @@ function finish() {
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 94rpx;
-  margin-top: 48rpx;
+  height: var(--yd-control-large);
+  margin-top: 40rpx;
   padding: 0 34rpx;
   border: 1rpx solid rgba(10, 132, 255, 0.16);
-  border-radius: 18rpx;
+  border-radius: var(--yd-control-radius);
   color: #fff;
   background: var(--yd-green);
   box-shadow: 0 14rpx 32rpx rgba(10, 132, 255, 0.25);
-  font-size: 30rpx;
+  font-size: 28rpx;
   font-weight: 650;
   line-height: 1.2;
   letter-spacing: 0.6rpx;
@@ -445,7 +445,11 @@ function finish() {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 150rpx;
   margin: 32rpx 0;
+  padding: 0;
   color: var(--yd-green);
   font-size: 21rpx;
   line-height: 1.4;
@@ -541,7 +545,7 @@ function finish() {
 }
 .wechat-btn {
   border: 1rpx solid rgba(255, 255, 255, 0.32);
-  border-radius: 22rpx;
+  border-radius: var(--yd-control-radius);
   background: var(--yd-green);
   box-shadow: 0 14rpx 32rpx rgba(10, 132, 255, 0.25);
 }

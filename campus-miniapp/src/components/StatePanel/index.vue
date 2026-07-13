@@ -58,13 +58,15 @@ const icons = { empty: '🗂', error: '⚠', offline: '☁', login: '👋' };
 }
 .state-action {
   min-width: 220rpx;
+  height: var(--yd-control-regular);
   margin-top: 30rpx;
   padding: 0 34rpx;
-  border-radius: 20rpx;
+  border-radius: var(--yd-control-radius);
   color: #fff;
   background: var(--yd-green);
   box-shadow: 0 10rpx 24rpx rgba(10, 132, 255, 0.22);
   font-size: 26rpx;
   font-weight: 700;
+  line-height: 1;
 }
 </style>

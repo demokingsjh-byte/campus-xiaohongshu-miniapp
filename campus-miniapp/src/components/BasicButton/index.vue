@@ -24,14 +24,14 @@ function click() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 76rpx;
+  min-height: var(--yd-control-regular);
   padding: 0 32rpx;
   border: 1rpx solid rgba(255, 255, 255, 0.28);
-  border-radius: 20rpx;
+  border-radius: var(--yd-control-radius);
   color: #fff;
   background: var(--yd-green);
   box-shadow: 0 12rpx 30rpx rgba(10, 132, 255, 0.24);
-  font-size: 28rpx;
+  font-size: 27rpx;
   font-weight: 650;
   line-height: 1.2;
   letter-spacing: 0.5rpx;

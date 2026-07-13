@@ -1,15 +1,42 @@
-import type { UserConfig } from 'vite';
+import type { Plugin, UserConfig } from 'vite';
 /**
  *  vite 配置
  *  @see https://cn.vitejs.dev/config/
  *  @type {import('vite').UserConfig}
  */
-import { resolve } from 'node:path';
+import { copyFile, readdir } from 'node:fs/promises';
+import { join, parse, resolve } from 'node:path';
 import process from 'node:process';
 import TransformPages from 'uni-read-pages-vite';
 import { defineConfig, loadEnv } from 'vite';
 import { createVitePlugins, currentPlatform, isH5, resolveProxy } from './build';
 // import postcssPlugins from './postcss.config';
+
+async function mirrorWeixinStyles(directory: string) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  await Promise.all(entries.map(async (entry) => {
+    const source = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await mirrorWeixinStyles(source);
+      return;
+    }
+    if (entry.isFile() && entry.name.endsWith('.css')) {
+      await copyFile(source, join(directory, `${parse(entry.name).name}.wxss`));
+    }
+  }));
+}
+
+function createWeixinDevStylePlugin(): Plugin {
+  return {
+    name: 'campus-weixin-dev-style-extension',
+    apply: 'build',
+    enforce: 'post',
+    async writeBundle(options) {
+      if (currentPlatform === 'mp-weixin' && options.dir)
+        await mirrorWeixinStyles(options.dir);
+    },
+  };
+}
 
 export default defineConfig(async ({ mode }) => {
   const root = process.cwd();
@@ -40,7 +67,12 @@ export default defineConfig(async ({ mode }) => {
         },
       },
     },
-    plugins: createVitePlugins({ isProd }),
+    plugins: [
+      ...createVitePlugins({ isProd }),
+      ...(!isProd
+        ? [createWeixinDevStylePlugin()]
+        : []),
+    ],
     // 开发服务器配置
     server: {
       host: true,
@@ -54,21 +86,25 @@ export default defineConfig(async ({ mode }) => {
       chunkSizeWarningLimit: 1500,
       sourcemap: !isProd,
       target: 'es6',
-      minify: isProd ? 'terser' : false,
+      minify: isProd
+        ? 'terser'
+        : false,
       terserOptions: {
         compress: {
           drop_console: isProd,
           drop_debugger: true,
         },
       },
-      rollupOptions: isH5 ? {
-        output: {
-          entryFileNames: `assets/[name].${new Date().getTime()}.js`,
-          chunkFileNames: `assets/[name].${new Date().getTime()}.js`,
-          assetFileNames: `assets/[name].${new Date().getTime()}.[ext]`,
-          compact: true,
-        },
-      } : undefined,
+      rollupOptions: isH5
+        ? {
+          output: {
+            entryFileNames: `assets/[name].${new Date().getTime()}.js`,
+            chunkFileNames: `assets/[name].${new Date().getTime()}.js`,
+            assetFileNames: `assets/[name].${new Date().getTime()}.[ext]`,
+            compact: true,
+          },
+        }
+        : undefined,
     },
   } as UserConfig;
 });

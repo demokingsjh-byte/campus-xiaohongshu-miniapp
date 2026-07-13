@@ -1040,9 +1040,9 @@ function reset() {
   box-sizing: border-box;
   align-items: center;
   justify-content: center;
-  height: 88rpx;
-  border-radius: 18rpx;
-  font-size: 26rpx;
+  height: var(--yd-control-large);
+  border-radius: var(--yd-control-radius);
+  font-size: 27rpx;
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;
@@ -1156,15 +1156,19 @@ function reset() {
   font-size: 20rpx;
 }
 .view-content {
-  height: 84rpx;
-  border-radius: 999rpx;
+  width: 100%;
+  height: var(--yd-control-large);
+  border-radius: var(--yd-control-radius);
   color: #fff;
   background: var(--yd-green);
   font-size: 26rpx;
   font-weight: 800;
 }
 .again {
-  margin-top: 10rpx;
+  width: 100%;
+  height: 64rpx;
+  margin-top: 8rpx;
+  border-radius: 16rpx;
   color: var(--yd-green-dark);
   background: transparent;
   font-size: 22rpx;
