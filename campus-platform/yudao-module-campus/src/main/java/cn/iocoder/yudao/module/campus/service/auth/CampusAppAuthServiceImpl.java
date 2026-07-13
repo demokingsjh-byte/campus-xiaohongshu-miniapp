@@ -5,7 +5,6 @@ import cn.iocoder.yudao.framework.common.biz.system.oauth2.OAuth2TokenCommonApi;
 import cn.iocoder.yudao.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenCreateReqDTO;
 import cn.iocoder.yudao.framework.common.biz.system.oauth2.dto.OAuth2AccessTokenRespDTO;
 import cn.iocoder.yudao.framework.common.enums.UserTypeEnum;
-import cn.iocoder.yudao.framework.common.exception.ServiceException;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusAuthLoginRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusPhoneBindReqVO;
@@ -60,8 +59,6 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
         try {
             socialUser = socialUserApi.getSocialUserByCode(
                     UserTypeEnum.MEMBER.getValue(), SocialTypeEnum.WECHAT_MINI_PROGRAM.getType(), reqVO.getCode(), null);
-        } catch (ServiceException ex) {
-            throw ex;
         } catch (Exception ex) {
             log.warn("[wechatLogin][获取微信用户失败 tenantId({})]", reqVO.getTenantId(), ex);
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(),
