@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+CURRENT_STEP="initializing database migration"
+on_error() {
+  local exit_code=$?
+  echo "::error title=Campus database migration failed::$CURRENT_STEP failed at line ${BASH_LINENO[0]} (exit $exit_code)." >&2
+  exit "$exit_code"
+}
+trap on_error ERR
+
 APP_HOME="${APP_HOME:-/opt/campus-platform}"
 ENV_FILE="${ENV_FILE:-$APP_HOME/backend/campus.env}"
 MIGRATION_DIR="${MIGRATION_DIR:-$(pwd)/migrations}"
@@ -71,6 +79,7 @@ export MYSQL_PWD="$CAMPUS_DB_PASSWORD"
 trap 'unset MYSQL_PWD' EXIT
 
 echo "Checking database connection..."
+CURRENT_STEP="checking database connection"
 "$mysql_bin" "${mysql_args[@]}" --batch --skip-column-names -e "SELECT 1" >/dev/null
 
 mkdir -p "$BACKUP_DIR"
@@ -89,6 +98,7 @@ if [ "${#backup_tables[@]}" -eq 0 ]; then
 fi
 
 echo "Backing up affected tables to $BACKUP_DIR..."
+CURRENT_STEP="backing up affected database tables"
 "$dump_bin" \
   --host="$db_host" \
   --port="$db_port" \
@@ -114,6 +124,7 @@ for migration in "${migrations[@]}"; do
     exit 1
   fi
   echo "Applying $migration..."
+  CURRENT_STEP="applying $migration"
   "$mysql_bin" "${mysql_args[@]}" < "$migration_path"
 done
 

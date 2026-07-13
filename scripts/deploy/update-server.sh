@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+CURRENT_STEP="initializing application update"
+on_error() {
+  local exit_code=$?
+  echo "::error title=Campus application update failed::$CURRENT_STEP failed at line ${BASH_LINENO[0]} (exit $exit_code)." >&2
+  exit "$exit_code"
+}
+trap on_error ERR
+
 APP_NAME="${APP_NAME:-campus-platform}"
 APP_HOME="${APP_HOME:-/opt/campus-platform}"
 BACKEND_JAR="${BACKEND_JAR:-campus-backend.jar}"
@@ -46,9 +54,11 @@ rollback() {
 }
 
 echo "[$APP_NAME] updating backend jar"
+CURRENT_STEP="updating backend jar"
 cp "$release_dir/$BACKEND_JAR" "$APP_HOME/backend/app.jar"
 
 echo "[$APP_NAME] updating admin UI"
+CURRENT_STEP="updating admin UI"
 rm -rf "$release_dir/admin-dist"
 mkdir -p "$release_dir/admin-dist"
 tar -xzf "$release_dir/$ADMIN_DIST_TGZ" -C "$release_dir/admin-dist"
@@ -56,6 +66,7 @@ rm -rf "$APP_HOME/admin/dist"
 cp -R "$release_dir/admin-dist/dist" "$APP_HOME/admin/dist"
 
 echo "[$APP_NAME] restarting backend service: $BACKEND_SERVICE"
+CURRENT_STEP="restarting backend service"
 $SUDO systemctl restart "$BACKEND_SERVICE"
 
 healthy=false
@@ -68,6 +79,7 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$healthy" != "true" ]; then
+  CURRENT_STEP="rolling back after a failed backend health check"
   rollback
   exit 1
 fi
@@ -76,6 +88,7 @@ $SUDO systemctl status "$BACKEND_SERVICE" --no-pager -l
 
 if [ "$NGINX_RELOAD" = "true" ]; then
   echo "[$APP_NAME] reloading nginx"
+  CURRENT_STEP="reloading nginx"
   $SUDO nginx -t
   if ! $SUDO systemctl reload nginx; then
     $SUDO nginx -s reload
