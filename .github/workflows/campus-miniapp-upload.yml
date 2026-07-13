@@ -80,10 +80,13 @@ jobs:
 
           package_version="$(node -p "require('./package.json').version")"
           export WECHAT_UPLOAD_VERSION="${INPUT_VERSION:-$package_version}"
-          export WECHAT_UPLOAD_DESCRIPTION="${INPUT_DESCRIPTION:-GitHub ${GITHUB_SHA:0:7}}"
+          if [ -n "$INPUT_DESCRIPTION" ]; then
+            export WECHAT_UPLOAD_DESCRIPTION="$INPUT_DESCRIPTION"
+          else
+            export WECHAT_UPLOAD_DESCRIPTION="GitHub ${GITHUB_SHA:0:7}"
+          fi
           export WECHAT_UPLOAD_ROBOT="${INPUT_ROBOT:-1}"
           export WECHAT_PRIVATE_KEY_PATH="$private_key_path"
 
           npm install --no-save --ignore-scripts miniprogram-ci@2.1.31
           node scripts/upload-wechat.cjs
-
