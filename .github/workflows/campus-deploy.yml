@@ -8,6 +8,7 @@ on:
       - '.github/workflows/campus-deploy.yml'
       - 'scripts/deploy/**'
       - 'campus-platform/pom.xml'
+      - 'campus-platform/yudao-dependencies/**'
       - 'campus-platform/yudao-server/**'
       - 'campus-platform/yudao-framework/**'
       - 'campus-platform/yudao-module-*/**'
