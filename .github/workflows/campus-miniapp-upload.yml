@@ -1,0 +1,89 @@
+name: Campus Miniapp Upload
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/campus-miniapp-upload.yml'
+      - 'campus-miniapp/env/.env.production'
+      - 'campus-miniapp/package.json'
+      - 'campus-miniapp/package-lock.json'
+      - 'campus-miniapp/scripts/upload-wechat.cjs'
+      - 'campus-miniapp/src/**'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Mini program version, for example 2.1.0
+        required: false
+        type: string
+      description:
+        description: Upload description
+        required: false
+        type: string
+      robot:
+        description: WeChat CI robot number (1-30)
+        required: false
+        default: '1'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: campus-miniapp-upload
+  cancel-in-progress: true
+
+jobs:
+  upload:
+    name: Build and upload WeChat miniapp
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: campus-miniapp
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: campus-miniapp/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production miniapp
+        run: npm run build:mp-weixin
+
+      - name: Upload development version to WeChat
+        env:
+          WECHAT_MINIPROGRAM_PRIVATE_KEY: ${{ secrets.WECHAT_MINIPROGRAM_PRIVATE_KEY }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_DESCRIPTION: ${{ inputs.description }}
+          INPUT_ROBOT: ${{ inputs.robot }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "$WECHAT_MINIPROGRAM_PRIVATE_KEY" ]; then
+            echo "::warning title=WeChat upload skipped::Repository secret WECHAT_MINIPROGRAM_PRIVATE_KEY is not configured. The production package was built, but no code was uploaded to WeChat."
+            exit 0
+          fi
+
+          private_key_path="$RUNNER_TEMP/private.wx3141ca27b55b0b9c.key"
+          printf '%s\n' "$WECHAT_MINIPROGRAM_PRIVATE_KEY" > "$private_key_path"
+          chmod 600 "$private_key_path"
+
+          package_version="$(node -p "require('./package.json').version")"
+          export WECHAT_UPLOAD_VERSION="${INPUT_VERSION:-$package_version}"
+          export WECHAT_UPLOAD_DESCRIPTION="${INPUT_DESCRIPTION:-GitHub ${GITHUB_SHA:0:7}}"
+          export WECHAT_UPLOAD_ROBOT="${INPUT_ROBOT:-1}"
+          export WECHAT_PRIVATE_KEY_PATH="$private_key_path"
+
+          npm install --no-save --ignore-scripts miniprogram-ci@2.1.31
+          node scripts/upload-wechat.cjs
+
