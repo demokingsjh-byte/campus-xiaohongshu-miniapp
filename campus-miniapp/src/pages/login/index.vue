@@ -34,6 +34,18 @@ function fillForm() {
   form.gender = user.gender || form.gender;
 }
 
+function syncTenantFromProfile() {
+  const matchedTenant = campusTenants.find(item => item.name === userStore.userInfo?.schoolName);
+  if (matchedTenant)
+    tenantStore.selectTenant(matchedTenant);
+}
+
+function returnToPreviousPage(delay = 0) {
+  setTimeout(() => {
+    uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/about/index' }) });
+  }, delay);
+}
+
 onLoad(async (query) => {
   editing.value = query?.mode === 'edit';
   if (!editing.value)
@@ -63,6 +75,12 @@ async function loginDemo() {
     if (!success)
       throw new Error('未完成微信登录');
     fillForm();
+    if (userStore.profileCompleted) {
+      syncTenantFromProfile();
+      uni.showToast({ title: '登录成功', icon: 'success' });
+      returnToPreviousPage(450);
+      return;
+    }
     step.value = 'profile';
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error || '');
@@ -106,9 +124,7 @@ async function finishProfile() {
   loading.value = true;
   try {
     await userStore.updateProfile(form);
-    const matchedTenant = campusTenants.find(item => item.name === form.schoolName);
-    if (matchedTenant)
-      tenantStore.selectTenant(matchedTenant);
+    syncTenantFromProfile();
     step.value = 'done';
   } catch {
     uni.showToast({ title: '资料保存失败，请稍后重试', icon: 'none' });
@@ -124,12 +140,7 @@ function selectSchool(event: any) {
   form.campusName = form.schoolName === '吉首大学' ? '吉首校区' : '主校区';
 }
 function finish() {
-  setTimeout(() => {
-    if (editing.value)
-      uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/about/index' }) });
-    else
-      uni.switchTab({ url: '/pages/about/index' });
-  }, 500);
+  returnToPreviousPage(500);
 }
 
 function openPolicy(type: 'privacy' | 'agreement') {

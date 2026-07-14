@@ -65,6 +65,17 @@ export const useUserStore = defineStore('UserStore', () => {
   }
 
   const loggedIn = computed(() => !!token.value);
+  const profileCompleted = computed(() => {
+    const user = userInfo.value;
+    return Boolean(
+      user?.avatar
+      && user.nickname
+      && user.nickname !== '校园体验用户'
+      && user.schoolName
+      && user.campusName
+      && user.grade,
+    );
+  });
 
   const { send: sendLogin } = useRequest(loginApi, { immediate: false });
   async function login(params: LoginParams) {
@@ -137,6 +148,7 @@ export const useUserStore = defineStore('UserStore', () => {
   return {
     userInfo,
     loggedIn,
+    profileCompleted,
     login,
     logout,
     getUserInfo,
