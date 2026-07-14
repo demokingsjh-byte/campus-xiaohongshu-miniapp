@@ -193,16 +193,34 @@ function openPolicy(type: 'privacy' | 'agreement') {
     </view>
     <view v-if="step === 'login'" class="login-content">
       <view class="logo">
-        云
+        <image src="/static/icons/mine/cloud.svg" mode="aspectFit" />
       </view><view class="title">
         欢迎来到云点校园
       </view><view class="subtitle">
         同校同学的真实生活社区
       </view>
       <view class="feature-list">
-        <view><text>♻</text><span><b>闲置好物，就近交易</b><i>同校自提更放心</i></span></view>
-        <view><text>🙌</text><span><b>校园互助，及时回应</b><i>问题总有同学懂</i></span></view>
-        <view><text>🎉</text><span><b>活动与新鲜事</b><i>不错过校园每个瞬间</i></span></view>
+        <view>
+          <view class="feature-icon">
+            <image src="/static/icons/login/trade.svg" mode="aspectFit" />
+          </view><span>
+            <b>闲置好物，就近交易</b><i>只看同校信息，见面自提更安心</i>
+          </span>
+        </view>
+        <view>
+          <view class="feature-icon">
+            <image src="/static/icons/login/help.svg" mode="aspectFit" />
+          </view><span>
+            <b>校园互助，及时回应</b><i>生活难题，总有附近同学懂</i>
+          </span>
+        </view>
+        <view>
+          <view class="feature-icon">
+            <image src="/static/icons/login/event.svg" mode="aspectFit" />
+          </view><span>
+            <b>活动与校园新鲜事</b><i>不错过身边每一个精彩瞬间</i>
+          </span>
+        </view>
       </view>
       <button class="wechat-btn" :disabled="loading" @click="loginDemo">
         <view class="button-inner">
@@ -302,9 +320,11 @@ function openPolicy(type: 'privacy' | 'agreement') {
 
 <style lang="scss" scoped>
 .login-page {
+  position: relative;
   min-height: 100vh;
   padding: 0 38rpx 44rpx;
-  background: var(--yd-paper);
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 18%, rgba(10, 132, 255, 0.1), transparent 34%), var(--yd-paper);
 }
 .login-status {
   height: calc(28rpx + env(safe-area-inset-top));
@@ -334,7 +354,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
 }
 .login-content,
 .done-content {
-  padding-top: 20rpx;
+  padding-top: 28rpx;
   text-align: center;
 }
 .logo {
@@ -345,11 +365,13 @@ function openPolicy(type: 'privacy' | 'agreement') {
   height: 96rpx;
   margin: 0 auto;
   border-radius: 32rpx 32rpx 32rpx 9rpx;
-  color: #fff;
-  background: var(--yd-green);
-  box-shadow: 10rpx 12rpx 0 #c9dfd6;
-  font-size: 42rpx;
-  font-weight: 900;
+  border: 1rpx solid rgba(10, 132, 255, 0.16);
+  background: linear-gradient(145deg, #fff, #eaf5ff);
+  box-shadow: 0 18rpx 38rpx rgba(10, 132, 255, 0.2);
+}
+.logo image {
+  width: 56rpx;
+  height: 56rpx;
 }
 .title {
   margin-top: 24rpx;
@@ -369,18 +391,19 @@ function openPolicy(type: 'privacy' | 'agreement') {
   display: flex;
   flex-direction: column;
   gap: 0;
-  margin-top: 38rpx;
+  margin-top: 42rpx;
   overflow: hidden;
   border: 1rpx solid rgba(255, 255, 255, 0.72);
-  border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.68);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 18rpx 44rpx rgba(33, 50, 86, 0.085);
   text-align: left;
 }
 .feature-list > view {
   display: flex;
   align-items: center;
-  padding: 16rpx 20rpx;
+  min-height: 116rpx;
+  padding: 18rpx 22rpx;
   border: 0;
   border-bottom: 1rpx solid rgba(60, 60, 67, 0.1);
   border-radius: 0;
@@ -390,28 +413,36 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .feature-list > view:last-child {
   border-bottom: 0;
 }
-.feature-list > view > text {
+.feature-icon {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 60rpx;
-  height: 60rpx;
-  border-radius: 14rpx 14rpx 14rpx 4rpx;
-  background: var(--yd-mint);
-  font-size: 29rpx;
+  width: 72rpx;
+  height: 72rpx;
+  border: 1rpx solid rgba(10, 132, 255, 0.1);
+  border-radius: 20rpx;
+  background: linear-gradient(145deg, #f4faff, #e3f1ff);
+}
+.feature-icon image {
+  width: 40rpx;
+  height: 40rpx;
 }
 .feature-list span {
   display: flex;
   flex-direction: column;
-  margin-left: 18rpx;
+  margin-left: 20rpx;
 }
 .feature-list b {
-  font-size: 24rpx;
+  color: var(--yd-ink);
+  font-size: 26rpx;
+  line-height: 1.3;
 }
 .feature-list i {
-  margin-top: 5rpx;
+  margin-top: 7rpx;
   color: #8e9894;
-  font-size: 19rpx;
+  font-size: 20rpx;
+  line-height: 1.4;
   font-style: normal;
 }
 .wechat-btn {
@@ -709,7 +740,6 @@ function openPolicy(type: 'privacy' | 'agreement') {
   backdrop-filter: blur(28rpx) saturate(155%);
   -webkit-backdrop-filter: blur(28rpx) saturate(155%);
 }
-.logo,
 .done-icon {
   border-radius: 30rpx;
   background: var(--yd-green);
@@ -727,7 +757,6 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .profile-form {
   border-radius: 24rpx;
 }
-.feature-list > view > text,
 .avatar-upload > view,
 .picker,
 .profile-form input {
