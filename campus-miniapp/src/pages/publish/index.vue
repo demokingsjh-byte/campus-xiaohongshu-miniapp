@@ -246,7 +246,7 @@ function reset() {
     <view class="publish-head">
       <view>
         <view class="head-title">
-          {{ schoolName }}
+          发布到{{ schoolName }}
         </view>
         <view class="head-subtitle">
           发布到当前校园 · 真实信息更容易获得回应
@@ -478,10 +478,13 @@ function reset() {
   background: var(--yd-paper);
 }
 .publish-head {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 4rpx 4rpx 16rpx;
+  justify-content: center;
+  min-height: 90rpx;
+  padding: 4rpx 150rpx 16rpx;
+  text-align: center;
 }
 .head-title {
   color: var(--yd-ink);
@@ -495,9 +498,12 @@ function reset() {
   font-size: 21rpx;
 }
 .draft-entry {
+  position: absolute;
+  right: 4rpx;
   display: flex;
   align-items: center;
   gap: 8rpx;
+  min-height: 72rpx;
   padding: 12rpx 16rpx;
   border: 1rpx solid var(--yd-line);
   border-radius: 999rpx;
@@ -612,8 +618,8 @@ function reset() {
   display: flex;
   align-items: center;
   min-width: 0;
-  min-height: 92rpx;
-  padding: 12rpx;
+  min-height: 108rpx;
+  padding: 14rpx;
   border: 1rpx solid var(--yd-line);
   border-radius: 16rpx;
   color: var(--yd-muted);

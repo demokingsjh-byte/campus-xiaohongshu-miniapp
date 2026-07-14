@@ -14,9 +14,9 @@ page {
   --yd-coral-soft: rgba(255, 107, 95, 0.11);
   --yd-yellow: #ffd60a;
   --yd-glass-shadow: 0 18rpx 48rpx rgba(32, 47, 78, 0.1);
-  --yd-control-compact: 60rpx;
-  --yd-control-regular: 76rpx;
-  --yd-control-large: 88rpx;
+  --yd-control-compact: 68rpx;
+  --yd-control-regular: 88rpx;
+  --yd-control-large: 100rpx;
   --yd-control-radius: 18rpx;
   color: var(--yd-ink);
   background: var(--yd-paper);

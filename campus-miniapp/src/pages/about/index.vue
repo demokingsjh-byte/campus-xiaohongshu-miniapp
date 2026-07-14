@@ -150,14 +150,15 @@ function handleMenu(action: string, requiresLogin: boolean) {
   background: var(--yd-paper);
 }
 .mine-status {
-  height: calc(48rpx + env(safe-area-inset-top));
+  height: calc(34rpx + env(safe-area-inset-top));
 }
 .mine-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 4rpx 0 18rpx 2rpx;
-  font-size: 38rpx;
+  justify-content: center;
+  height: 84rpx;
+  padding: 0 0 14rpx;
+  font-size: 32rpx;
   font-weight: 900;
 }
 .message {
@@ -252,7 +253,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 .guest-card button {
   grid-column: 1 / -1;
   width: 100%;
-  height: 76rpx;
+  height: var(--yd-control-regular);
   margin: 22rpx 0 0;
   padding: 0 28rpx;
   border-radius: var(--yd-control-radius);
@@ -335,6 +336,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   display: flex;
   align-items: center;
   margin-top: 16rpx;
+  min-height: 104rpx;
   padding: 19rpx 22rpx;
 }
 .pass-icon {
@@ -391,7 +393,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 .menu-row {
   display: flex;
   align-items: center;
-  height: 84rpx;
+  height: 96rpx;
   padding: 0 22rpx;
   border-bottom: 1rpx solid #efebe5;
 }

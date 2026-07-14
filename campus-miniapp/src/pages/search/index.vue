@@ -191,6 +191,12 @@ onLoad(async (query) => {
   padding: 10rpx 20rpx 18rpx;
 }
 .back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 72rpx;
+  width: 72rpx;
+  height: 72rpx;
   font-size: 48rpx;
 }
 .search-input {
@@ -220,6 +226,11 @@ onLoad(async (query) => {
   background: #aeb6b2;
 }
 .search-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72rpx;
+  height: 72rpx;
   color: var(--yd-green-dark);
   font-size: 24rpx;
   font-weight: 700;

@@ -11,6 +11,7 @@ const agreed = ref(hasCurrentPrivacyConsent());
 const loading = ref(false);
 const loginError = ref('');
 const avatarUploading = ref(false);
+const phoneBinding = ref(false);
 const userStore = useUserStore();
 const tenantStore = useTenantStore();
 const gradeOptions = ['2026级', '2025级', '2024级', '2023级', '2022级及以前', '研究生'];
@@ -21,6 +22,20 @@ const initialTenant = tenantStore.currentTenant && campusTenants.some(item => it
 const form = reactive({ avatar: '', nickname: '', schoolName: initialTenant.name, campusName: initialTenant.name === '吉首大学' ? '吉首校区' : '主校区', grade: '2023级', gender: '不公开', roleType: 'student' });
 const schoolOptions = campusTenants.map(item => item.name);
 const campusOptions = computed(() => form.schoolName === '吉首大学' ? ['吉首校区'] : ['主校区']);
+const mobileBound = computed(() => Boolean(userStore.userInfo?.mobileBound || userStore.userInfo?.mobile));
+const mobileLabel = computed(() => {
+  const mobile = userStore.userInfo?.mobile || '';
+  return mobile ? `${mobile.slice(0, 3)}****${mobile.slice(-4)}` : '用于账号安全与必要联系';
+});
+const navigationTitle = computed(() => {
+  if (editing.value)
+    return '编辑资料';
+  if (step.value === 'profile')
+    return '完善校园资料';
+  if (step.value === 'done')
+    return '资料已完成';
+  return '微信登录';
+});
 
 function fillForm() {
   const user = userStore.userInfo;
@@ -75,7 +90,7 @@ async function loginDemo() {
     if (!success)
       throw new Error('未完成微信登录');
     fillForm();
-    if (userStore.profileCompleted) {
+    if (userStore.profileCompleted && mobileBound.value) {
       syncTenantFromProfile();
       uni.showToast({ title: '登录成功', icon: 'success' });
       returnToPreviousPage(450);
@@ -112,9 +127,30 @@ async function chooseAvatar(event: any) {
     avatarUploading.value = false;
   }
 }
+async function bindPhone(event: any) {
+  const phoneCode = event?.detail?.code;
+  if (!phoneCode) {
+    const denied = /deny|cancel/i.test(event?.detail?.errMsg || '');
+    uni.showToast({ title: denied ? '你已取消手机号授权' : '未获取到手机号授权信息', icon: 'none' });
+    return;
+  }
+  phoneBinding.value = true;
+  try {
+    await userStore.bindPhone(phoneCode);
+    uni.showToast({ title: '手机号已绑定', icon: 'success' });
+  } catch {
+    uni.showToast({ title: '手机号绑定失败，请重试', icon: 'none' });
+  } finally {
+    phoneBinding.value = false;
+  }
+}
 async function finishProfile() {
   if (!form.avatar) {
     uni.showToast({ title: '请选择微信头像', icon: 'none' });
+    return;
+  }
+  if (!mobileBound.value) {
+    uni.showToast({ title: '请先授权微信手机号', icon: 'none' });
     return;
   }
   if (!form.nickname || !form.schoolName || !form.campusName) {
@@ -150,8 +186,10 @@ function openPolicy(type: 'privacy' | 'agreement') {
 
 <template>
   <view class="login-page">
-    <view class="login-status" /><view class="back" @click="uni.navigateBack()">
-      ‹
+    <view class="login-status" /><view class="login-nav">
+      <view class="back" @click="uni.navigateBack()">
+        ‹
+      </view><text>{{ navigationTitle }}</text>
     </view>
     <view v-if="step === 'login'" class="login-content">
       <view class="logo">
@@ -214,7 +252,16 @@ function openPolicy(type: 'privacy' | 'agreement') {
         <image v-if="form.avatar" :src="form.avatar" mode="aspectFill" />
         <view v-else>
           云
-        </view><text>{{ form.avatar ? '更换微信头像' : '选择微信头像' }}</text>
+        </view><text>{{ form.avatar ? '更换微信头像' : '点击选择微信头像' }}</text>
+      </button>
+      <button class="phone-bind" open-type="getPhoneNumber" :loading="phoneBinding" @getphonenumber="bindPhone">
+        <view class="phone-icon">
+          手
+        </view><view class="phone-copy">
+          <text>{{ mobileBound ? '微信手机号已绑定' : '授权微信手机号' }}</text><text>{{ mobileLabel }}</text>
+        </view><text class="phone-state">
+          {{ mobileBound ? '已完成' : '去授权' }}
+        </text>
       </button>
       <view class="profile-form">
         <label>昵称<input v-model="form.nickname" type="nickname" placeholder="请输入微信昵称"></label>
@@ -263,19 +310,31 @@ function openPolicy(type: 'privacy' | 'agreement') {
   height: calc(28rpx + env(safe-area-inset-top));
 }
 .back {
+  position: absolute;
+  left: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 66rpx;
-  height: 66rpx;
+  width: 80rpx;
+  height: 80rpx;
   border: 1rpx solid var(--yd-line);
   border-radius: 14rpx;
   background: var(--yd-card);
   font-size: 46rpx;
 }
+.login-nav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 84rpx;
+  color: var(--yd-ink);
+  font-size: 30rpx;
+  font-weight: 800;
+}
 .login-content,
 .done-content {
-  padding-top: 34rpx;
+  padding-top: 20rpx;
   text-align: center;
 }
 .logo {
@@ -508,12 +567,62 @@ function openPolicy(type: 'privacy' | 'agreement') {
   justify-content: center;
   width: 100%;
   min-height: 150rpx;
-  margin: 32rpx 0;
+  margin: 24rpx 0 16rpx;
   padding: 0;
   color: var(--yd-green);
   font-size: 21rpx;
   line-height: 1.4;
   background: transparent;
+}
+.phone-bind {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 104rpx;
+  margin: 0 0 18rpx;
+  padding: 14rpx 18rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.72);
+  border-radius: 20rpx;
+  color: var(--yd-ink);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 12rpx 30rpx rgba(33, 50, 86, 0.07);
+  line-height: 1.35;
+  text-align: left;
+}
+.phone-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 18rpx;
+  color: var(--yd-green-dark);
+  background: rgba(10, 132, 255, 0.1);
+  font-size: 21rpx;
+  font-weight: 800;
+}
+.phone-copy {
+  display: flex;
+  min-width: 0;
+  margin-left: 14rpx;
+  flex: 1;
+  flex-direction: column;
+}
+.phone-copy text:first-child {
+  font-size: 24rpx;
+  font-weight: 750;
+}
+.phone-copy text:last-child {
+  margin-top: 4rpx;
+  color: #8d9693;
+  font-size: 19rpx;
+}
+.phone-state {
+  flex: 0 0 auto;
+  color: var(--yd-green);
+  font-size: 20rpx;
+  font-weight: 700;
 }
 .avatar-upload > view,
 .avatar-upload > image {
