@@ -48,6 +48,9 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
   const currentPost = ref<CampusPost | null>(null);
   const loading = ref(false);
   const allPosts = computed(() => posts.value);
+  let postsRequest: Promise<CampusPost[]> | null = null;
+  let postsRequestKey = '';
+  let latestPostsRequestId = 0;
 
   function replacePost(updated: CampusPost) {
     const replace = (list: CampusPost[]) => {
@@ -62,15 +65,30 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
       currentPost.value = updated;
   }
 
-  async function loadPosts(params: CampusPostPageParams = {}) {
+  function loadPosts(params: CampusPostPageParams = {}) {
+    const requestParams = { pageNo: 1, pageSize: 100, ...params };
+    const requestKey = JSON.stringify(requestParams);
+    if (postsRequest && postsRequestKey === requestKey)
+      return postsRequest;
+
+    const requestId = ++latestPostsRequestId;
     loading.value = true;
-    try {
-      const page = await getCampusPostPage({ pageNo: 1, pageSize: 100, ...params });
-      posts.value = page.list || [];
-      return posts.value;
-    } finally {
-      loading.value = false;
-    }
+    const request = (async () => {
+      const page = await getCampusPostPage(requestParams);
+      const nextPosts = page.list || [];
+      if (requestId === latestPostsRequestId)
+        posts.value = nextPosts;
+      return nextPosts;
+    })();
+    postsRequest = request;
+    postsRequestKey = requestKey;
+    return request.finally(() => {
+      if (postsRequest === request) {
+        postsRequest = null;
+        postsRequestKey = '';
+        loading.value = false;
+      }
+    });
   }
 
   async function loadMyPosts() {

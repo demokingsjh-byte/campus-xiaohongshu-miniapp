@@ -69,6 +69,29 @@ public class S3FileClientTest {
     }
 
     @Test
+    public void testPresignGetUrl_privateAccess_refreshExpiredDomainUrl() {
+        S3FileClientConfig config = new S3FileClientConfig();
+        config.setAccessKey("admin");
+        config.setAccessSecret("password");
+        config.setBucket("yudao");
+        config.setDomain("http://127.0.0.1:9000/yudao");
+        config.setEndpoint("http://127.0.0.1:9000");
+        config.setEnablePathStyleAccess(true);
+        config.setEnablePublicAccess(false);
+        S3FileClient client = new S3FileClient(0L, config);
+        client.init();
+
+        String expiredUrl = "http://127.0.0.1:9000/yudao/campus/post/demo.jpg"
+                + "?X-Amz-Date=20260713T000000Z&X-Amz-Signature=expired";
+        String result = client.presignGetUrl(expiredUrl, 300);
+
+        assertTrue(result.contains("/yudao/campus/post/demo.jpg"));
+        assertTrue(result.contains("X-Amz-Signature="));
+        assertFalse(result.contains("X-Amz-Signature=expired"));
+        assertFalse(result.contains("X-Amz-Date=20260713T000000Z"));
+    }
+
+    @Test
     @Disabled // MinIO，如果要集成测试，可以注释本行
     public void testMinIO() throws Exception {
         S3FileClientConfig config = new S3FileClientConfig();

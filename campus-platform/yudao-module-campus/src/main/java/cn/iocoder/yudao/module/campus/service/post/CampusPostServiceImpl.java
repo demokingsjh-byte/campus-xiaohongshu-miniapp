@@ -3,10 +3,12 @@ package cn.iocoder.yudao.module.campus.service.post;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.http.HttpUtils;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
+import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -49,9 +51,11 @@ public class CampusPostServiceImpl implements CampusPostService {
     }
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final FileApi fileApi;
 
-    public CampusPostServiceImpl(NamedParameterJdbcTemplate jdbcTemplate) {
+    public CampusPostServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi) {
         this.jdbcTemplate = jdbcTemplate;
+        this.fileApi = fileApi;
     }
 
     @Override
@@ -87,7 +91,10 @@ public class CampusPostServiceImpl implements CampusPostService {
                 .addValue("contact", trimToEmpty(reqVO.getContact()))
                 .addValue("anonymous", Boolean.TRUE.equals(reqVO.getAnonymous()))
                 .addValue("tagsJson", JsonUtils.toJsonString(defaultList(reqVO.getTags())))
-                .addValue("imagesJson", JsonUtils.toJsonString(defaultList(reqVO.getImages())))
+                .addValue("imagesJson", JsonUtils.toJsonString(defaultList(reqVO.getImages()).stream()
+                        .filter(StrUtil::isNotBlank)
+                        .map(HttpUtils::removeUrlQuery)
+                        .collect(Collectors.toList())))
                 .addValue("operator", String.valueOf(userId));
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update("INSERT INTO campus_post (user_id, tenant_id, school_name, campus_name, type, channel,"
@@ -260,7 +267,9 @@ public class CampusPostServiceImpl implements CampusPostService {
         boolean anonymous = toBoolean(row.get("anonymous"));
         String nickname = StrUtil.blankToDefault(value(row, "user_nickname"), "校园同学");
         String author = anonymous ? "同校同学" : nickname;
-        List<String> images = parseStringList(value(row, "images_json"));
+        List<String> images = parseStringList(value(row, "images_json")).stream()
+                .map(this::refreshFileUrl)
+                .collect(Collectors.toList());
         vo.setId(id);
         vo.setTenantId(toLongObject(row.get("tenant_id")));
         vo.setUserId(toLongObject(row.get("user_id")));
@@ -269,7 +278,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         vo.setTitle(value(row, "title"));
         vo.setContent(value(row, "content"));
         vo.setAuthor(author);
-        vo.setAvatar(anonymous ? "" : value(row, "user_avatar"));
+        vo.setAvatar(anonymous ? "" : refreshFileUrl(value(row, "user_avatar")));
         vo.setAvatarText(StrUtil.isBlank(author) ? "校" : author.substring(0, 1));
         vo.setSchool(value(row, "school_name"));
         vo.setCampusName(value(row, "campus_name"));
@@ -296,6 +305,22 @@ public class CampusPostServiceImpl implements CampusPostService {
         vo.setOwner(loginUserId != null && loginUserId.equals(vo.getUserId()));
         vo.setCreateTime(toLocalDateTime(row.get("create_time")));
         return vo;
+    }
+
+    /**
+     * Refreshes private-storage URLs on every API response. Historical rows may contain an expired
+     * query signature; the file client strips it and signs the underlying object again.
+     */
+    private String refreshFileUrl(String url) {
+        if (StrUtil.isBlank(url)) {
+            return "";
+        }
+        try {
+            return fileApi.presignGetUrl(url, null);
+        } catch (RuntimeException ex) {
+            // Keep the feed available when a legacy or external image cannot be signed.
+            return url;
+        }
     }
 
     private Map<String, Object> getUser(Long userId) {

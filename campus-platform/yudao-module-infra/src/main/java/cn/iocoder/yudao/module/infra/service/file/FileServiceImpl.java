@@ -96,10 +96,11 @@ public class FileServiceImpl implements FileService {
         FileClient client = fileConfigService.getMasterFileClient();
         Assert.notNull(client, "客户端(master) 不能为空");
         String url = client.upload(content, path, type);
+        String persistentUrl = HttpUtils.removeUrlQuery(url);
 
         // 3. 保存到数据库
         fileMapper.insert(new FileDO().setConfigId(client.getId())
-                .setName(name).setPath(path).setUrl(url)
+                .setName(name).setPath(path).setUrl(persistentUrl)
                 .setType(type).setSize((long) content.length));
         return url;
     }

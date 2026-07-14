@@ -1,12 +1,12 @@
 import type { API } from '@/services/model/baseModel';
+import AdapterUniapp from '@alova/adapter-uniapp';
+import { createAlova } from 'alova';
+import { assign } from 'lodash-es';
 import { ContentTypeEnum, ResultEnum } from '@/enums/httpEnum';
 import { mockAdapter } from '@/mock';
 import { getAuthorization } from '@/utils/auth';
 import { getBaseUrl, isUseMock } from '@/utils/env';
 import { getCampusTenantId } from '@/utils/tenant';
-import AdapterUniapp from '@alova/adapter-uniapp';
-import { createAlova } from 'alova';
-import { assign } from 'lodash-es';
 import { handleHttpStatus, handleLogicError } from './faultTolerance';
 
 const BASE_URL = getBaseUrl();
@@ -27,7 +27,7 @@ const alovaInstance = createAlova({
     mockRequest: isUseMock() ? mockAdapter : undefined, // APP 平台无法使用mock
     /* #endif */
   }),
-  timeout: 5000,
+  timeout: 12000,
   beforeRequest: async (method) => {
     method.config.headers = assign(method.config.headers, ContentType);
     const { config } = method;
@@ -77,8 +77,9 @@ const alovaInstance = createAlova({
     /**
      * 请求失败的拦截器，请求错误时将会进入该拦截器。
      */
-    onError: async (err) => {
-      throw new Error(`请求失败：${err}`);
+    onError: async (err, method) => {
+      const requestUrl = `${method.baseURL || ''}${method.url || ''}`;
+      throw new Error(`[${method.type}] ${requestUrl}: ${err instanceof Error ? err.message : String(err)}`);
     },
     /**
      * 请求完成的拦截器, 无论请求成功或失败都会进入该拦截器
