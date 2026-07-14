@@ -203,23 +203,35 @@ function openPolicy(type: 'privacy' | 'agreement') {
         <view>
           <view class="feature-icon">
             <image src="/static/icons/login/trade.svg" mode="aspectFit" />
-          </view><span>
-            <b>闲置好物，就近交易</b><i>只看同校信息，见面自提更安心</i>
-          </span>
+          </view><view class="feature-copy">
+            <text class="feature-title">
+              闲置好物，就近交易
+            </text><text class="feature-desc">
+              只看同校信息，见面自提更安心
+            </text>
+          </view>
         </view>
         <view>
           <view class="feature-icon">
             <image src="/static/icons/login/help.svg" mode="aspectFit" />
-          </view><span>
-            <b>校园互助，及时回应</b><i>生活难题，总有附近同学懂</i>
-          </span>
+          </view><view class="feature-copy">
+            <text class="feature-title">
+              校园互助，及时回应
+            </text><text class="feature-desc">
+              生活难题，总有附近同学懂
+            </text>
+          </view>
         </view>
         <view>
           <view class="feature-icon">
             <image src="/static/icons/login/event.svg" mode="aspectFit" />
-          </view><span>
-            <b>活动与校园新鲜事</b><i>不错过身边每一个精彩瞬间</i>
-          </span>
+          </view><view class="feature-copy">
+            <text class="feature-title">
+              活动与校园新鲜事
+            </text><text class="feature-desc">
+              不错过身边每一个精彩瞬间
+            </text>
+          </view>
         </view>
       </view>
       <button class="wechat-btn" :disabled="loading" @click="loginDemo">
@@ -418,8 +430,8 @@ function openPolicy(type: 'privacy' | 'agreement') {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
+  width: var(--yd-icon-large);
+  height: var(--yd-icon-large);
   border: 1rpx solid rgba(10, 132, 255, 0.1);
   border-radius: 20rpx;
   background: linear-gradient(145deg, #f4faff, #e3f1ff);
@@ -428,22 +440,24 @@ function openPolicy(type: 'privacy' | 'agreement') {
   width: 40rpx;
   height: 40rpx;
 }
-.feature-list span {
+.feature-copy {
   display: flex;
+  min-width: 0;
+  flex: 1;
   flex-direction: column;
-  margin-left: 20rpx;
+  margin-left: var(--yd-icon-gap);
 }
-.feature-list b {
+.feature-title {
   color: var(--yd-ink);
   font-size: 26rpx;
+  font-weight: 750;
   line-height: 1.3;
 }
-.feature-list i {
-  margin-top: 7rpx;
+.feature-desc {
+  margin-top: var(--yd-copy-gap);
   color: #8e9894;
   font-size: 20rpx;
   line-height: 1.4;
-  font-style: normal;
 }
 .wechat-btn {
   display: flex;

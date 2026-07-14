@@ -18,6 +18,13 @@ page {
   --yd-control-regular: 88rpx;
   --yd-control-large: 100rpx;
   --yd-control-radius: 18rpx;
+  --yd-icon-compact: 56rpx;
+  --yd-icon-regular: 64rpx;
+  --yd-icon-large: 72rpx;
+  --yd-icon-glyph: 36rpx;
+  --yd-icon-gap: 18rpx;
+  --yd-copy-gap: 6rpx;
+  --yd-touch-row: 104rpx;
   color: var(--yd-ink);
   background: var(--yd-paper);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;

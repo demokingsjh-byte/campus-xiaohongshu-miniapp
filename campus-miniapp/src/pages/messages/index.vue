@@ -142,7 +142,8 @@ function markSingle(item: typeof messages[number]) {
   position: relative;
   display: flex;
   align-items: flex-start;
-  padding: 24rpx;
+  min-height: 128rpx;
+  padding: 22rpx 24rpx;
   margin-bottom: 12rpx;
   border: 1rpx solid var(--yd-line);
   border-radius: 16rpx;
@@ -156,8 +157,8 @@ function markSingle(item: typeof messages[number]) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 84rpx;
-  height: 84rpx;
+  width: var(--yd-icon-large);
+  height: var(--yd-icon-large);
   border-radius: 17rpx 17rpx 17rpx 5rpx;
   color: var(--yd-green-dark);
   font-size: 26rpx;
@@ -166,7 +167,7 @@ function markSingle(item: typeof messages[number]) {
 .message-main {
   flex: 1;
   min-width: 0;
-  margin-left: 18rpx;
+  margin-left: var(--yd-icon-gap);
 }
 .message-title {
   font-size: 26rpx;
@@ -174,7 +175,7 @@ function markSingle(item: typeof messages[number]) {
 }
 .message-content {
   overflow: hidden;
-  margin-top: 8rpx;
+  margin-top: var(--yd-copy-gap);
   color: #65706c;
   font-size: 23rpx;
   text-overflow: ellipsis;

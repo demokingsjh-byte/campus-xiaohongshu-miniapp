@@ -315,7 +315,7 @@ function reportPost() {
 .author-main {
   flex: 1;
   min-width: 0;
-  margin-left: 16rpx;
+  margin-left: var(--yd-icon-gap);
   font-size: 27rpx;
   font-weight: 800;
 }
@@ -338,7 +338,7 @@ function reportPost() {
 }
 .author-sub {
   display: block;
-  margin-top: 6rpx;
+  margin-top: var(--yd-copy-gap);
   color: #8a9490;
   font-size: 20rpx;
   font-weight: 400;
@@ -442,7 +442,7 @@ function reportPost() {
 .comment-main {
   flex: 1;
   min-width: 0;
-  margin-left: 14rpx;
+  margin-left: 16rpx;
 }
 .comment-name {
   font-size: 23rpx;
@@ -455,7 +455,7 @@ function reportPost() {
   font-weight: 400;
 }
 .comment-content {
-  margin-top: 7rpx;
+  margin-top: var(--yd-copy-gap);
   color: #505c57;
   font-size: 24rpx;
   line-height: 1.55;

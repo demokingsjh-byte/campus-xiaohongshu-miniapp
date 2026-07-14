@@ -349,7 +349,7 @@ function deleteAccount() {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 104rpx;
+  min-height: var(--yd-touch-row);
   margin: 0;
   padding: 17rpx 22rpx;
   border: 0;
@@ -374,9 +374,9 @@ function deleteAccount() {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 58rpx;
-  height: 58rpx;
-  margin-right: 18rpx;
+  width: var(--yd-icon-regular);
+  height: var(--yd-icon-regular);
+  margin-right: var(--yd-icon-gap);
   border-radius: 18rpx;
   color: #fff;
   font-size: 22rpx;
@@ -409,7 +409,7 @@ function deleteAccount() {
   line-height: 1.35;
 }
 .row-main span {
-  margin-top: 5rpx;
+  margin-top: var(--yd-copy-gap);
   overflow: hidden;
   color: #858992;
   font-size: 20rpx;

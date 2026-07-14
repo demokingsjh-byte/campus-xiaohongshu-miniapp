@@ -347,9 +347,9 @@ function handleMenu(action: string, requiresLogin: boolean) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
-  margin-right: 16rpx;
+  width: var(--yd-icon-large);
+  height: var(--yd-icon-large);
+  margin-right: var(--yd-icon-gap);
   border-radius: 16rpx 16rpx 16rpx 5rpx;
   color: #fff;
   background: var(--yd-green-dark);
@@ -365,7 +365,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   font-weight: 800;
 }
 .pass-note {
-  margin-top: 5rpx;
+  margin-top: var(--yd-copy-gap);
   color: #8a9490;
   font-size: 20rpx;
 }
@@ -401,7 +401,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 .menu-row {
   display: flex;
   align-items: center;
-  height: 96rpx;
+  min-height: var(--yd-touch-row);
   padding: 0 22rpx;
   border-bottom: 1rpx solid #efebe5;
 }
@@ -412,8 +412,8 @@ function handleMenu(action: string, requiresLogin: boolean) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 58rpx;
-  height: 58rpx;
+  width: var(--yd-icon-regular);
+  height: var(--yd-icon-regular);
   border-radius: 18rpx;
   color: var(--yd-green-dark);
   background: var(--yd-mint);
@@ -421,12 +421,12 @@ function handleMenu(action: string, requiresLogin: boolean) {
   font-weight: 800;
 }
 .menu-icon image {
-  width: 34rpx;
-  height: 34rpx;
+  width: var(--yd-icon-glyph);
+  height: var(--yd-icon-glyph);
 }
 .menu-label {
   flex: 1;
-  margin-left: 16rpx;
+  margin-left: var(--yd-icon-gap);
   font-size: 26rpx;
   font-weight: 700;
 }

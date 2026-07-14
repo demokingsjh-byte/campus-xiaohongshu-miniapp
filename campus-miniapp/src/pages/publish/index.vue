@@ -45,25 +45,19 @@ const typeDetails: Record<string, { eyebrow: string, hint: string, placeholder: 
   lost: { eyebrow: '失物招领', hint: '避免公开证件号码等敏感信息', placeholder: '丢失或捡到的物品、时间、地点和辨认特征...', tags: ['急', '校园卡', '图书馆', '已交服务台', '求扩散'], modes: ['失物寻找', '物品招领'] },
   club: { eyebrow: '社团活动', hint: '活动时间、地点和报名方式要完整', placeholder: '活动主题、时间地点、适合人群、名额和报名方式...', tags: ['社团活动', '零基础', '免费', '周末', '招募中'], modes: ['线上报名', '现场参与'] },
 };
+const typeIcons: Record<string, string> = {
+  idle: '/static/icons/login/trade.svg',
+  help: '/static/icons/login/help.svg',
+  ride: '/static/icons/publish/ride.svg',
+  shop: '/static/icons/publish/shop.svg',
+  lost: '/static/icons/publish/lost.svg',
+  club: '/static/icons/login/event.svg',
+};
 
 const currentType = computed(() => campusPublishTypes.find(item => item.key === activeType.value)!);
 const currentDetail = computed(() => typeDetails[activeType.value]);
 const showPrice = computed(() => ['idle', 'ride', 'shop'].includes(activeType.value));
 const requiresImage = computed(() => ['idle', 'shop', 'lost'].includes(activeType.value));
-const completionScore = computed(() => {
-  let score = 0;
-  if (images.value.length)
-    score += 30;
-  if (form.title.trim().length >= 4)
-    score += 20;
-  if (form.content.trim().length >= 10)
-    score += 25;
-  if (form.tags.length)
-    score += 10;
-  if (form.contact.trim())
-    score += 5;
-  return Math.min(score, 100);
-});
 
 onLoad(() => {
   const draft = uni.getStorageSync('campus-publish-draft');
@@ -128,13 +122,6 @@ function validate() {
   errors.price = showPrice.value && form.price && Number(form.price) <= 0 ? '价格需要大于 0' : '';
   errors.agreement = agreed.value ? '' : '请先同意社区发布规范';
   return !Object.values(errors).some(Boolean);
-}
-function preview() {
-  if (!form.title.trim()) {
-    uni.showToast({ title: '先写一个标题再预览', icon: 'none' });
-    return;
-  }
-  uni.showModal({ title: '发布预览', content: `${currentType.value.title}\n${form.title}\n${form.price ? `¥${form.price}` : '免费 / 面议'} · ${form.location}`, showCancel: false });
 }
 function saveDraft() {
   uni.setStorageSync('campus-publish-draft', { ...form, images: images.value, activeType: activeType.value });
@@ -243,67 +230,24 @@ function reset() {
 
 <template>
   <view class="publish-page safe-bottom">
-    <view class="quality-card">
-      <view class="quality-copy">
-        <text>内容完成度</text><text>补充标题、描述与实拍后即可发布</text>
-      </view>
-      <view class="quality-actions">
-        <view class="quality-score">
-          {{ completionScore }}%
-        </view><view class="draft-entry" @click="saveDraft">
-          <view class="draft-icon" /><text>草稿</text>
-        </view>
-      </view>
-      <view class="quality-track">
-        <view :style="{ width: `${completionScore}%` }" />
-      </view>
-    </view>
-
     <view class="type-card card-block">
       <view class="block-head">
-        <text>选择发布类型</text><text>发布后不可修改</text>
+        <text>内容分类</text><text>选择最合适的一项</text>
       </view>
-      <view class="type-track">
-        <view v-for="item in campusPublishTypes" :key="item.key" class="type-item" :class="{ active: activeType === item.key }" @click="chooseType(item.key)">
-          <view class="type-symbol">
-            {{ item.icon }}
-          </view>
-          <view class="type-copy">
-            <text>{{ item.title }}</text><text>{{ item.desc }}</text>
-          </view>
-          <view class="type-check">
-            ✓
+      <scroll-view scroll-x class="type-scroll" :show-scrollbar="false">
+        <view class="type-track">
+          <view v-for="item in campusPublishTypes" :key="item.key" class="type-item" :class="{ active: activeType === item.key }" @click="chooseType(item.key)">
+            <image class="type-symbol" :src="typeIcons[item.key]" mode="aspectFit" /><text class="type-title">
+              {{ item.title }}
+            </text>
           </view>
         </view>
-      </view>
-      <view class="type-helper">
-        <text>{{ currentDetail.eyebrow }}</text><view>{{ currentDetail.hint }}</view>
-      </view>
+      </scroll-view>
     </view>
 
     <view class="content-card card-block">
-      <view class="block-head editor-head">
-        <text>标题与描述</text><text>先把重点说清楚</text>
-      </view>
-      <view class="title-editor">
-        <input v-model="form.title" maxlength="30" :class="{ invalid: errors.title }" :placeholder="`${currentType.title}，一句话说明重点`">
-        <text>{{ form.title.length }}/30</text>
-      </view>
-      <view v-if="errors.title" class="error">
-        {{ errors.title }}
-      </view>
-      <view class="editor-divider" />
-      <textarea v-model="form.content" maxlength="500" class="content-editor" :class="{ invalid: errors.content }" :placeholder="currentDetail.placeholder" />
-      <view class="content-tools">
-        <text>真实描述更容易获得回应</text><text>{{ form.content.length }}/500</text>
-      </view>
-      <view v-if="errors.content" class="error">
-        {{ errors.content }}
-      </view>
-
-      <view class="editor-divider" />
       <view class="block-head media-head">
-        <text>实拍图片</text><text>{{ images.length }}/9 · 首图作为封面</text>
+        <text>添加图片</text><text>{{ images.length }}/9 · 首图为封面</text>
       </view>
       <view class="uploader-grid">
         <view v-for="(image, index) in images" :key="image" class="image-item" @click="setCover(index)">
@@ -327,6 +271,23 @@ function reset() {
       </view>
       <view v-if="errors.images" class="error">
         {{ errors.images }}
+      </view>
+
+      <view class="editor-divider" />
+      <view class="title-editor">
+        <input v-model="form.title" maxlength="30" :class="{ invalid: errors.title }" placeholder="填写标题会更容易被看到">
+        <text>{{ form.title.length }}/30</text>
+      </view>
+      <view v-if="errors.title" class="error">
+        {{ errors.title }}
+      </view>
+      <view class="editor-divider compact-divider" />
+      <textarea v-model="form.content" maxlength="500" class="content-editor" :class="{ invalid: errors.content }" :placeholder="currentDetail.placeholder" />
+      <view class="content-tools">
+        <text>{{ currentDetail.hint }}</text><text>{{ form.content.length }}/500</text>
+      </view>
+      <view v-if="errors.content" class="error">
+        {{ errors.content }}
       </view>
 
       <view class="editor-divider" />
@@ -427,8 +388,8 @@ function reset() {
     <view class="bottom-spacer" />
 
     <view class="submit-bar">
-      <button class="preview-btn" @click="preview">
-        <view class="preview-icon" /><text>预览</text>
+      <button class="draft-btn" @click="saveDraft">
+        存草稿
       </button>
       <button class="publish-btn" :disabled="submitting" @click="submit">
         <view v-if="submitting" class="submit-spinner" /><text>
@@ -465,104 +426,16 @@ function reset() {
 <style lang="scss" scoped>
 .publish-page {
   min-height: 100vh;
-  padding: 12rpx 22rpx 0;
+  padding: 12rpx 20rpx 0;
   background: var(--yd-paper);
 }
-.draft-entry {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  min-height: 60rpx;
-  padding: 0 14rpx;
-  border: 1rpx solid var(--yd-line);
-  border-radius: 999rpx;
-  color: var(--yd-green-dark);
-  background: rgba(255, 255, 255, 0.68);
-  box-shadow: 0 10rpx 28rpx rgba(30, 49, 86, 0.08);
-  backdrop-filter: blur(22rpx);
-  -webkit-backdrop-filter: blur(22rpx);
-  font-size: 21rpx;
-}
-.quality-actions {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-}
-.draft-icon {
-  width: 18rpx;
-  height: 22rpx;
-  border: 3rpx solid #61706b;
-  border-radius: 3rpx;
-}
-.draft-icon::after {
-  display: block;
-  width: 10rpx;
-  height: 3rpx;
-  margin: 5rpx auto;
-  background: #61706b;
-  box-shadow: 0 7rpx #61706b;
-  content: '';
-}
-.quality-card {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8rpx 18rpx;
-  margin-bottom: 14rpx;
-  padding: 18rpx 22rpx;
-  overflow: hidden;
-  border: 1rpx solid rgba(10, 132, 255, 0.16);
-  border-radius: 26rpx;
-  color: var(--yd-ink);
-  background: rgba(255, 255, 255, 0.58);
-  box-shadow: 0 18rpx 44rpx rgba(42, 65, 106, 0.08);
-  backdrop-filter: blur(28rpx) saturate(150%);
-  -webkit-backdrop-filter: blur(28rpx) saturate(150%);
-}
-.quality-copy {
-  display: flex;
-  flex-direction: column;
-}
-.quality-copy text:first-child {
-  font-size: 26rpx;
-  font-weight: 900;
-}
-.quality-copy text:last-child {
-  margin-top: 6rpx;
-  color: var(--yd-muted);
-  font-size: 18rpx;
-}
-.quality-score {
-  align-self: start;
-  padding: 7rpx 11rpx;
-  border-radius: 999rpx;
-  color: #fff;
-  background: var(--yd-green-dark);
-  font-size: 20rpx;
-  font-weight: 900;
-}
-.quality-track {
-  grid-column: 1 / -1;
-  height: 8rpx;
-  overflow: hidden;
-  border-radius: 999rpx;
-  background: rgba(10, 132, 255, 0.12);
-}
-.quality-track view {
-  height: 100%;
-  border-radius: inherit;
-  background: var(--yd-green);
-  transition: width 0.25s ease;
-}
 .card-block {
-  margin-bottom: 14rpx;
-  padding: 22rpx;
+  margin-bottom: 16rpx;
+  padding: 24rpx;
   border: 1rpx solid var(--yd-line);
-  border-radius: 26rpx;
-  background: var(--yd-card);
-  box-shadow: 0 18rpx 46rpx rgba(35, 52, 88, 0.085);
-  backdrop-filter: blur(28rpx) saturate(145%);
-  -webkit-backdrop-filter: blur(28rpx) saturate(145%);
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8rpx 24rpx rgba(35, 52, 88, 0.045);
 }
 .block-head {
   display: flex;
@@ -580,112 +453,57 @@ function reset() {
   font-size: 19rpx;
 }
 .type-card {
-  padding: 24rpx;
+  padding: 22rpx 0 20rpx;
 }
-.type-track {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12rpx;
+.type-card .block-head {
+  margin-bottom: 16rpx;
+  padding: 0 24rpx;
 }
-.type-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  min-height: 108rpx;
-  padding: 14rpx;
-  border: 1rpx solid var(--yd-line);
-  border-radius: 16rpx;
-  color: var(--yd-muted);
-  background: rgba(247, 248, 251, 0.74);
-  font-size: 20rpx;
-}
-.type-symbol {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 52rpx;
-  height: 52rpx;
-  border-radius: 16rpx;
-  color: var(--yd-ink);
-  background: rgba(118, 118, 128, 0.1);
-  font-size: 27rpx;
-  font-weight: 800;
-}
-.type-copy {
-  display: flex;
-  min-width: 0;
-  margin-left: 11rpx;
-  flex-direction: column;
-}
-.type-copy text:first-child {
-  color: var(--yd-ink);
-  font-size: 22rpx;
-  font-weight: 800;
-}
-.type-copy text:last-child {
-  overflow: hidden;
-  margin-top: 4rpx;
-  color: #929b97;
-  font-size: 16rpx;
-  text-overflow: ellipsis;
+.type-scroll {
+  width: 100%;
   white-space: nowrap;
 }
-.type-check {
-  position: absolute;
-  top: 7rpx;
-  right: 8rpx;
-  display: none;
+.type-track {
+  display: inline-flex;
+  gap: 12rpx;
+  padding: 0 24rpx 4rpx;
+}
+.type-item {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 28rpx;
-  height: 28rpx;
-  border-radius: 50%;
-  color: #fff;
-  background: var(--yd-green);
-  font-size: 16rpx;
+  min-height: 72rpx;
+  padding: 0 20rpx;
+  border: 1rpx solid var(--yd-line);
+  border-radius: 999rpx;
+  color: var(--yd-muted);
+  background: rgba(118, 118, 128, 0.06);
+}
+.type-symbol {
+  width: 32rpx;
+  height: 32rpx;
+}
+.type-title {
+  margin-left: 12rpx;
+  color: var(--yd-ink);
+  font-size: 22rpx;
+  font-weight: 650;
 }
 .type-item.active {
   border-color: rgba(10, 132, 255, 0.42);
   color: var(--yd-green-dark);
   background: var(--yd-mint);
-  font-weight: 700;
 }
-.type-item.active .type-symbol {
-  background: rgba(255, 255, 255, 0.88);
-}
-.type-item.active .type-check {
-  display: flex;
-}
-.type-helper {
-  display: flex;
-  align-items: center;
-  margin: 14rpx 0 0;
-  padding: 13rpx 16rpx;
-  border-radius: 16rpx;
-  color: var(--yd-muted);
-  background: rgba(118, 118, 128, 0.08);
-  font-size: 20rpx;
-}
-.type-helper > text {
-  flex: 0 0 auto;
-  margin-right: 14rpx;
-  padding-right: 14rpx;
-  border-right: 1rpx solid rgba(60, 60, 67, 0.12);
+.type-item.active .type-title {
   color: var(--yd-green-dark);
-  font-weight: 700;
+  font-weight: 750;
 }
 .media-head {
-  margin-bottom: 15rpx;
-}
-.editor-head {
-  margin-bottom: 8rpx;
+  margin-bottom: 18rpx;
 }
 .uploader-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12rpx;
+  gap: 14rpx;
 }
 .image-item,
 .add-image {
@@ -734,9 +552,9 @@ function reset() {
 }
 .add-image.wide-add {
   grid-column: 1 / -1;
-  height: 132rpx;
+  height: 156rpx;
   flex-direction: row;
-  gap: 20rpx;
+  gap: 24rpx;
 }
 .add-image-copy {
   display: flex;
@@ -749,7 +567,7 @@ function reset() {
   font-weight: 750;
 }
 .add-image-copy text:last-child {
-  margin-top: 3rpx;
+  margin-top: var(--yd-copy-gap);
   color: #a0aaa6;
   font-size: 17rpx;
 }
@@ -782,8 +600,11 @@ function reset() {
 }
 .editor-divider {
   height: 1rpx;
-  margin: 25rpx 0;
+  margin: 28rpx 0;
   background: rgba(60, 60, 67, 0.1);
+}
+.compact-divider {
+  margin: 14rpx 0 20rpx;
 }
 .title-editor {
   display: flex;
@@ -791,7 +612,7 @@ function reset() {
 }
 .title-editor input {
   flex: 1;
-  height: 66rpx;
+  height: 76rpx;
   color: #17201d;
   font-size: 31rpx;
   font-weight: 700;
@@ -803,7 +624,7 @@ function reset() {
 }
 .content-editor {
   width: 100%;
-  height: 176rpx;
+  height: 240rpx;
   color: #34403c;
   font-size: 25rpx;
   line-height: 1.65;
@@ -935,7 +756,7 @@ function reset() {
 .setting-row {
   display: flex;
   align-items: center;
-  min-height: 104rpx;
+  min-height: 108rpx;
   border-bottom: 1rpx solid rgba(60, 60, 67, 0.1);
 }
 .last-row {
@@ -946,9 +767,9 @@ function reset() {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 52rpx;
-  height: 52rpx;
-  margin-right: 17rpx;
+  width: 60rpx;
+  height: 60rpx;
+  margin-right: var(--yd-icon-gap);
   border-radius: 16rpx;
   color: var(--yd-green-dark);
   background: rgba(10, 132, 255, 0.1);
@@ -980,7 +801,7 @@ function reset() {
 }
 .setting-main > text:last-child,
 .setting-main input {
-  margin-top: 5rpx;
+  margin-top: var(--yd-copy-gap);
   color: #87918d;
   font-size: 20rpx;
 }
@@ -1035,8 +856,8 @@ function reset() {
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: 152rpx minmax(0, 1fr);
-  gap: 14rpx;
+  grid-template-columns: 166rpx minmax(0, 1fr);
+  gap: 16rpx;
   padding: 12rpx 24rpx calc(12rpx + env(safe-area-inset-bottom));
   border-top: 1rpx solid rgba(255, 255, 255, 0.68);
   background: rgba(246, 248, 252, 0.76);
@@ -1060,26 +881,10 @@ function reset() {
   line-height: 1;
   white-space: nowrap;
 }
-.preview-btn {
-  gap: 10rpx;
+.draft-btn {
   border: 1rpx solid rgba(60, 60, 67, 0.14);
-  color: var(--yd-green-dark);
+  color: var(--yd-ink);
   background: rgba(255, 255, 255, 0.72);
-}
-.preview-icon {
-  width: 27rpx;
-  height: 17rpx;
-  border: 3rpx solid var(--yd-green);
-  border-radius: 50%;
-}
-.preview-icon::after {
-  display: block;
-  width: 7rpx;
-  height: 7rpx;
-  margin: 2rpx auto;
-  border-radius: 50%;
-  background: var(--yd-green);
-  content: '';
 }
 .publish-btn {
   gap: 10rpx;
