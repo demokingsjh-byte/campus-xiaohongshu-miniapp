@@ -62,11 +62,6 @@ function handleMenu(action: string, requiresLogin: boolean) {
 <template>
   <view class="mine-page safe-bottom">
     <view class="mine-status" />
-    <view class="mine-top">
-      <text>我的</text><view class="message" @click="uni.navigateTo({ url: '/pages/messages/index' })">
-        <view class="mine-bell" /><i />
-      </view>
-    </view>
 
     <view v-if="!loggedIn" class="guest-card">
       <view class="guest-avatar">
@@ -84,10 +79,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
     <view v-else class="profile-card">
       <view class="profile-head">
         <view class="profile-avatar">
-          <image v-if="profile?.avatar" :src="profile.avatar" mode="aspectFill" />
-          <text v-else>
-            {{ profile?.nickname?.slice(0, 1) || '同' }}
-          </text>
+          <image :src="profile?.avatar || '/static/icons/ui/avatar-default.svg'" mode="aspectFill" />
         </view><view class="profile-info">
           <view class="nickname">
             {{ profile?.nickname || '同校同学' }} <text>✓ 已认证</text>
@@ -151,65 +143,6 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 .mine-status {
   height: calc(34rpx + env(safe-area-inset-top));
-}
-.mine-top {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 84rpx;
-  padding: 0 0 14rpx;
-  font-size: 32rpx;
-  font-weight: 900;
-}
-.message {
-  position: relative;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 66rpx;
-  height: 66rpx;
-  border: 1rpx solid #e5e5df;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 4rpx 14rpx rgba(31, 56, 49, 0.04);
-}
-.mine-bell {
-  position: relative;
-  width: 25rpx;
-  height: 27rpx;
-  border: 3rpx solid #3a3a3c;
-  border-bottom: 0;
-  border-top-left-radius: 16rpx;
-  border-top-right-radius: 16rpx;
-}
-.mine-bell::before {
-  position: absolute;
-  left: -7rpx;
-  bottom: -5rpx;
-  width: 33rpx;
-  height: 3rpx;
-  border-radius: 9rpx;
-  background: #3a3a3c;
-  content: '';
-}
-.mine-bell::after {
-  position: absolute;
-  left: 8rpx;
-  bottom: -11rpx;
-  width: 8rpx;
-  height: 5rpx;
-  border-radius: 0 0 8rpx 8rpx;
-  background: #3a3a3c;
-  content: '';
-}
-.message i {
-  position: absolute;
-  top: 10rpx;
-  right: 10rpx;
-  width: 13rpx;
-  height: 13rpx;
-  border-radius: 50%;
-  background: var(--yd-coral);
 }
 .guest-card,
 .profile-card {
@@ -447,7 +380,6 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 
 /* Apple-inspired glass theme */
-.message,
 .profile-card,
 .guest-card,
 .campus-pass,
