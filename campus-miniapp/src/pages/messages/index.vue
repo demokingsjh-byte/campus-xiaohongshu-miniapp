@@ -8,10 +8,10 @@ const activeTab = ref('全部');
 const networkError = ref(false);
 const tabs = ['全部', '评论', '赞与收藏', '系统'];
 const messages = reactive([
-  { type: '评论', icon: '评', color: '#DFF1EC', title: '小满同学 评论了你的发布', content: '请问桌子的尺寸大概是多少呀？', time: '8分钟前', unread: true },
-  { type: '赞与收藏', icon: '♡', color: '#FFF0ED', title: '3 位同学赞了你的内容', content: '毕业出九成新折叠桌和台灯', time: '32分钟前', unread: true },
-  { type: '系统', icon: '云', color: '#E8EFF0', title: '校园认证已通过', content: '你已获得当前学校的同校认证标识', time: '昨天', unread: false },
-  { type: '评论', icon: '复', color: '#FFF0D9', title: '赶高铁 回复了你', content: '可以的，周五 18:20 东门见。', time: '周五', unread: false },
+  { type: '评论', icon: '/static/icons/ui/comment.svg', color: '#E8F3FF', title: '小满同学 评论了你的发布', content: '请问桌子的尺寸大概是多少呀？', time: '8分钟前', unread: true },
+  { type: '赞与收藏', icon: '/static/icons/mine/heart.svg', color: '#FFF0ED', title: '3 位同学赞了你的内容', content: '毕业出九成新折叠桌和台灯', time: '32分钟前', unread: true },
+  { type: '系统', icon: '/static/icons/mine/cloud.svg', color: '#E8F3FF', title: '校园认证已通过', content: '你已获得当前学校的同校认证标识', time: '昨天', unread: false },
+  { type: '评论', icon: '/static/icons/ui/reply.svg', color: '#FFF6E5', title: '赶高铁 回复了你', content: '可以的，周五 18:20 东门见。', time: '周五', unread: false },
 ]);
 const filtered = computed(() => activeTab.value === '全部' ? messages : messages.filter(item => item.type === activeTab.value));
 const unreadCount = computed(() => messages.filter(item => item.unread).length);
@@ -53,7 +53,7 @@ function markSingle(item: typeof messages[number]) {
     <view v-else class="message-list">
       <view v-for="item in filtered" :key="item.title" class="message-row" :class="{ unread: item.unread }" @click="markSingle(item)">
         <view class="message-icon" :style="{ background: item.color }">
-          {{ item.icon }}
+          <image :src="item.icon" mode="aspectFit" />
         </view><view class="message-main">
           <view class="message-title">
             {{ item.title }}
@@ -65,7 +65,7 @@ function markSingle(item: typeof messages[number]) {
         </view><view v-if="item.unread" class="unread-dot" />
       </view>
       <view class="security-card">
-        <view>🔔 开启微信服务通知</view><text>及时收到交易和重要校园消息 ›</text>
+        <view><image src="/static/icons/ui/bell.svg" mode="aspectFit" /><text>开启微信服务通知</text></view><text>及时收到交易和重要校园消息 ›</text>
       </view>
     </view>
   </view>
@@ -161,8 +161,10 @@ function markSingle(item: typeof messages[number]) {
   height: var(--yd-icon-large);
   border-radius: 17rpx 17rpx 17rpx 5rpx;
   color: var(--yd-green-dark);
-  font-size: 26rpx;
-  font-weight: 900;
+}
+.message-icon image {
+  width: 38rpx;
+  height: 38rpx;
 }
 .message-main {
   flex: 1;
@@ -209,6 +211,21 @@ function markSingle(item: typeof messages[number]) {
   color: #648079;
   font-size: 20rpx;
   font-weight: 400;
+}
+.security-card > view {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+.security-card image {
+  width: 36rpx;
+  height: 36rpx;
+}
+.security-card > view text {
+  margin-top: 0;
+  color: var(--yd-green-dark);
+  font-size: 24rpx;
+  font-weight: 800;
 }
 
 /* Apple-inspired glass theme */

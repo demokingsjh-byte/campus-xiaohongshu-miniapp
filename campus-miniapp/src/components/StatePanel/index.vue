@@ -1,13 +1,18 @@
 <script lang="ts" setup>
 withDefaults(defineProps<{ type?: 'empty' | 'error' | 'offline' | 'login', title: string, description: string, action?: string }>(), { type: 'empty', action: '' });
 const emit = defineEmits<{ action: [] }>();
-const icons = { empty: '🗂', error: '⚠', offline: '☁', login: '👋' };
+const icons = {
+  empty: '/static/icons/ui/empty.svg',
+  error: '/static/icons/ui/alert.svg',
+  offline: '/static/icons/ui/offline.svg',
+  login: '/static/icons/ui/avatar-default.svg',
+};
 </script>
 
 <template>
   <view class="state-panel">
     <view class="state-icon">
-      {{ icons[type] }}
+      <image :src="icons[type]" mode="aspectFit" />
     </view>
     <view class="state-title">
       {{ title }}
@@ -41,7 +46,10 @@ const icons = { empty: '🗂', error: '⚠', offline: '☁', login: '👋' };
   border-radius: 32rpx;
   background: var(--yd-mint);
   box-shadow: 0 16rpx 38rpx rgba(43, 82, 126, 0.1);
-  font-size: 52rpx;
+}
+.state-icon image {
+  width: 58rpx;
+  height: 58rpx;
 }
 .state-title {
   margin-top: 28rpx;

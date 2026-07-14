@@ -11,6 +11,15 @@ const channelClasses: Record<string, string> = {
   社团: 'club',
 };
 const channelClass = computed(() => `channel-${channelClasses[props.post.channel] || 'other'}`);
+const channelIcons: Record<string, string> = {
+  二手: '/static/icons/login/trade.svg',
+  互助: '/static/icons/login/help.svg',
+  拼车: '/static/icons/publish/ride.svg',
+  探店: '/static/icons/publish/shop.svg',
+  失物: '/static/icons/publish/lost.svg',
+  社团: '/static/icons/login/event.svg',
+};
+const channelIcon = computed(() => channelIcons[props.post.channel] || '/static/icons/mine/cloud.svg');
 
 function openDetail(id: number) {
   uni.navigateTo({ url: `/pages/detail/index?id=${id}` });
@@ -29,9 +38,7 @@ function openDetail(id: number) {
       </text>
       <view v-if="!post.coverImage" class="cover-art">
         <view class="photo-corner" />
-        <text class="cover-emoji">
-          {{ post.coverEmoji }}
-        </text>
+        <image class="cover-icon" :src="channelIcon" mode="aspectFit" />
         <view class="photo-caption">
           {{ post.school.slice(0, 2) }} · 同校
         </view>
@@ -62,13 +69,13 @@ function openDetail(id: number) {
       </view>
       <view class="author-row">
         <view class="avatar">
-          {{ post.avatarText }}
+          <image src="/static/icons/ui/avatar-default.svg" mode="aspectFill" />
         </view>
         <text class="author">
           {{ post.author }} · {{ post.time }}
         </text>
         <text class="like">
-          ♡ {{ post.likes }}
+          <image src="/static/icons/mine/heart.svg" mode="aspectFit" />{{ post.likes }}
         </text>
       </view>
     </view>
@@ -204,10 +211,9 @@ function openDetail(id: number) {
   background: rgba(255, 107, 95, 0.88);
   transform: rotate(4deg);
 }
-.cover-emoji {
-  font-size: 62rpx;
-  line-height: 1;
-  filter: drop-shadow(0 6rpx 8rpx rgba(33, 60, 53, 0.12));
+.cover-icon {
+  width: 64rpx;
+  height: 64rpx;
 }
 .photo-caption {
   margin-top: 11rpx;
@@ -289,10 +295,12 @@ function openDetail(id: number) {
   height: 34rpx;
   margin-right: 8rpx;
   border-radius: 50%;
-  color: var(--yd-green-dark);
+  overflow: hidden;
   background: var(--yd-mint);
-  font-size: 18rpx;
-  font-weight: 700;
+}
+.avatar image {
+  width: 100%;
+  height: 100%;
 }
 .author {
   flex: 1;
@@ -301,7 +309,14 @@ function openDetail(id: number) {
   white-space: nowrap;
 }
 .like {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 5rpx;
+}
+.like image {
+  width: 24rpx;
+  height: 24rpx;
 }
 
 /* Compact home feed card */
@@ -377,9 +392,9 @@ function openDetail(id: number) {
   -webkit-backdrop-filter: none;
   transform: none;
 }
-.cover-emoji {
-  font-size: 70rpx;
-  filter: none;
+.cover-icon {
+  width: 70rpx;
+  height: 70rpx;
 }
 .photo-caption {
   margin-top: 15rpx;

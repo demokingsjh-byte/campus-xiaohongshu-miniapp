@@ -12,6 +12,8 @@ const loading = ref(false);
 const loginError = ref('');
 const avatarUploading = ref(false);
 const phoneBinding = ref(false);
+const phoneAuthError = ref('');
+const DEFAULT_AVATAR = '/static/icons/ui/avatar-default.svg';
 const userStore = useUserStore();
 const tenantStore = useTenantStore();
 const gradeOptions = ['2026级', '2025级', '2024级', '2023级', '2022级及以前', '研究生'];
@@ -19,13 +21,15 @@ const genderOptions = ['不公开', '男', '女'];
 const initialTenant = tenantStore.currentTenant && campusTenants.some(item => item.id === tenantStore.tenantId)
   ? tenantStore.currentTenant
   : getDefaultTenant();
-const form = reactive({ avatar: '', nickname: '', schoolName: initialTenant.name, campusName: initialTenant.name === '吉首大学' ? '吉首校区' : '主校区', grade: '2023级', gender: '不公开', roleType: 'student' });
+const form = reactive({ avatar: DEFAULT_AVATAR, nickname: '', schoolName: initialTenant.name, campusName: initialTenant.name === '吉首大学' ? '吉首校区' : '主校区', grade: '2023级', gender: '不公开', roleType: 'student' });
 const schoolOptions = campusTenants.map(item => item.name);
 const campusOptions = computed(() => form.schoolName === '吉首大学' ? ['吉首校区'] : ['主校区']);
 const mobileBound = computed(() => Boolean(userStore.userInfo?.mobileBound || userStore.userInfo?.mobile));
 const mobileLabel = computed(() => {
   const mobile = userStore.userInfo?.mobile || '';
-  return mobile ? `${mobile.slice(0, 3)}****${mobile.slice(-4)}` : '用于账号安全与必要联系';
+  if (mobile)
+    return `${mobile.slice(0, 3)}****${mobile.slice(-4)}`;
+  return phoneAuthError.value || '用于账号安全与必要联系';
 });
 const navigationTitle = computed(() => {
   if (editing.value)
@@ -41,7 +45,7 @@ function fillForm() {
   const user = userStore.userInfo;
   if (!user)
     return;
-  form.avatar = user.avatar || '';
+  form.avatar = user.avatar || DEFAULT_AVATAR;
   form.nickname = user.nickname === '校园体验用户' && !editing.value ? '' : (user.nickname || '');
   form.schoolName = user.schoolName || form.schoolName;
   form.campusName = user.campusName || form.campusName;
@@ -130,25 +134,33 @@ async function chooseAvatar(event: any) {
 async function bindPhone(event: any) {
   const phoneCode = event?.detail?.code;
   if (!phoneCode) {
-    const denied = /deny|cancel/i.test(event?.detail?.errMsg || '');
-    uni.showToast({ title: denied ? '你已取消手机号授权' : '未获取到手机号授权信息', icon: 'none' });
+    const errMsg = event?.detail?.errMsg || '';
+    const platform = uni.getSystemInfoSync().platform;
+    if (/deny|cancel/i.test(errMsg))
+      phoneAuthError.value = '你已取消授权，可再次点击重试';
+    else if (platform === 'devtools' || /not support|unsupported|devtools/i.test(errMsg))
+      phoneAuthError.value = '开发者工具不返回真实手机号，请用体验版真机授权';
+    else if (/no permission|not authorized|api scope|permission/i.test(errMsg))
+      phoneAuthError.value = '小程序账号尚未开通手机号快速验证能力';
+    else
+      phoneAuthError.value = '手机号授权未成功，请在体验版真机重试';
+    uni.showToast({ title: phoneAuthError.value, icon: 'none', duration: 3500 });
     return;
   }
   phoneBinding.value = true;
+  phoneAuthError.value = '';
   try {
     await userStore.bindPhone(phoneCode);
     uni.showToast({ title: '手机号已绑定', icon: 'success' });
-  } catch {
-    uni.showToast({ title: '手机号绑定失败，请重试', icon: 'none' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message.replace(/^.*：/, '') : '';
+    phoneAuthError.value = message || '手机号绑定失败，请重试';
+    uni.showToast({ title: phoneAuthError.value, icon: 'none', duration: 3500 });
   } finally {
     phoneBinding.value = false;
   }
 }
 async function finishProfile() {
-  if (!form.avatar) {
-    uni.showToast({ title: '请选择微信头像', icon: 'none' });
-    return;
-  }
   if (!mobileBound.value) {
     uni.showToast({ title: '请先授权微信手机号', icon: 'none' });
     return;

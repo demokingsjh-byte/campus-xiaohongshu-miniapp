@@ -9,6 +9,7 @@ const activeType = ref('idle');
 const images = ref<string[]>([]);
 const submitting = ref(false);
 const showSuccess = ref(false);
+const showAdvanced = ref(false);
 const createdPostId = ref<number | null>(null);
 const publishedSummary = ref<{ typeTitle: string, location: string, visibleRange: string } | null>(null);
 const agreed = ref(true);
@@ -331,8 +332,8 @@ function reset() {
     <view class="setting-card card-block">
       <picker :range="locations" @change="selectFrom('location', locations, $event)">
         <view class="setting-row">
-          <view class="setting-icon pin-icon">
-            <i />
+          <view class="setting-icon">
+            <image src="/static/icons/ui/location.svg" mode="aspectFit" />
           </view>
           <view class="setting-main">
             <text>发布位置</text><text>{{ form.location }}</text>
@@ -343,8 +344,8 @@ function reset() {
       </picker>
       <picker :range="visibleRanges" @change="selectFrom('visibleRange', visibleRanges, $event)">
         <view class="setting-row">
-          <view class="setting-icon eye-icon">
-            <i />
+          <view class="setting-icon">
+            <image src="/static/icons/ui/eye.svg" mode="aspectFit" />
           </view>
           <view class="setting-main">
             <text>谁可以看</text><text>{{ form.visibleRange }}</text>
@@ -353,17 +354,27 @@ function reset() {
           </text>
         </view>
       </picker>
-      <view class="setting-row contact-row">
-        <view class="setting-icon contact-icon">
-          联
+      <view class="setting-row" :class="{ 'last-row': !showAdvanced }" @click="showAdvanced = !showAdvanced">
+        <view class="setting-icon">
+          <image src="/static/icons/mine/settings.svg" mode="aspectFit" />
+        </view>
+        <view class="setting-main">
+          <text>更多设置</text><text>{{ showAdvanced ? '收起联系方式与匿名选项' : '联系方式、匿名发布' }}</text>
+        </view><text class="arrow" :class="{ expanded: showAdvanced }">
+          ›
+        </text>
+      </view>
+      <view v-if="showAdvanced" class="setting-row contact-row">
+        <view class="setting-icon">
+          <image src="/static/icons/ui/contact.svg" mode="aspectFit" />
         </view>
         <view class="setting-main">
           <text>联系方式</text><input v-model="form.contact" placeholder="选填，仅回应后可见">
         </view>
       </view>
-      <view class="setting-row last-row">
-        <view class="setting-icon anonymous-icon">
-          匿
+      <view v-if="showAdvanced" class="setting-row last-row">
+        <view class="setting-icon">
+          <image src="/static/icons/ui/anonymous.svg" mode="aspectFit" />
         </view>
         <view class="setting-main">
           <text>匿名发布</text><text>昵称将显示为“同校同学”</text>
@@ -771,23 +782,11 @@ function reset() {
   height: 60rpx;
   margin-right: var(--yd-icon-gap);
   border-radius: 16rpx;
-  color: var(--yd-green-dark);
   background: rgba(10, 132, 255, 0.1);
-  font-size: 20rpx;
-  font-weight: 800;
 }
-.pin-icon i {
-  width: 14rpx;
-  height: 14rpx;
-  border: 4rpx solid var(--yd-green);
-  border-radius: 50% 50% 50% 0;
-  transform: rotate(-45deg);
-}
-.eye-icon i {
-  width: 25rpx;
-  height: 16rpx;
-  border: 3rpx solid var(--yd-green);
-  border-radius: 50%;
+.setting-icon image {
+  width: 36rpx;
+  height: 36rpx;
 }
 .setting-main {
   display: flex;
@@ -808,6 +807,10 @@ function reset() {
 .arrow {
   color: #a2aaa7;
   font-size: 33rpx;
+  transition: transform 0.2s ease;
+}
+.arrow.expanded {
+  transform: rotate(90deg);
 }
 .contact-row input {
   width: 100%;

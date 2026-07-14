@@ -159,7 +159,7 @@ function deleteAccount() {
     <view class="settings-card">
       <view class="setting-row" @click="openPolicyPage('privacy')">
         <view class="row-icon blue">
-          隐
+          <image src="/static/icons/ui/shield.svg" mode="aspectFit" />
         </view><view class="row-main">
           <text>隐私政策</text><span>查看信息收集、使用与保存说明</span>
         </view><text class="arrow">
@@ -168,7 +168,7 @@ function deleteAccount() {
       </view>
       <view class="setting-row" @click="openWechatPrivacyContract">
         <view class="row-icon cyan">
-          微
+          <image src="/static/icons/ui/shield.svg" mode="aspectFit" />
         </view><view class="row-main">
           <text>微信隐私保护指引</text><span>查看微信平台备案的正式指引</span>
         </view><text class="arrow">
@@ -177,7 +177,7 @@ function deleteAccount() {
       </view>
       <view class="setting-row" @click="openPolicyPage('permissions')">
         <view class="row-icon indigo">
-          权
+          <image src="/static/icons/ui/permissions.svg" mode="aspectFit" />
         </view><view class="row-main">
           <text>权限与信息清单</text><span>头像、图片、登录标识的调用时机</span>
         </view><text class="arrow">
@@ -186,7 +186,7 @@ function deleteAccount() {
       </view>
       <view class="setting-row" @click="openPolicyPage('agreement')">
         <view class="row-icon gray">
-          约
+          <image src="/static/icons/ui/document.svg" mode="aspectFit" />
         </view><view class="row-main">
           <text>用户协议</text><span>账号、内容与交易规则</span>
         </view><text class="arrow">
@@ -195,7 +195,7 @@ function deleteAccount() {
       </view>
       <view class="setting-row" @click="openPolicyPage('community')">
         <view class="row-icon orange">
-          规
+          <image src="/static/icons/ui/community.svg" mode="aspectFit" />
         </view><view class="row-main">
           <text>社区发布规范</text><span>校园内容与交易安全边界</span>
         </view><text class="arrow">
@@ -209,28 +209,36 @@ function deleteAccount() {
     </view>
     <view class="settings-card">
       <view class="setting-row static-row">
-        <view class="row-main no-icon">
+        <view class="row-icon soft">
+          <image src="/static/icons/ui/document.svg" mode="aspectFit" />
+        </view><view class="row-main">
           <text>当前隐私版本</text><span>版本 {{ PRIVACY_POLICY_VERSION }} · {{ consentTime }}</span>
         </view><text class="value">
           {{ consent ? '有效' : '未记录' }}
         </text>
       </view>
       <view class="setting-row static-row">
-        <view class="row-main no-icon">
+        <view class="row-icon soft">
+          <image src="/static/icons/mine/heart.svg" mode="aspectFit" />
+        </view><view class="row-main">
           <text>个性化推荐</text><span>当前未启用跨校或广告画像推荐</span>
         </view><text class="value quiet">
           未启用
         </text>
       </view>
       <view class="setting-row" @click="clearLocalRecords">
-        <view class="row-main no-icon">
+        <view class="row-icon soft">
+          <image src="/static/icons/ui/trash.svg" mode="aspectFit" />
+        </view><view class="row-main">
           <text>清理本地数据</text><span>搜索记录、草稿和本机偏好</span>
         </view><text class="arrow">
           ›
         </text>
       </view>
       <view v-if="consent" class="setting-row" @click="withdrawConsent">
-        <view class="row-main no-icon">
+        <view class="row-icon soft">
+          <image src="/static/icons/ui/logout.svg" mode="aspectFit" />
+        </view><view class="row-main">
           <text>撤回隐私同意</text><span>退出登录并停止后续非必要处理</span>
         </view><text class="arrow">
           ›
@@ -243,21 +251,27 @@ function deleteAccount() {
     </view>
     <view class="settings-card">
       <button class="contact-row" open-type="contact">
-        <view class="row-main no-icon">
+        <view class="row-icon soft">
+          <image src="/static/icons/mine/help.svg" mode="aspectFit" />
+        </view><view class="row-main">
           <text>隐私问题与反馈</text><span>联系客服，提交查阅、更正或投诉请求</span>
         </view><text class="arrow">
           ›
         </text>
       </button>
       <view v-if="loggedIn" class="setting-row" @click="logout">
-        <view class="row-main no-icon">
+        <view class="row-icon soft">
+          <image src="/static/icons/ui/logout.svg" mode="aspectFit" />
+        </view><view class="row-main">
           <text>退出登录</text><span>保留账号和已发布内容</span>
         </view><text class="arrow">
           ›
         </text>
       </view>
       <view v-if="loggedIn" class="setting-row danger" :class="{ disabled: busy }" @click="!busy && deleteAccount()">
-        <view class="row-main no-icon">
+        <view class="row-icon danger-icon">
+          <image src="/static/icons/ui/trash.svg" mode="aspectFit" />
+        </view><view class="row-main">
           <text>注销账号</text><span>永久删除或匿名化账号关联信息</span>
         </view><text class="arrow">
           ›
@@ -378,24 +392,32 @@ function deleteAccount() {
   height: var(--yd-icon-regular);
   margin-right: var(--yd-icon-gap);
   border-radius: 18rpx;
-  color: #fff;
-  font-size: 22rpx;
-  font-weight: 750;
+  background: rgba(10, 132, 255, 0.1);
+}
+.row-icon image {
+  width: 36rpx;
+  height: 36rpx;
 }
 .blue {
-  background: #0a84ff;
+  background: rgba(10, 132, 255, 0.12);
 }
 .cyan {
-  background: #32ade6;
+  background: rgba(50, 173, 230, 0.12);
 }
 .indigo {
-  background: #5e5ce6;
+  background: rgba(94, 92, 230, 0.11);
 }
 .gray {
-  background: #8e8e93;
+  background: rgba(142, 142, 147, 0.11);
 }
 .orange {
-  background: #ff9f0a;
+  background: rgba(255, 159, 10, 0.12);
+}
+.soft {
+  background: rgba(10, 132, 255, 0.08);
+}
+.danger-icon {
+  background: rgba(255, 69, 58, 0.1);
 }
 .row-main {
   display: flex;

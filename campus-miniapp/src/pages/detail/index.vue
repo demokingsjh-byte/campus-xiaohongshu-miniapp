@@ -16,6 +16,15 @@ const comment = ref('');
 const contentStore = useCampusContentStore();
 const userStore = useUserStore();
 const post = computed(() => contentStore.getPost(postId.value) || campusPosts[0]);
+const channelIcons: Record<string, string> = {
+  二手: '/static/icons/login/trade.svg',
+  互助: '/static/icons/login/help.svg',
+  拼车: '/static/icons/publish/ride.svg',
+  探店: '/static/icons/publish/shop.svg',
+  失物: '/static/icons/publish/lost.svg',
+  社团: '/static/icons/login/event.svg',
+};
+const channelIcon = computed(() => channelIcons[post.value.channel] || '/static/icons/mine/cloud.svg');
 const related = computed(() => contentStore.allPosts.filter(item => item.id !== post.value.id && item.tenantId === post.value.tenantId).slice(0, 2));
 const comments = ref([{ name: '小满同学', avatar: '满', time: '8分钟前', content: '请问具体时间和地点方便再确认一下吗？', likes: 3 }, { name: '山风同学', avatar: '山', time: '刚刚', content: '可以的，直接点下方联系我就好。', likes: 1 }]);
 
@@ -155,18 +164,14 @@ function reportPost() {
         <swiper-item>
           <image v-if="post.coverImage" class="detail-photo" :src="post.coverImage" mode="aspectFill" />
           <view v-else class="media-item" :style="{ background: post.coverColor }">
-            <text>{{ post.coverEmoji }}</text><view>{{ post.coverLabel }}</view>
-          </view>
-        </swiper-item><swiper-item>
-          <view class="media-item second">
-            <text>📐</text><view>尺寸与细节</view>
+            <image :src="channelIcon" mode="aspectFit" /><view>{{ post.coverLabel }}</view>
           </view>
         </swiper-item>
       </swiper>
       <view class="content-card">
         <view class="author-row">
           <view class="author-avatar">
-            {{ post.avatarText }}
+            <image src="/static/icons/ui/avatar-default.svg" mode="aspectFill" />
           </view><view class="author-main">
             <view class="author-name">
               <text>{{ post.author }}</text><text class="verified-badge">
@@ -192,9 +197,9 @@ function reportPost() {
           </text>
         </view>
         <view class="meta">
-          <text class="meta-location">
-            📍 {{ post.location || `${post.school} · 校内` }}
-          </text><view class="meta-actions">
+          <view class="meta-location">
+            <image src="/static/icons/ui/location.svg" mode="aspectFit" /><text>{{ post.location || `${post.school} · 校内` }}</text>
+          </view><view class="meta-actions">
             <text>浏览 {{ post.views || 0 }}</text><text v-if="!post.owner" class="report-entry" @click="reportPost">
               举报
             </text>
@@ -207,7 +212,7 @@ function reportPost() {
           评论 {{ comments.length + 14 }}
         </view><view v-for="item in comments" :key="item.content" class="comment">
           <view class="comment-avatar">
-            {{ item.avatar }}
+            <image src="/static/icons/ui/avatar-default.svg" mode="aspectFill" />
           </view><view class="comment-main">
             <view class="comment-name">
               {{ item.name }} <text>{{ item.time }}</text>
@@ -215,7 +220,7 @@ function reportPost() {
               {{ item.content }}
             </view>
           </view><view class="comment-like">
-            ♡ {{ item.likes }}
+            <image src="/static/icons/mine/heart.svg" mode="aspectFit" />{{ item.likes }}
           </view>
         </view><view class="all-comments">
           查看全部评论 ›
@@ -234,9 +239,9 @@ function reportPost() {
         <view class="comment-input">
           <input v-model="comment" placeholder="友善评论一下…" confirm-type="send" @confirm="sendComment">
         </view><view class="action" :class="{ active: liked }" @click="toggleLike">
-          <text>{{ liked ? '♥' : '♡' }}</text><span>{{ post.likes }}</span>
+          <image src="/static/icons/mine/heart.svg" mode="aspectFit" /><text>{{ post.likes }}</text>
         </view><view class="action" :class="{ active: collected }" @click="toggleCollect">
-          <text>{{ collected ? '★' : '☆' }}</text><span>收藏</span>
+          <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>收藏</text>
         </view><button class="contact-btn" @click="contact">
           联系TA
         </button>
@@ -266,9 +271,9 @@ function reportPost() {
   justify-content: center;
   height: 100%;
 }
-.media-item > text {
-  font-size: 160rpx;
-  filter: drop-shadow(0 18rpx 18rpx rgba(0, 0, 0, 0.08));
+.media-item > image {
+  width: 150rpx;
+  height: 150rpx;
 }
 .media-item > view {
   position: absolute;
@@ -279,9 +284,6 @@ function reportPost() {
   background: rgba(255, 253, 248, 0.9);
   font-size: 22rpx;
   font-weight: 700;
-}
-.media-item.second {
-  background: #eef0eb;
 }
 .content-card,
 .comments-card {
@@ -311,6 +313,15 @@ function reportPost() {
   background: var(--yd-mint);
   font-size: 28rpx;
   font-weight: 800;
+}
+.author-avatar,
+.comment-avatar {
+  overflow: hidden;
+}
+.author-avatar image,
+.comment-avatar image {
+  width: 100%;
+  height: 100%;
 }
 .author-main {
   flex: 1;
@@ -412,9 +423,21 @@ function reportPost() {
   font-size: 21rpx;
 }
 .meta-location {
+  display: flex;
   overflow: hidden;
+  align-items: center;
+  gap: 8rpx;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.meta-location image {
+  flex: 0 0 auto;
+  width: 26rpx;
+  height: 26rpx;
+}
+.meta-location text {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .meta-actions {
   display: flex;
@@ -435,9 +458,13 @@ function reportPost() {
   margin-top: 28rpx;
 }
 .comment-avatar {
+  overflow: hidden;
   width: 64rpx;
   height: 64rpx;
-  font-size: 23rpx;
+}
+.comment-avatar image {
+  width: 100%;
+  height: 100%;
 }
 .comment-main {
   flex: 1;
@@ -461,12 +488,19 @@ function reportPost() {
   line-height: 1.55;
 }
 .comment-like {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 5rpx;
   min-width: 52rpx;
   margin-left: 10rpx;
   color: #87918d;
   font-size: 20rpx;
   text-align: right;
+}
+.comment-like image {
+  width: 24rpx;
+  height: 24rpx;
 }
 .all-comments {
   margin-top: 28rpx;
@@ -521,9 +555,13 @@ function reportPost() {
   font-size: 17rpx;
   line-height: 1.05;
 }
+.action image {
+  width: 30rpx;
+  height: 30rpx;
+  margin-bottom: 6rpx;
+}
 .action > text {
-  margin-bottom: 5rpx;
-  font-size: 29rpx;
+  font-size: 17rpx;
   line-height: 1;
 }
 .action.active {
