@@ -256,7 +256,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
       </button>
       <button class="phone-bind" open-type="getPhoneNumber" :loading="phoneBinding" @getphonenumber="bindPhone">
         <view class="phone-icon">
-          手
+          <image src="/static/icons/mine/smartphone.svg" mode="aspectFit" />
         </view><view class="phone-copy">
           <text>{{ mobileBound ? '微信手机号已绑定' : '授权微信手机号' }}</text><text>{{ mobileLabel }}</text>
         </view><text class="phone-state">
@@ -601,6 +601,10 @@ function openPolicy(type: 'privacy' | 'agreement') {
   background: rgba(10, 132, 255, 0.1);
   font-size: 21rpx;
   font-weight: 800;
+}
+.phone-icon image {
+  width: 30rpx;
+  height: 30rpx;
 }
 .phone-copy {
   display: flex;

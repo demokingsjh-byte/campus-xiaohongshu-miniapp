@@ -15,8 +15,8 @@ const myFavoriteCount = computed(() => contentStore.favoritePosts.length);
 const receivedLikeCount = computed(() => contentStore.publishedPosts.reduce((total, post) => total + post.likes, 0));
 const certificationNote = computed(() => loggedIn.value ? (userStore.profileCompleted ? '已认证' : '待完善') : '登录后认证');
 const menuGroups = [
-  [{ label: '我的交易', note: '查看回应', action: 'messages' }, { label: '我的发布', note: '', action: 'published' }, { label: '收藏与足迹', note: '最近浏览', action: 'favorites' }],
-  [{ label: '校园认证', note: '', action: 'profile' }, { label: '设置与隐私', note: '', action: 'settings' }, { label: '帮助与反馈', note: '', action: 'help' }],
+  [{ label: '我的交易', note: '查看回应', action: 'messages', icon: '/static/icons/mine/wallet.svg' }, { label: '我的发布', note: '', action: 'published', icon: '/static/icons/mine/post.svg' }, { label: '收藏与足迹', note: '最近浏览', action: 'favorites', icon: '/static/icons/mine/heart.svg' }],
+  [{ label: '校园认证', note: '', action: 'profile', icon: '/static/icons/mine/badge.svg' }, { label: '设置与隐私', note: '', action: 'settings', icon: '/static/icons/mine/settings.svg' }, { label: '帮助与反馈', note: '', action: 'help', icon: '/static/icons/mine/help.svg' }],
 ];
 onShow(async () => {
   if (!userStore.userInfo) {
@@ -70,7 +70,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 
     <view v-if="!loggedIn" class="guest-card">
       <view class="guest-avatar">
-        云
+        <image src="/static/icons/mine/cloud.svg" mode="aspectFit" />
       </view><view class="guest-copy">
         <view class="guest-title">
           登录后开启校园生活
@@ -110,7 +110,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 
     <view class="campus-pass yd-card" @click="handleCampusPass">
       <view class="pass-icon">
-        校
+        <image src="/static/icons/mine/school.svg" mode="aspectFit" />
       </view><view>
         <view class="pass-title">
           {{ currentSchool }}校园卡
@@ -127,7 +127,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
     <view v-for="(group, groupIndex) in menuGroups" :key="groupIndex" class="menu-card yd-card">
       <view v-for="item in group" :key="item.label" class="menu-row" @click="handleMenu(item.action, groupIndex === 0)">
         <view class="menu-icon">
-          {{ item.label.slice(0, 1) }}
+          <image :src="item.icon" mode="aspectFit" />
         </view><text class="menu-label">
           {{ item.label }}
         </text><text class="menu-note">
@@ -237,8 +237,12 @@ function handleMenu(action: string, requiresLogin: boolean) {
   border-radius: 24rpx;
   color: #fff;
   background: var(--yd-green-dark);
-  font-size: 32rpx;
+  font-size: 44rpx;
   font-weight: 900;
+}
+.guest-avatar image {
+  width: 44rpx;
+  height: 44rpx;
 }
 .guest-title {
   margin-top: 0;
@@ -349,8 +353,12 @@ function handleMenu(action: string, requiresLogin: boolean) {
   border-radius: 16rpx 16rpx 16rpx 5rpx;
   color: #fff;
   background: var(--yd-green-dark);
-  font-size: 24rpx;
+  font-size: 38rpx;
   font-weight: 800;
+}
+.pass-icon image {
+  width: 38rpx;
+  height: 38rpx;
 }
 .pass-title {
   font-size: 26rpx;
@@ -404,17 +412,21 @@ function handleMenu(action: string, requiresLogin: boolean) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 46rpx;
-  height: 46rpx;
-  border-radius: 14rpx;
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 18rpx;
   color: var(--yd-green-dark);
   background: var(--yd-mint);
-  font-size: 20rpx;
+  font-size: 34rpx;
   font-weight: 800;
+}
+.menu-icon image {
+  width: 34rpx;
+  height: 34rpx;
 }
 .menu-label {
   flex: 1;
-  margin-left: 12rpx;
+  margin-left: 16rpx;
   font-size: 26rpx;
   font-weight: 700;
 }

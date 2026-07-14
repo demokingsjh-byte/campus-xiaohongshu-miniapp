@@ -243,25 +243,16 @@ function reset() {
 
 <template>
   <view class="publish-page safe-bottom">
-    <view class="publish-head">
-      <view>
-        <view class="head-title">
-          发布到{{ schoolName }}
-        </view>
-        <view class="head-subtitle">
-          发布到当前校园 · 真实信息更容易获得回应
-        </view>
-      </view>
-      <view class="draft-entry" @click="saveDraft">
-        <view class="draft-icon" /><text>草稿</text>
-      </view>
-    </view>
     <view class="quality-card">
       <view class="quality-copy">
         <text>内容完成度</text><text>补充标题、描述与实拍后即可发布</text>
       </view>
-      <view class="quality-score">
-        {{ completionScore }}%
+      <view class="quality-actions">
+        <view class="quality-score">
+          {{ completionScore }}%
+        </view><view class="draft-entry" @click="saveDraft">
+          <view class="draft-icon" /><text>草稿</text>
+        </view>
       </view>
       <view class="quality-track">
         <view :style="{ width: `${completionScore}%` }" />
@@ -477,34 +468,12 @@ function reset() {
   padding: 12rpx 22rpx 0;
   background: var(--yd-paper);
 }
-.publish-head {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 90rpx;
-  padding: 4rpx 150rpx 16rpx;
-  text-align: center;
-}
-.head-title {
-  color: var(--yd-ink);
-  font-size: 32rpx;
-  font-weight: 900;
-  letter-spacing: -1rpx;
-}
-.head-subtitle {
-  margin-top: 6rpx;
-  color: var(--yd-muted);
-  font-size: 21rpx;
-}
 .draft-entry {
-  position: absolute;
-  right: 4rpx;
   display: flex;
   align-items: center;
   gap: 8rpx;
-  min-height: 72rpx;
-  padding: 12rpx 16rpx;
+  min-height: 60rpx;
+  padding: 0 14rpx;
   border: 1rpx solid var(--yd-line);
   border-radius: 999rpx;
   color: var(--yd-green-dark);
@@ -513,6 +482,11 @@ function reset() {
   backdrop-filter: blur(22rpx);
   -webkit-backdrop-filter: blur(22rpx);
   font-size: 21rpx;
+}
+.quality-actions {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
 }
 .draft-icon {
   width: 18rpx;
