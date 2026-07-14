@@ -1,7 +1,6 @@
 {
   "pages": [
     { "name": "Home", "path": "pages/index/index", "style": { "navigationStyle": "custom" }, "meta": { "tabBar": true, "ignoreAuth": true } },
-    { "name": "CampusRegion", "path": "pages/demo/index", "style": { "navigationBarTitleText": "校园分区" }, "meta": { "tabBar": true, "ignoreAuth": true } },
     { "name": "Publish", "path": "pages/publish/index", "style": { "navigationBarTitleText": "发布内容" }, "meta": { "tabBar": true, "ignoreAuth": true } },
     { "name": "Mine", "path": "pages/about/index", "style": { "navigationStyle": "custom" }, "meta": { "tabBar": true, "ignoreAuth": true } },
     { "name": "Login", "path": "pages/login/index", "style": { "navigationStyle": "custom" }, "meta": { "ignoreAuth": true } },
@@ -26,8 +25,7 @@
     "backgroundColor": "#F9FAFC",
     "borderStyle": "white",
     "list": [
-      { "pagePath": "pages/index/index", "text": "逛校园", "iconPath": "static/images/tabBar/home.png", "selectedIconPath": "static/images/tabBar/selectedHome.png" },
-      { "pagePath": "pages/demo/index", "text": "分区", "iconPath": "static/images/tabBar/category.png", "selectedIconPath": "static/images/tabBar/selectedCategory.png" },
+      { "pagePath": "pages/index/index", "text": "首页", "iconPath": "static/images/tabBar/home.png", "selectedIconPath": "static/images/tabBar/selectedHome.png" },
       { "pagePath": "pages/publish/index", "text": "发布", "iconPath": "static/images/tabBar/demo.png", "selectedIconPath": "static/images/tabBar/selectedDemo.png" },
       { "pagePath": "pages/about/index", "text": "我的", "iconPath": "static/images/tabBar/about.png", "selectedIconPath": "static/images/tabBar/selectedAbout.png" }
     ]

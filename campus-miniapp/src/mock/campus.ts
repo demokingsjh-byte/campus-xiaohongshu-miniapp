@@ -1,13 +1,5 @@
 import type { CampusTenant } from '@/utils/tenant';
 
-export interface CampusRegion {
-  id: number
-  name: string
-  city: string
-  campusCount: number
-  agentName: string
-}
-
 export interface CampusPost {
   id: number
   tenantId: number
@@ -51,11 +43,6 @@ export interface CampusPublishType {
   desc: string
   icon: string
 }
-
-export const campusRegions: CampusRegion[] = [
-  { id: 201, name: '湘西高校圈', city: '吉首', campusCount: 1, agentName: '湘西校园站' },
-  { id: 202, name: '长沙高校圈', city: '长沙', campusCount: 1, agentName: '长沙校园站' },
-];
 
 export const campusTenants: CampusTenant[] = [
   { id: 201, name: '吉首大学', areaName: '湘西高校圈', agentName: '湘西校园站', inviteCode: 'YD201', slogan: '在熟悉的校园里，遇见靠谱同学和真实生活' },

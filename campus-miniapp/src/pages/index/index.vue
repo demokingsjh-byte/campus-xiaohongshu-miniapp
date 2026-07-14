@@ -3,12 +3,16 @@ import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
 import { campusChannels, campusTenants, getDefaultTenant } from '@/mock/campus';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
+import { useUserStore } from '@/stores/modules/user';
 
 const activeChannel = ref('推荐');
 const state = ref<'content' | 'loading' | 'empty' | 'error'>('loading');
 const refreshing = ref(false);
+const showCampusPicker = ref(false);
+const campusSwitching = ref(false);
 const tenantStore = useTenantStore();
 const contentStore = useCampusContentStore();
+const userStore = useUserStore();
 if (!tenantStore.currentTenant || !campusTenants.some(item => item.id === tenantStore.tenantId))
   tenantStore.selectTenant(getDefaultTenant());
 const visiblePosts = computed(() => contentStore.allPosts.filter((item) => {
@@ -29,8 +33,39 @@ function goSearch() {
 function goMessages() {
   uni.navigateTo({ url: '/pages/messages/index' });
 }
-function switchCampus() {
-  uni.switchTab({ url: '/pages/demo/index' });
+function openCampusPicker() {
+  showCampusPicker.value = true;
+}
+async function selectCampus(campus: typeof campusTenants[number]) {
+  if (campusSwitching.value)
+    return;
+  if (campus.id === tenantStore.tenantId) {
+    showCampusPicker.value = false;
+    return;
+  }
+  campusSwitching.value = true;
+  try {
+    if (userStore.loggedIn) {
+      await userStore.silentLogin({ tenantId: campus.id });
+      await userStore.updateProfile({
+        nickname: userStore.userInfo?.nickname,
+        avatar: userStore.userInfo?.avatar,
+        schoolName: campus.name,
+        campusName: campus.name === '吉首大学' ? '吉首校区' : '主校区',
+        grade: userStore.userInfo?.grade,
+        gender: userStore.userInfo?.gender,
+        roleType: userStore.userInfo?.roleType || 'student',
+      });
+    }
+    activeChannel.value = '推荐';
+    tenantStore.selectTenant(campus);
+    showCampusPicker.value = false;
+    uni.showToast({ title: `已切换到${campus.name}`, icon: 'success' });
+  } catch {
+    uni.showToast({ title: '校园切换失败，请重试', icon: 'none' });
+  } finally {
+    campusSwitching.value = false;
+  }
 }
 function goPublish() {
   uni.switchTab({ url: '/pages/publish/index' });
@@ -76,18 +111,22 @@ watch(() => tenantStore.tenantId, () => loadFeed());
   <view class="home-page">
     <view class="status-space" />
     <view class="topbar">
-      <view class="brand" @click="switchCampus">
+      <view class="brand">
         <view class="brand-mark">
           <text>云</text><i />
         </view>
         <view>
           <view class="brand-name">
-            逛校园
-          </view>
-          <view class="campus-line">
-            {{ tenantStore.tenantName || '全部校园' }} <text>⌄</text>
+            云点校园
           </view>
         </view>
+      </view>
+      <view class="campus-chip" @click="openCampusPicker">
+        <view class="campus-pin" />
+        <text>{{ tenantStore.tenantName || '选择校园' }}</text>
+        <text class="chip-arrow">
+          ⌄
+        </text>
       </view>
     </view>
 
@@ -123,7 +162,7 @@ watch(() => tenantStore.tenantId, () => loadFeed());
     </view>
 
     <view class="campus-note">
-      <view><text class="note-dot" />只看本校真实内容</view>
+      <view><text class="note-dot" />{{ tenantStore.tenantName }}的新鲜事</view>
       <view class="note-side">
         <text>当前 {{ visiblePosts.length }} 条</text>
         <view class="refresh-entry" :class="{ refreshing }" @click="onRefresh">
@@ -150,7 +189,7 @@ watch(() => tenantStore.tenantId, () => loadFeed());
         </view>
       </view>
       <StatePanel
-        v-else-if="state === 'empty'" title="这个分区还很安静"
+        v-else-if="state === 'empty'" title="这里还没有新内容"
         description="做第一个分享校园生活的人吧，真实内容会优先推荐给同校同学。" action="去发布"
         @action="uni.switchTab({ url: '/pages/publish/index' })"
       />
@@ -167,6 +206,42 @@ watch(() => tenantStore.tenantId, () => loadFeed());
         已经逛到底啦 · 去发布点新鲜事吧
       </view>
     </scroll-view>
+
+    <view v-if="showCampusPicker" class="campus-picker-mask" @click="showCampusPicker = false">
+      <view class="campus-picker" @click.stop>
+        <view class="picker-handle" />
+        <view class="picker-head">
+          <view>
+            <text>选择当前校园</text>
+            <text>首页只展示与你更相关的校园内容</text>
+          </view>
+          <view class="picker-close" @click="showCampusPicker = false">
+            ×
+          </view>
+        </view>
+        <view class="campus-options">
+          <view
+            v-for="campus in campusTenants" :key="campus.id" class="campus-option"
+            :class="{ selected: campus.id === tenantStore.tenantId, disabled: campusSwitching }"
+            @click="selectCampus(campus)"
+          >
+            <view class="campus-option-mark">
+              {{ campus.name.slice(0, 1) }}
+            </view>
+            <view class="campus-option-main">
+              <text>{{ campus.name }}</text>
+              <text>{{ campus.slogan }}</text>
+            </view>
+            <view class="campus-check">
+              {{ campus.id === tenantStore.tenantId ? '✓' : '›' }}
+            </view>
+          </view>
+        </view>
+        <view class="picker-tip">
+          切换校园不会影响你的历史发布和收藏
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -215,17 +290,47 @@ watch(() => tenantStore.tenantId, () => loadFeed());
 }
 .brand-name {
   color: var(--yd-ink);
-  font-size: 35rpx;
+  font-size: 31rpx;
   font-weight: 900;
   letter-spacing: 1rpx;
 }
-.campus-line {
-  margin-top: 1rpx;
-  color: var(--yd-muted);
-  font-size: 20rpx;
+.campus-chip {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 230rpx;
+  height: 54rpx;
+  padding: 0 16rpx 0 14rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.82);
+  border-radius: 999rpx;
+  color: #3a3a3c;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10rpx 30rpx rgba(33, 50, 86, 0.08);
+  font-size: 21rpx;
+  font-weight: 700;
+  backdrop-filter: blur(24rpx) saturate(150%);
+  -webkit-backdrop-filter: blur(24rpx) saturate(150%);
 }
-.campus-line text {
-  color: var(--yd-green);
+.campus-chip > text:first-of-type {
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.campus-pin {
+  flex: 0 0 auto;
+  width: 12rpx;
+  height: 12rpx;
+  margin-right: 9rpx;
+  border: 4rpx solid rgba(10, 132, 255, 0.16);
+  border-radius: 50%;
+  background: var(--yd-green);
+}
+.chip-arrow {
+  flex: 0 0 auto !important;
+  margin-left: 7rpx;
+  color: #8e8e93;
+  font-size: 20rpx;
 }
 .top-actions {
   display: none;
@@ -551,6 +656,152 @@ watch(() => tenantStore.tenantId, () => loadFeed());
   to {
     opacity: 0.45;
   }
+}
+.campus-picker-mask {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(19, 24, 31, 0.28);
+  backdrop-filter: blur(8rpx);
+  -webkit-backdrop-filter: blur(8rpx);
+}
+.campus-picker {
+  width: 100%;
+  padding: 12rpx 28rpx calc(34rpx + env(safe-area-inset-bottom));
+  border: 1rpx solid rgba(255, 255, 255, 0.76);
+  border-bottom: 0;
+  border-radius: 36rpx 36rpx 0 0;
+  background: rgba(248, 249, 252, 0.94);
+  box-shadow: 0 -24rpx 70rpx rgba(24, 31, 43, 0.16);
+  backdrop-filter: blur(38rpx) saturate(165%);
+  -webkit-backdrop-filter: blur(38rpx) saturate(165%);
+  box-sizing: border-box;
+}
+.picker-handle {
+  width: 72rpx;
+  height: 8rpx;
+  margin: 0 auto 26rpx;
+  border-radius: 99rpx;
+  background: rgba(60, 60, 67, 0.18);
+}
+.picker-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 25rpx;
+}
+.picker-head > view:first-child {
+  display: flex;
+  flex-direction: column;
+}
+.picker-head text:first-child {
+  color: #1d1d1f;
+  font-size: 32rpx;
+  font-weight: 800;
+}
+.picker-head text:last-child {
+  margin-top: 8rpx;
+  color: #7b7c82;
+  font-size: 21rpx;
+}
+.picker-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  color: #63646a;
+  background: rgba(118, 118, 128, 0.1);
+  font-size: 34rpx;
+  line-height: 1;
+}
+.campus-options {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+.campus-option {
+  display: flex;
+  align-items: center;
+  min-height: 118rpx;
+  padding: 18rpx 20rpx;
+  border: 2rpx solid rgba(60, 60, 67, 0.08);
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12rpx 30rpx rgba(28, 39, 61, 0.05);
+  box-sizing: border-box;
+}
+.campus-option.selected {
+  border-color: rgba(10, 132, 255, 0.42);
+  background: rgba(236, 246, 255, 0.9);
+  box-shadow: 0 14rpx 34rpx rgba(10, 132, 255, 0.1);
+}
+.campus-option.disabled {
+  opacity: 0.64;
+}
+.campus-option-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 21rpx;
+  color: #fff;
+  background: linear-gradient(145deg, #70b7ff, #0a84ff);
+  box-shadow: 0 10rpx 24rpx rgba(10, 132, 255, 0.2);
+  font-size: 27rpx;
+  font-weight: 800;
+}
+.campus-option:nth-child(2) .campus-option-mark {
+  background: linear-gradient(145deg, #ffad8f, #ff6b5f);
+  box-shadow: 0 10rpx 24rpx rgba(255, 107, 95, 0.18);
+}
+.campus-option-main {
+  display: flex;
+  overflow: hidden;
+  flex: 1;
+  flex-direction: column;
+  margin-left: 18rpx;
+}
+.campus-option-main text:first-child {
+  color: #26272a;
+  font-size: 27rpx;
+  font-weight: 800;
+}
+.campus-option-main text:last-child {
+  overflow: hidden;
+  margin-top: 6rpx;
+  color: #85868c;
+  font-size: 19rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.campus-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 45rpx;
+  height: 45rpx;
+  margin-left: 12rpx;
+  border-radius: 50%;
+  color: #8e8e93;
+  background: rgba(118, 118, 128, 0.08);
+  font-size: 30rpx;
+  font-weight: 700;
+}
+.campus-option.selected .campus-check {
+  color: #fff;
+  background: var(--yd-green);
+  font-size: 22rpx;
+}
+.picker-tip {
+  margin-top: 22rpx;
+  color: #929398;
+  font-size: 20rpx;
+  text-align: center;
 }
 
 /* Apple-inspired glass theme */

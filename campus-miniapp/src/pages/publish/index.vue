@@ -453,7 +453,7 @@ function reset() {
           发布成功
         </view>
         <view class="success-desc">
-          内容已进入「{{ publishedSummary?.typeTitle || '校园' }}」分区，新的回应会通过消息通知你。
+          内容已发布到{{ schoolName }}，新的回应会通过消息通知你。
         </view>
         <view class="success-summary">
           <text>{{ publishedSummary?.location }}</text><text>{{ publishedSummary?.visibleRange }}</text>
