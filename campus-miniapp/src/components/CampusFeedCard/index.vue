@@ -303,4 +303,139 @@ function openDetail(id: number) {
 .like {
   flex: 0 0 auto;
 }
+
+/* Compact home feed card */
+.post-card {
+  margin-bottom: 12rpx;
+  border: 0;
+  border-radius: 20rpx;
+  background: #fff;
+  box-shadow: 0 6rpx 20rpx rgba(31, 43, 65, 0.055);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.cover::after,
+.cover-glow,
+.photo-corner {
+  display: none;
+}
+.image-shade {
+  background: rgba(20, 24, 33, 0.025);
+}
+.cover-short {
+  height: 198rpx;
+}
+.cover-medium {
+  height: 234rpx;
+}
+.cover-tall {
+  height: 268rpx;
+}
+.channel-badge {
+  top: 12rpx;
+  left: 12rpx;
+  padding: 6rpx 11rpx;
+  color: #3a3a3c;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 4rpx 12rpx rgba(26, 31, 43, 0.05);
+  font-size: 18rpx;
+  backdrop-filter: blur(14rpx);
+  -webkit-backdrop-filter: blur(14rpx);
+}
+.cover-label {
+  bottom: 12rpx;
+  left: 12rpx;
+  padding: 6rpx 10rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.54);
+  border-radius: 8rpx;
+  color: #3a3a3c;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: none;
+  font-size: 18rpx;
+}
+.photo-count {
+  right: 12rpx;
+  bottom: 13rpx;
+  color: rgba(58, 58, 60, 0.56);
+  font-size: 17rpx;
+}
+.cover-art,
+.channel-idle .cover-art,
+.channel-lost .cover-art,
+.channel-help .cover-art,
+.channel-ride .cover-art,
+.channel-shop .cover-art,
+.channel-club .cover-art {
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transform: none;
+}
+.cover-emoji {
+  font-size: 70rpx;
+  filter: none;
+}
+.photo-caption {
+  margin-top: 15rpx;
+  padding: 5rpx 10rpx;
+  border-radius: 999rpx;
+  color: #5d5e63;
+  background: rgba(255, 255, 255, 0.68);
+  font-size: 17rpx;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+.body {
+  padding: 14rpx 14rpx 13rpx;
+}
+.post-title {
+  font-size: 25rpx;
+  font-weight: 700;
+  line-height: 1.42;
+}
+.meta-line {
+  min-height: 35rpx;
+  margin-top: 8rpx;
+}
+.tag {
+  overflow: hidden;
+  color: #0a84ff;
+  font-size: 19rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.distance {
+  margin-left: 8rpx;
+  padding: 3rpx 7rpx;
+  font-size: 17rpx;
+}
+.price {
+  font-size: 28rpx;
+}
+.yen {
+  font-size: 19rpx;
+}
+.author-row {
+  margin-top: 9rpx;
+  padding-top: 0;
+  border-top: 0;
+  font-size: 18rpx;
+}
+.avatar {
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 7rpx;
+  color: #0a84ff;
+  background: rgba(10, 132, 255, 0.1);
+  font-size: 16rpx;
+}
+.like {
+  margin-left: 6rpx;
+}
 </style>
