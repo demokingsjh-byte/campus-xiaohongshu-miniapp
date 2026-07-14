@@ -51,7 +51,7 @@ const currentDetail = computed(() => typeDetails[activeType.value]);
 const showPrice = computed(() => ['idle', 'ride', 'shop'].includes(activeType.value));
 const requiresImage = computed(() => ['idle', 'shop', 'lost'].includes(activeType.value));
 const completionScore = computed(() => {
-  let score = 10;
+  let score = 0;
   if (images.value.length)
     score += 30;
   if (form.title.trim().length >= 4)
@@ -246,10 +246,10 @@ function reset() {
     <view class="publish-head">
       <view>
         <view class="head-title">
-          发布到校园
+          {{ schoolName }}
         </view>
         <view class="head-subtitle">
-          分享真实信息，和同校同学更快连接
+          发布到当前校园 · 真实信息更容易获得回应
         </view>
       </view>
       <view class="draft-entry" @click="saveDraft">
@@ -258,7 +258,7 @@ function reset() {
     </view>
     <view class="quality-card">
       <view class="quality-copy">
-        <text>让同校同学一眼想点开</text><text>实拍清楚、标题具体，通常能获得更多回应</text>
+        <text>内容完成度</text><text>补充标题、描述与实拍后即可发布</text>
       </view>
       <view class="quality-score">
         {{ completionScore }}%
@@ -291,8 +291,28 @@ function reset() {
     </view>
 
     <view class="content-card card-block">
+      <view class="block-head editor-head">
+        <text>标题与描述</text><text>先把重点说清楚</text>
+      </view>
+      <view class="title-editor">
+        <input v-model="form.title" maxlength="30" :class="{ invalid: errors.title }" :placeholder="`${currentType.title}，一句话说明重点`">
+        <text>{{ form.title.length }}/30</text>
+      </view>
+      <view v-if="errors.title" class="error">
+        {{ errors.title }}
+      </view>
+      <view class="editor-divider" />
+      <textarea v-model="form.content" maxlength="500" class="content-editor" :class="{ invalid: errors.content }" :placeholder="currentDetail.placeholder" />
+      <view class="content-tools">
+        <text>真实描述更容易获得回应</text><text>{{ form.content.length }}/500</text>
+      </view>
+      <view v-if="errors.content" class="error">
+        {{ errors.content }}
+      </view>
+
+      <view class="editor-divider" />
       <view class="block-head media-head">
-        <text>图片</text><text>{{ images.length }}/9 · 首图作为封面</text>
+        <text>实拍图片</text><text>{{ images.length }}/9 · 首图作为封面</text>
       </view>
       <view class="uploader-grid">
         <view v-for="(image, index) in images" :key="image" class="image-item" @click="setCover(index)">
@@ -308,32 +328,14 @@ function reset() {
           <view class="camera-icon">
             <i />
           </view>
-          <text>添加实拍</text>
-          <text>支持图片</text>
+          <view class="add-image-copy">
+            <text>添加真实图片</text>
+            <text>拍全景、细节和真实瑕疵</text>
+          </view>
         </view>
-      </view>
-      <view class="photo-tips">
-        <text>封面建议</text><text>拍全景</text><text>拍细节</text><text>如实拍瑕疵</text>
       </view>
       <view v-if="errors.images" class="error">
         {{ errors.images }}
-      </view>
-
-      <view class="editor-divider" />
-      <view class="title-editor">
-        <input v-model="form.title" maxlength="30" :class="{ invalid: errors.title }" :placeholder="`${currentType.title}，一句话说明重点`">
-        <text>{{ form.title.length }}/30</text>
-      </view>
-      <view v-if="errors.title" class="error">
-        {{ errors.title }}
-      </view>
-      <view class="editor-divider" />
-      <textarea v-model="form.content" maxlength="500" class="content-editor" :class="{ invalid: errors.content }" :placeholder="currentDetail.placeholder" />
-      <view class="content-tools">
-        <text>真实描述更容易获得回应</text><text>{{ form.content.length }}/500</text>
-      </view>
-      <view v-if="errors.content" class="error">
-        {{ errors.content }}
       </view>
 
       <view class="editor-divider" />
@@ -472,18 +474,18 @@ function reset() {
 <style lang="scss" scoped>
 .publish-page {
   min-height: 100vh;
-  padding: 18rpx 22rpx 0;
+  padding: 12rpx 22rpx 0;
   background: var(--yd-paper);
 }
 .publish-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8rpx 4rpx 22rpx;
+  padding: 4rpx 4rpx 16rpx;
 }
 .head-title {
   color: var(--yd-ink);
-  font-size: 38rpx;
+  font-size: 32rpx;
   font-weight: 900;
   letter-spacing: -1rpx;
 }
@@ -526,8 +528,8 @@ function reset() {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8rpx 18rpx;
-  margin-bottom: 18rpx;
-  padding: 22rpx 24rpx;
+  margin-bottom: 14rpx;
+  padding: 18rpx 22rpx;
   overflow: hidden;
   border: 1rpx solid rgba(10, 132, 255, 0.16);
   border-radius: 26rpx;
@@ -573,8 +575,8 @@ function reset() {
   transition: width 0.25s ease;
 }
 .card-block {
-  margin-bottom: 18rpx;
-  padding: 24rpx;
+  margin-bottom: 14rpx;
+  padding: 22rpx;
   border: 1rpx solid var(--yd-line);
   border-radius: 26rpx;
   background: var(--yd-card);
@@ -610,8 +612,8 @@ function reset() {
   display: flex;
   align-items: center;
   min-width: 0;
-  min-height: 104rpx;
-  padding: 15rpx 14rpx;
+  min-height: 92rpx;
+  padding: 12rpx;
   border: 1rpx solid var(--yd-line);
   border-radius: 16rpx;
   color: var(--yd-muted);
@@ -679,8 +681,8 @@ function reset() {
 .type-helper {
   display: flex;
   align-items: center;
-  margin: 17rpx 0 0;
-  padding: 16rpx 18rpx;
+  margin: 14rpx 0 0;
+  padding: 13rpx 16rpx;
   border-radius: 16rpx;
   color: var(--yd-muted);
   background: rgba(118, 118, 128, 0.08);
@@ -696,6 +698,9 @@ function reset() {
 }
 .media-head {
   margin-bottom: 15rpx;
+}
+.editor-head {
+  margin-bottom: 8rpx;
 }
 .uploader-grid {
   display: grid;
@@ -749,35 +754,30 @@ function reset() {
 }
 .add-image.wide-add {
   grid-column: 1 / -1;
-  height: 236rpx;
+  height: 132rpx;
+  flex-direction: row;
+  gap: 20rpx;
 }
-.add-image > text:last-child {
+.add-image-copy {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+}
+.add-image-copy text:first-child {
+  color: #33413d;
+  font-size: 22rpx;
+  font-weight: 750;
+}
+.add-image-copy text:last-child {
   margin-top: 3rpx;
   color: #a0aaa6;
   font-size: 17rpx;
-}
-.photo-tips {
-  display: flex;
-  align-items: center;
-  gap: 9rpx;
-  margin-top: 14rpx;
-  color: #72807b;
-  font-size: 18rpx;
-}
-.photo-tips text:first-child {
-  color: #26332f;
-  font-weight: 800;
-}
-.photo-tips text:not(:first-child) {
-  padding: 6rpx 10rpx;
-  border-radius: 999rpx;
-  background: rgba(118, 118, 128, 0.08);
 }
 .camera-icon {
   position: relative;
   width: 47rpx;
   height: 35rpx;
-  margin-bottom: 12rpx;
+  margin-bottom: 0;
   border: 4rpx solid var(--yd-green);
   border-radius: 10rpx;
 }
@@ -823,7 +823,7 @@ function reset() {
 }
 .content-editor {
   width: 100%;
-  height: 220rpx;
+  height: 176rpx;
   color: #34403c;
   font-size: 25rpx;
   line-height: 1.65;
@@ -1046,7 +1046,7 @@ function reset() {
   margin-left: 8rpx;
 }
 .bottom-spacer {
-  height: 164rpx;
+  height: 142rpx;
 }
 .submit-bar {
   position: fixed;
@@ -1055,9 +1055,9 @@ function reset() {
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: 190rpx minmax(0, 1fr);
+  grid-template-columns: 152rpx minmax(0, 1fr);
   gap: 14rpx;
-  padding: 14rpx 24rpx calc(16rpx + env(safe-area-inset-bottom));
+  padding: 12rpx 24rpx calc(12rpx + env(safe-area-inset-bottom));
   border-top: 1rpx solid rgba(255, 255, 255, 0.68);
   background: rgba(246, 248, 252, 0.76);
   box-shadow: 0 -12rpx 34rpx rgba(31, 47, 80, 0.09);

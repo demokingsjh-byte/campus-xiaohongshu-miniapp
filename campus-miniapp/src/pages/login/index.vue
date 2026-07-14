@@ -196,7 +196,9 @@ function openPolicy(type: 'privacy' | 'agreement') {
         </text>
       </view>
       <view class="guest-tip">
-        不同意也可以返回，以游客身份浏览公开校园内容
+        <text @click="uni.navigateBack()">
+          暂不登录，先逛逛校园
+        </text><text>游客可以浏览公开内容 ›</text>
       </view>
     </view>
 
@@ -254,7 +256,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
 <style lang="scss" scoped>
 .login-page {
   min-height: 100vh;
-  padding: 0 44rpx 44rpx;
+  padding: 0 38rpx 44rpx;
   background: var(--yd-paper);
 }
 .login-status {
@@ -273,26 +275,26 @@ function openPolicy(type: 'privacy' | 'agreement') {
 }
 .login-content,
 .done-content {
-  padding-top: 62rpx;
+  padding-top: 34rpx;
   text-align: center;
 }
 .logo {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 118rpx;
-  height: 118rpx;
+  width: 96rpx;
+  height: 96rpx;
   margin: 0 auto;
   border-radius: 32rpx 32rpx 32rpx 9rpx;
   color: #fff;
   background: var(--yd-green);
   box-shadow: 10rpx 12rpx 0 #c9dfd6;
-  font-size: 48rpx;
+  font-size: 42rpx;
   font-weight: 900;
 }
 .title {
-  margin-top: 30rpx;
-  font-size: 42rpx;
+  margin-top: 24rpx;
+  font-size: 38rpx;
   font-weight: 900;
 }
 .title.left,
@@ -307,28 +309,37 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .feature-list {
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
-  margin-top: 58rpx;
+  gap: 0;
+  margin-top: 38rpx;
+  overflow: hidden;
+  border: 1rpx solid rgba(255, 255, 255, 0.72);
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 18rpx 44rpx rgba(33, 50, 86, 0.085);
   text-align: left;
 }
 .feature-list > view {
   display: flex;
   align-items: center;
-  padding: 22rpx;
-  border: 1rpx solid var(--yd-line);
-  border-radius: 16rpx;
-  background: var(--yd-card);
-  box-shadow: 5rpx 6rpx 0 rgba(75, 59, 44, 0.035);
+  padding: 16rpx 20rpx;
+  border: 0;
+  border-bottom: 1rpx solid rgba(60, 60, 67, 0.1);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.feature-list > view:last-child {
+  border-bottom: 0;
 }
 .feature-list > view > text {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 72rpx;
-  height: 72rpx;
+  width: 60rpx;
+  height: 60rpx;
   border-radius: 14rpx 14rpx 14rpx 4rpx;
   background: var(--yd-mint);
-  font-size: 34rpx;
+  font-size: 29rpx;
 }
 .feature-list span {
   display: flex;
@@ -336,12 +347,12 @@ function openPolicy(type: 'privacy' | 'agreement') {
   margin-left: 18rpx;
 }
 .feature-list b {
-  font-size: 26rpx;
+  font-size: 24rpx;
 }
 .feature-list i {
   margin-top: 5rpx;
   color: #8e9894;
-  font-size: 21rpx;
+  font-size: 19rpx;
   font-style: normal;
 }
 .wechat-btn {
@@ -350,7 +361,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   justify-content: center;
   width: 100%;
   height: var(--yd-control-large);
-  margin-top: 40rpx;
+  margin-top: 28rpx;
   padding: 0 34rpx;
   border: 1rpx solid rgba(10, 132, 255, 0.16);
   border-radius: var(--yd-control-radius);
@@ -464,11 +475,23 @@ function openPolicy(type: 'privacy' | 'agreement') {
   font-weight: 650;
 }
 .guest-tip {
-  margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  margin-top: 16rpx;
+  flex-direction: column;
   color: #a0a7b2;
   font-size: 19rpx;
   line-height: 1.5;
   text-align: center;
+}
+.guest-tip text:first-child {
+  color: #52615c;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+.guest-tip text:last-child {
+  margin-top: 4rpx;
+  font-size: 18rpx;
 }
 .profile-content {
   padding-top: 22rpx;
@@ -565,7 +588,6 @@ function openPolicy(type: 'privacy' | 'agreement') {
 
 /* Apple-inspired glass theme */
 .back,
-.feature-list > view,
 .profile-form,
 .login-error {
   border: 1rpx solid rgba(255, 255, 255, 0.72);
@@ -586,7 +608,9 @@ function openPolicy(type: 'privacy' | 'agreement') {
   background: var(--yd-green);
   box-shadow: 0 14rpx 32rpx rgba(10, 132, 255, 0.25);
 }
-.feature-list > view,
+.feature-list > view {
+  border-radius: 0;
+}
 .profile-form {
   border-radius: 24rpx;
 }

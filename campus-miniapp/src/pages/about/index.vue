@@ -13,9 +13,10 @@ const currentCampus = computed(() => profile.value?.campusName || (currentSchool
 const myPublishCount = computed(() => contentStore.publishedPosts.length);
 const myFavoriteCount = computed(() => contentStore.favoritePosts.length);
 const receivedLikeCount = computed(() => contentStore.publishedPosts.reduce((total, post) => total + post.likes, 0));
+const certificationNote = computed(() => loggedIn.value ? (userStore.profileCompleted ? '已认证' : '待完善') : '登录后认证');
 const menuGroups = [
   [{ label: '我的交易', note: '查看回应', action: 'messages' }, { label: '我的发布', note: '', action: 'published' }, { label: '收藏与足迹', note: '最近浏览', action: 'favorites' }],
-  [{ label: '校园认证', note: '已认证', action: 'profile' }, { label: '设置与隐私', note: '', action: 'settings' }, { label: '帮助与反馈', note: '', action: 'help' }],
+  [{ label: '校园认证', note: '', action: 'profile' }, { label: '设置与隐私', note: '', action: 'settings' }, { label: '帮助与反馈', note: '', action: 'help' }],
 ];
 onShow(async () => {
   if (!userStore.userInfo) {
@@ -33,6 +34,9 @@ onShow(async () => {
 });
 function goLogin(mode: 'login' | 'edit' = 'login') {
   uni.navigateTo({ url: `/pages/login/index${mode === 'edit' ? '?mode=edit' : ''}` });
+}
+function handleCampusPass() {
+  goLogin(loggedIn.value ? 'edit' : 'login');
 }
 function handleMenu(action: string, requiresLogin: boolean) {
   if (requiresLogin && !loggedIn.value) {
@@ -67,10 +71,12 @@ function handleMenu(action: string, requiresLogin: boolean) {
     <view v-if="!loggedIn" class="guest-card">
       <view class="guest-avatar">
         云
-      </view><view class="guest-title">
-        登录后开启校园生活
-      </view><view class="guest-desc">
-        发布内容、收藏好物，也不错过同学的回应
+      </view><view class="guest-copy">
+        <view class="guest-title">
+          登录后开启校园生活
+        </view><view class="guest-desc">
+          发布、收藏并及时查看同学回应
+        </view>
       </view><button @click="goLogin()">
         微信一键登录
       </button>
@@ -102,14 +108,14 @@ function handleMenu(action: string, requiresLogin: boolean) {
       </view>
     </view>
 
-    <view class="campus-pass yd-card">
+    <view class="campus-pass yd-card" @click="handleCampusPass">
       <view class="pass-icon">
         校
       </view><view>
         <view class="pass-title">
           {{ currentSchool }}校园卡
         </view><view class="pass-note">
-          同校认证 · 内容优先推荐
+          {{ loggedIn ? '同校认证 · 内容优先推荐' : '当前浏览校园 · 登录后可认证' }}
         </view>
       </view><text>›</text>
     </view>
@@ -125,7 +131,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
         </view><text class="menu-label">
           {{ item.label }}
         </text><text class="menu-note">
-          {{ item.action === 'published' ? `${myPublishCount}` : item.note }}
+          {{ item.action === 'published' ? `${myPublishCount}` : (item.action === 'profile' ? certificationNote : item.note) }}
         </text><text class="arrow">
           ›
         </text>
@@ -144,13 +150,13 @@ function handleMenu(action: string, requiresLogin: boolean) {
   background: var(--yd-paper);
 }
 .mine-status {
-  height: calc(72rpx + env(safe-area-inset-top));
+  height: calc(48rpx + env(safe-area-inset-top));
 }
 .mine-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4rpx 184rpx 20rpx 2rpx;
+  padding: 4rpx 0 18rpx 2rpx;
   font-size: 38rpx;
   font-weight: 900;
 }
@@ -206,7 +212,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 .guest-card,
 .profile-card {
-  padding: 34rpx 28rpx;
+  padding: 28rpx;
   border: 1rpx solid #b7d4c8;
   border-radius: 21rpx;
   color: var(--yd-ink);
@@ -214,35 +220,40 @@ function handleMenu(action: string, requiresLogin: boolean) {
   box-shadow: 0 12rpx 30rpx rgba(33, 50, 86, 0.08);
 }
 .guest-card {
-  text-align: center;
+  display: grid;
+  grid-template-columns: 78rpx minmax(0, 1fr);
+  align-items: center;
+  gap: 0 18rpx;
+  text-align: left;
 }
 .guest-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 94rpx;
-  height: 94rpx;
-  margin: 0 auto;
-  border-radius: 32rpx;
+  width: 78rpx;
+  height: 78rpx;
+  margin: 0;
+  border-radius: 24rpx;
   color: #fff;
   background: var(--yd-green-dark);
-  font-size: 38rpx;
+  font-size: 32rpx;
   font-weight: 900;
 }
 .guest-title {
-  margin-top: 18rpx;
-  font-size: 34rpx;
+  margin-top: 0;
+  font-size: 29rpx;
   font-weight: 900;
 }
 .guest-desc {
-  margin-top: 9rpx;
+  margin-top: 5rpx;
   color: #657970;
-  font-size: 23rpx;
+  font-size: 20rpx;
 }
 .guest-card button {
-  width: 300rpx;
-  height: var(--yd-control-regular);
-  margin: 24rpx auto 0;
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 76rpx;
+  margin: 22rpx 0 0;
   padding: 0 28rpx;
   border-radius: var(--yd-control-radius);
   color: #fff;
@@ -323,8 +334,8 @@ function handleMenu(action: string, requiresLogin: boolean) {
 .campus-pass {
   display: flex;
   align-items: center;
-  margin-top: 20rpx;
-  padding: 22rpx;
+  margin-top: 16rpx;
+  padding: 19rpx 22rpx;
 }
 .pass-icon {
   display: flex;
@@ -375,12 +386,12 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 .menu-card {
   overflow: hidden;
-  margin-top: 18rpx;
+  margin-top: 14rpx;
 }
 .menu-row {
   display: flex;
   align-items: center;
-  height: 92rpx;
+  height: 84rpx;
   padding: 0 22rpx;
   border-bottom: 1rpx solid #efebe5;
 }
@@ -415,7 +426,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   font-size: 32rpx;
 }
 .version {
-  margin-top: 28rpx;
+  margin-top: 22rpx;
   color: #a1a9a6;
   font-size: 20rpx;
   text-align: center;
