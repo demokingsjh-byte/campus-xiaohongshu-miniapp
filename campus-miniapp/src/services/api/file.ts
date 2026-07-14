@@ -5,6 +5,7 @@ import { getCampusTenantId } from '@/utils/tenant';
 interface UploadResult {
   code: number
   data?: string
+  msg?: string
   message?: string
 }
 
@@ -22,7 +23,7 @@ function uploadCampusFile(filePath: string, directory: string, errorLabel: strin
       formData: { directory },
       header: {
         ...(authorization ? { Authorization: authorization } : {}),
-        ...(tenantId ? { 'tenant-id': String(tenantId) } : {}),
+        ...(tenantId ? { 'tenant-id': String(tenantId), 'X-Tenant-Id': String(tenantId) } : {}),
       },
       success: ({ statusCode, data }) => {
         try {
@@ -31,7 +32,7 @@ function uploadCampusFile(filePath: string, directory: string, errorLabel: strin
             resolve(result.data);
             return;
           }
-          reject(new Error(result.message || `${errorLabel}上传失败`));
+          reject(new Error(result.msg || result.message || `${errorLabel}上传失败`));
         } catch {
           reject(new Error(`${errorLabel}上传响应格式错误`));
         }

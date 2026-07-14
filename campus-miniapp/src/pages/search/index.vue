@@ -104,13 +104,13 @@ onLoad(async (query) => {
   <view class="search-page">
     <view class="search-status" /><view class="search-top">
       <view class="back" @click="uni.navigateBack()">
-        ‹
+        <image src="/static/icons/ui/back.svg" mode="aspectFit" />
       </view><view class="search-input">
-        <text>⌕</text>
+        <image class="search-icon" src="/static/icons/ui/search.svg" mode="aspectFit" />
         <input v-model="keyword" autofocus placeholder="搜校园内容和同学" confirm-type="search" @confirm="search()">
-        <text v-if="keyword" class="clear" @click="clear">
-          ×
-        </text>
+        <view v-if="keyword" class="clear" @click="clear">
+          <image src="/static/icons/ui/close.svg" mode="aspectFit" />
+        </view>
       </view><text class="search-text" @click="search()">
         搜索
       </text>
@@ -197,7 +197,15 @@ onLoad(async (query) => {
   flex: 0 0 72rpx;
   width: 72rpx;
   height: 72rpx;
-  font-size: 48rpx;
+  border-radius: 18rpx;
+}
+.back:active,
+.search-text:active {
+  background: rgba(118, 118, 128, 0.08);
+}
+.back image {
+  width: 40rpx;
+  height: 40rpx;
 }
 .search-input {
   display: flex;
@@ -212,8 +220,13 @@ onLoad(async (query) => {
 }
 .search-input input {
   flex: 1;
-  margin-left: 10rpx;
+  margin-left: 14rpx;
   font-size: 24rpx;
+}
+.search-icon {
+  flex: 0 0 auto;
+  width: 32rpx;
+  height: 32rpx;
 }
 .clear {
   display: flex;
@@ -221,9 +234,12 @@ onLoad(async (query) => {
   justify-content: center;
   width: 34rpx;
   height: 34rpx;
+  margin-left: 10rpx;
   border-radius: 50%;
-  color: #fff;
-  background: #aeb6b2;
+}
+.clear image {
+  width: 34rpx;
+  height: 34rpx;
 }
 .search-text {
   display: flex;
@@ -240,6 +256,7 @@ onLoad(async (query) => {
 }
 .discover-section {
   margin-top: 28rpx;
+  padding: 26rpx 24rpx;
 }
 .discover-head {
   display: flex;
@@ -260,7 +277,8 @@ onLoad(async (query) => {
   margin-top: 18rpx;
 }
 .chip-list text {
-  padding: 13rpx 22rpx;
+  min-height: 64rpx;
+  padding: 15rpx 24rpx;
   border: 1rpx solid var(--yd-line);
   border-radius: 10rpx;
   color: #65706c;
@@ -275,13 +293,13 @@ onLoad(async (query) => {
 .hot-list {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 4rpx 24rpx;
+  gap: 4rpx 28rpx;
   margin-top: 14rpx;
 }
 .hot-list > view {
   display: flex;
   align-items: center;
-  height: 74rpx;
+  min-height: 80rpx;
   font-size: 24rpx;
 }
 .rank {
@@ -362,7 +380,6 @@ onLoad(async (query) => {
 /* Apple-inspired glass theme */
 .search-input,
 .discover-section,
-.hot-list,
 .filters {
   border: 1rpx solid rgba(255, 255, 255, 0.7);
   border-radius: 24rpx;

@@ -11,6 +11,8 @@ const agreed = ref(hasCurrentPrivacyConsent());
 const loading = ref(false);
 const loginError = ref('');
 const avatarUploading = ref(false);
+const pendingAvatarPath = ref('');
+const avatarUploadError = ref('');
 const phoneBinding = ref(false);
 const phoneAuthError = ref('');
 const DEFAULT_AVATAR = '/static/icons/ui/avatar-default.svg';
@@ -117,19 +119,53 @@ async function loginDemo() {
     loading.value = false;
   }
 }
-async function chooseAvatar(event: any) {
-  const avatarUrl = event?.detail?.avatarUrl;
-  if (!avatarUrl)
-    return;
+async function uploadSelectedAvatar(showSuccess = false) {
+  if (!pendingAvatarPath.value)
+    return true;
   avatarUploading.value = true;
   try {
-    form.avatar = await uploadCampusAvatar(avatarUrl);
-    uni.showToast({ title: '头像已获取', icon: 'success' });
-  } catch {
-    uni.showToast({ title: '头像上传失败，请重试', icon: 'none' });
+    form.avatar = await uploadCampusAvatar(pendingAvatarPath.value);
+    pendingAvatarPath.value = '';
+    avatarUploadError.value = '';
+    if (showSuccess)
+      uni.showToast({ title: '头像已更新', icon: 'success' });
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    avatarUploadError.value = message || '头像已选择，但上传失败';
+    uni.showToast({ title: '头像已选择，请点下方重试上传', icon: 'none', duration: 2800 });
+    return false;
   } finally {
     avatarUploading.value = false;
   }
+}
+async function chooseAvatar(event: any) {
+  const avatarUrl = event?.detail?.avatarUrl;
+  if (!avatarUrl) {
+    const errMsg = event?.detail?.errMsg || '';
+    if (errMsg && !/cancel/i.test(errMsg))
+      uni.showToast({ title: '未能读取微信头像，请在真机体验版重试', icon: 'none' });
+    return;
+  }
+  await selectAvatarPath(avatarUrl);
+}
+async function selectAvatarPath(avatarUrl: string) {
+  form.avatar = avatarUrl;
+  pendingAvatarPath.value = avatarUrl;
+  avatarUploadError.value = '';
+  await uploadSelectedAvatar(true);
+}
+function chooseAvatarFromAlbum() {
+  uni.chooseMedia({
+    count: 1,
+    mediaType: ['image'],
+    sourceType: ['album', 'camera'],
+    success: ({ tempFiles }) => {
+      const avatarUrl = tempFiles[0]?.tempFilePath;
+      if (avatarUrl)
+        void selectAvatarPath(avatarUrl);
+    },
+  });
 }
 async function bindPhone(event: any) {
   const phoneCode = event?.detail?.code;
@@ -169,6 +205,8 @@ async function finishProfile() {
     uni.showToast({ title: '请完善昵称、学校和校区', icon: 'none' });
     return;
   }
+  if (pendingAvatarPath.value && !await uploadSelectedAvatar())
+    return;
   loading.value = true;
   try {
     await userStore.updateProfile(form);
@@ -200,7 +238,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   <view class="login-page">
     <view class="login-status" /><view class="login-nav">
       <view class="back" @click="uni.navigateBack()">
-        ‹
+        <image src="/static/icons/ui/back.svg" mode="aspectFit" />
       </view><text>{{ navigationTitle }}</text>
     </view>
     <view v-if="step === 'login'" class="login-content">
@@ -250,7 +288,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
         <view class="button-inner">
           <view v-if="loading" class="button-spinner" />
           <view v-else class="wechat-symbol">
-            微
+            <image src="/static/icons/ui/wechat.svg" mode="aspectFit" />
           </view>
           <text>{{ loading ? '正在安全登录…' : '微信一键登录' }}</text>
         </view>
@@ -291,11 +329,19 @@ function openPolicy(type: 'privacy' | 'agreement') {
         资料仅用于匹配同校内容，可随时修改
       </view>
       <button class="avatar-upload" open-type="chooseAvatar" :loading="avatarUploading" @chooseavatar="chooseAvatar">
-        <image v-if="form.avatar" :src="form.avatar" mode="aspectFill" />
-        <view v-else>
-          云
-        </view><text>{{ form.avatar ? '更换微信头像' : '点击选择微信头像' }}</text>
+        <image :src="form.avatar || DEFAULT_AVATAR" mode="aspectFill" />
+        <text>选择微信头像</text>
       </button>
+      <button class="album-avatar" @click="chooseAvatarFromAlbum">
+        也可以从相册或相机选择
+      </button>
+      <view v-if="avatarUploadError" class="avatar-upload-error" @click="uploadSelectedAvatar(true)">
+        <text>
+          {{ avatarUploadError }}
+        </text><text class="retry">
+          重试上传
+        </text>
+      </view>
       <button class="phone-bind" open-type="getPhoneNumber" :loading="phoneBinding" @getphonenumber="bindPhone">
         <view class="phone-icon">
           <image src="/static/icons/mine/smartphone.svg" mode="aspectFit" />
@@ -365,6 +411,10 @@ function openPolicy(type: 'privacy' | 'agreement') {
   border-radius: 14rpx;
   background: var(--yd-card);
   font-size: 46rpx;
+}
+.back image {
+  width: 42rpx;
+  height: 42rpx;
 }
 .login-nav {
   position: relative;
@@ -510,11 +560,11 @@ function openPolicy(type: 'privacy' | 'agreement') {
   width: 38rpx;
   height: 38rpx;
   border-radius: 13rpx;
-  color: var(--yd-green);
-  background: var(--yd-card);
-  font-size: 20rpx;
-  font-weight: 800;
-  line-height: 1;
+  background: rgba(255, 255, 255, 0.14);
+}
+.wechat-symbol image {
+  width: 30rpx;
+  height: 30rpx;
 }
 .button-spinner {
   width: 28rpx;
@@ -630,6 +680,46 @@ function openPolicy(type: 'privacy' | 'agreement') {
   font-size: 21rpx;
   line-height: 1.4;
   background: transparent;
+}
+.album-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 72rpx;
+  margin: -16rpx 0 14rpx;
+  padding: 0 22rpx;
+  border: 0;
+  color: #6f7a76;
+  background: transparent;
+  font-size: 21rpx;
+  line-height: 1.4;
+}
+.album-avatar::after,
+.avatar-upload::after {
+  border: 0;
+}
+.avatar-upload-error {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-height: 70rpx;
+  margin: -4rpx 0 18rpx;
+  padding: 12rpx 18rpx;
+  border: 1rpx solid rgba(227, 101, 85, 0.18);
+  border-radius: 18rpx;
+  color: #8f463e;
+  background: var(--yd-coral-soft);
+  font-size: 21rpx;
+  line-height: 1.4;
+}
+.avatar-upload-error text:first-child {
+  min-width: 0;
+  flex: 1;
+}
+.avatar-upload-error .retry {
+  flex: 0 0 auto;
+  color: #c44f42;
+  font-weight: 750;
 }
 .phone-bind {
   display: flex;

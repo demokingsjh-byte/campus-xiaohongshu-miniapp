@@ -51,18 +51,20 @@ function markSingle(item: typeof messages[number]) {
     <StatePanel v-else-if="networkError" type="offline" title="网络连接不可用" description="检查网络后重试，消息不会丢失。" action="重新连接" @action="networkError = false" />
     <StatePanel v-else-if="!filtered.length" title="暂时没有新消息" description="参与评论或发布内容后，校园里的回应会出现在这里。" />
     <view v-else class="message-list">
-      <view v-for="item in filtered" :key="item.title" class="message-row" :class="{ unread: item.unread }" @click="markSingle(item)">
-        <view class="message-icon" :style="{ background: item.color }">
-          <image :src="item.icon" mode="aspectFit" />
-        </view><view class="message-main">
-          <view class="message-title">
-            {{ item.title }}
-          </view><view class="message-content">
-            {{ item.content }}
-          </view><view class="message-time">
-            {{ item.time }}
-          </view>
-        </view><view v-if="item.unread" class="unread-dot" />
+      <view class="message-card">
+        <view v-for="item in filtered" :key="item.title" class="message-row" :class="{ unread: item.unread }" @click="markSingle(item)">
+          <view class="message-icon" :style="{ background: item.color }">
+            <image :src="item.icon" mode="aspectFit" />
+          </view><view class="message-main">
+            <view class="message-title">
+              {{ item.title }}
+            </view><view class="message-content">
+              {{ item.content }}
+            </view><view class="message-time">
+              {{ item.time }}
+            </view>
+          </view><view v-if="item.unread" class="unread-dot" />
+        </view>
       </view>
       <view class="security-card">
         <view><image src="/static/icons/ui/bell.svg" mode="aspectFit" /><text>开启微信服务通知</text></view><text>及时收到交易和重要校园消息 ›</text>
@@ -80,7 +82,8 @@ function markSingle(item: typeof messages[number]) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16rpx 24rpx;
+  min-height: 76rpx;
+  padding: 12rpx 24rpx;
   color: #8a9490;
   font-size: 21rpx;
 }
@@ -138,16 +141,25 @@ function markSingle(item: typeof messages[number]) {
 .message-list {
   padding: 16rpx 18rpx 40rpx;
 }
+.message-card {
+  overflow: hidden;
+  border: 1rpx solid rgba(255, 255, 255, 0.72);
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 16rpx 40rpx rgba(33, 50, 86, 0.08);
+}
 .message-row {
   position: relative;
   display: flex;
   align-items: flex-start;
   min-height: 128rpx;
-  padding: 22rpx 24rpx;
-  margin-bottom: 12rpx;
-  border: 1rpx solid var(--yd-line);
-  border-radius: 16rpx;
-  background: var(--yd-card);
+  padding: 24rpx;
+  border: 0;
+  border-bottom: 1rpx solid rgba(60, 60, 67, 0.08);
+  background: transparent;
+}
+.message-row:last-child {
+  border-bottom: 0;
 }
 .message-row.unread {
   border-color: #b8d9cc;
@@ -196,8 +208,9 @@ function markSingle(item: typeof messages[number]) {
   background: var(--yd-coral);
 }
 .security-card {
-  margin: 22rpx 6rpx;
-  padding: 24rpx;
+  margin: 22rpx 0;
+  min-height: 112rpx;
+  padding: 24rpx 26rpx;
   border: 1rpx dashed #9fc8b9;
   border-radius: 15rpx;
   color: var(--yd-green-dark);
@@ -231,8 +244,6 @@ function markSingle(item: typeof messages[number]) {
 /* Apple-inspired glass theme */
 .message-actions,
 .message-tabs,
-.message-list,
-.message-row,
 .security-card {
   border-color: rgba(255, 255, 255, 0.7);
   background: rgba(255, 255, 255, 0.68);
@@ -241,7 +252,6 @@ function markSingle(item: typeof messages[number]) {
   -webkit-backdrop-filter: blur(28rpx) saturate(155%);
 }
 .message-tabs,
-.message-list,
 .security-card {
   border-radius: 24rpx;
 }
