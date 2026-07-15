@@ -83,9 +83,31 @@ onLoad(async (query) => {
   fillForm();
 });
 
-async function loginDemo() {
+function getPhoneAuthorizationError(event: any) {
+  const errMsg = event?.detail?.errMsg || '';
+  const platform = uni.getSystemInfoSync().platform;
+  if (/deny|cancel/i.test(errMsg))
+    return '你已取消手机号授权，请重新点击登录';
+  if (platform === 'devtools' || /not support|unsupported|devtools/i.test(errMsg))
+    return '开发者工具不返回真实手机号，请用体验版真机授权';
+  if (/no permission|not authorized|api scope|permission/i.test(errMsg))
+    return '小程序账号尚未开通手机号快速验证能力';
+  return '手机号授权未成功，请在体验版真机重试';
+}
+
+function guardPhoneLogin() {
   if (!agreed.value) {
     uni.showToast({ title: '请先同意用户协议与隐私政策', icon: 'none' });
+  }
+}
+
+async function loginWithPhone(event: any) {
+  if (!agreed.value)
+    return;
+  const phoneCode = event?.detail?.code;
+  if (!phoneCode) {
+    loginError.value = getPhoneAuthorizationError(event);
+    uni.showToast({ title: loginError.value, icon: 'none', duration: 3500 });
     return;
   }
   loginError.value = '';
@@ -95,6 +117,7 @@ async function loginDemo() {
     const success = await userStore.silentLogin({ tenantId: initialTenant.id });
     if (!success)
       throw new Error('未完成微信登录');
+    await userStore.bindPhone(phoneCode);
     fillForm();
     if (userStore.profileCompleted && mobileBound.value) {
       syncTenantFromProfile();
@@ -109,6 +132,8 @@ async function loginDemo() {
       loginError.value = '当前网络域名未完成微信配置，请联系管理员';
     } else if (/login:fail|登录凭证|未返回 code|appid/i.test(message)) {
       loginError.value = '微信登录凭证获取失败，请重新编译后再试';
+    } else if (/手机号|phone/i.test(message)) {
+      loginError.value = '手机号验证失败，请重新点击登录授权';
     } else if (/系统异常|\[500\]/.test(message)) {
       loginError.value = '登录服务暂时繁忙，请稍后再试';
     } else {
@@ -170,16 +195,7 @@ function chooseAvatarFromAlbum() {
 async function bindPhone(event: any) {
   const phoneCode = event?.detail?.code;
   if (!phoneCode) {
-    const errMsg = event?.detail?.errMsg || '';
-    const platform = uni.getSystemInfoSync().platform;
-    if (/deny|cancel/i.test(errMsg))
-      phoneAuthError.value = '你已取消授权，可再次点击重试';
-    else if (platform === 'devtools' || /not support|unsupported|devtools/i.test(errMsg))
-      phoneAuthError.value = '开发者工具不返回真实手机号，请用体验版真机授权';
-    else if (/no permission|not authorized|api scope|permission/i.test(errMsg))
-      phoneAuthError.value = '小程序账号尚未开通手机号快速验证能力';
-    else
-      phoneAuthError.value = '手机号授权未成功，请在体验版真机重试';
+    phoneAuthError.value = getPhoneAuthorizationError(event);
     uni.showToast({ title: phoneAuthError.value, icon: 'none', duration: 3500 });
     return;
   }
@@ -284,22 +300,30 @@ function openPolicy(type: 'privacy' | 'agreement') {
           </view>
         </view>
       </view>
-      <button class="wechat-btn" :disabled="loading" @click="loginDemo">
+      <button v-if="agreed" class="wechat-btn" open-type="getPhoneNumber" :disabled="loading" @getphonenumber="loginWithPhone">
         <view class="button-inner">
           <view v-if="loading" class="button-spinner" />
           <view v-else class="wechat-symbol">
             <image src="/static/icons/ui/wechat.svg" mode="aspectFit" />
           </view>
-          <text>{{ loading ? '正在安全登录…' : '微信一键登录' }}</text>
+          <text>{{ loading ? '正在验证并登录…' : '微信手机号快捷登录' }}</text>
         </view>
       </button>
-      <view v-if="loginError" class="login-error" @click="loginDemo">
+      <button v-else class="wechat-btn" @click="guardPhoneLogin">
+        <view class="button-inner">
+          <view class="wechat-symbol">
+            <image src="/static/icons/ui/wechat.svg" mode="aspectFit" />
+          </view>
+          <text>微信手机号快捷登录</text>
+        </view>
+      </button>
+      <view v-if="loginError" class="login-error">
         <text class="login-error-icon">
           !
         </text><text>
           {{ loginError }}
         </text><text class="retry">
-          重试
+          请重试
         </text>
       </view>
       <view class="privacy">
