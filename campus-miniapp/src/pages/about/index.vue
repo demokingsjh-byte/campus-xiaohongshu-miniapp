@@ -19,6 +19,12 @@ const menuGroups = [
   [{ label: '校园认证', note: '', action: 'profile', icon: '/static/icons/mine/badge.svg' }, { label: '设置与隐私', note: '', action: 'settings', icon: '/static/icons/mine/settings.svg' }, { label: '帮助与反馈', note: '', action: 'help', icon: '/static/icons/mine/help.svg' }],
 ];
 const menuGroupTitles = ['内容与交易', '服务与设置'];
+const tradeStates = [
+  { mark: '回', label: '待回应', note: '2 个新回复', value: 2, tone: 'reply' },
+  { mark: '确', label: '待确认', note: '等待双方确认', value: 1, tone: 'confirm' },
+  { mark: '进', label: '进行中', note: '正在沟通交易', value: 3, tone: 'active' },
+  { mark: '完', label: '已完成', note: '历史完成记录', value: 18, tone: 'done' },
+];
 
 onShow(async () => {
   if (!userStore.userInfo) {
@@ -64,7 +70,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   <view class="mine-page safe-bottom">
     <view class="ambient-layer">
       <view class="ambient ambient-blue" />
-      <view class="ambient ambient-coral" />
+      <view class="ambient ambient-indigo" />
       <view class="ambient ambient-sky" />
     </view>
     <view class="mine-status" />
@@ -168,32 +174,20 @@ function handleMenu(action: string, requiresLogin: boolean) {
         <text>查看全部 ›</text>
       </view>
       <view class="quick-grid">
-        <view>
+        <view v-for="item in tradeStates" :key="item.label" class="quick-item">
+          <view class="quick-icon" :class="`tone-${item.tone}`">
+            {{ item.mark }}
+          </view>
+          <view class="quick-copy">
+            <text class="quick-label">
+              {{ item.label }}
+            </text>
+            <text class="quick-note">
+              {{ item.note }}
+            </text>
+          </view>
           <text class="quick-value">
-            2
-          </text><text class="quick-label">
-            待回应
-          </text>
-        </view>
-        <view>
-          <text class="quick-value">
-            1
-          </text><text class="quick-label">
-            待确认
-          </text>
-        </view>
-        <view>
-          <text class="quick-value">
-            3
-          </text><text class="quick-label">
-            进行中
-          </text>
-        </view>
-        <view>
-          <text class="quick-value">
-            18
-          </text><text class="quick-label">
-            已完成
+            {{ item.value }}
           </text>
         </view>
       </view>
@@ -232,7 +226,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   position: relative;
   min-height: 100vh;
   padding: 0 24rpx 36rpx;
-  background: #eef2f7;
+  background: linear-gradient(155deg, #dcecff 0%, #edf6ff 42%, #d8eaff 100%);
 }
 .ambient-layer {
   position: fixed;
@@ -248,25 +242,25 @@ function handleMenu(action: string, requiresLogin: boolean) {
   opacity: 0.72;
 }
 .ambient-blue {
-  top: 24rpx;
-  right: -120rpx;
-  width: 420rpx;
-  height: 420rpx;
-  background: rgba(10, 132, 255, 0.22);
+  top: -60rpx;
+  right: -130rpx;
+  width: 460rpx;
+  height: 460rpx;
+  background: rgba(20, 126, 255, 0.3);
 }
-.ambient-coral {
+.ambient-indigo {
   top: 520rpx;
   left: -160rpx;
-  width: 360rpx;
-  height: 360rpx;
-  background: rgba(255, 107, 95, 0.13);
+  width: 390rpx;
+  height: 390rpx;
+  background: rgba(78, 107, 255, 0.2);
 }
 .ambient-sky {
   right: -100rpx;
   bottom: 80rpx;
   width: 340rpx;
   height: 340rpx;
-  background: rgba(93, 190, 255, 0.12);
+  background: rgba(72, 192, 255, 0.22);
 }
 .mine-status,
 .guest-card,
@@ -282,16 +276,19 @@ function handleMenu(action: string, requiresLogin: boolean) {
   height: calc(30rpx + env(safe-area-inset-top));
 }
 .glass-card {
-  border: 1rpx solid rgba(255, 255, 255, 0.88);
-  background: rgba(255, 255, 255, 0.64);
-  box-shadow: 0 18rpx 50rpx rgba(37, 50, 77, 0.1);
-  backdrop-filter: blur(34rpx) saturate(160%);
-  -webkit-backdrop-filter: blur(34rpx) saturate(160%);
+  border: 1rpx solid rgba(255, 255, 255, 0.78);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(221, 238, 255, 0.46));
+  box-shadow:
+    0 20rpx 54rpx rgba(24, 91, 173, 0.13),
+    inset 0 1rpx 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(38rpx) saturate(170%);
+  -webkit-backdrop-filter: blur(38rpx) saturate(170%);
 }
 .guest-card,
 .profile-card {
   padding: 26rpx;
   border-radius: 30rpx;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.78), rgba(197, 225, 255, 0.5));
 }
 .guest-main,
 .profile-head {
@@ -337,7 +334,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   margin-top: 22rpx;
   border-radius: 19rpx;
   color: #fff;
-  background: #0a84ff;
+  background: linear-gradient(135deg, #4aa6ff, #087cff);
   box-shadow: 0 12rpx 28rpx rgba(10, 132, 255, 0.24);
   font-size: 25rpx;
   font-weight: 750;
@@ -414,9 +411,9 @@ function handleMenu(action: string, requiresLogin: boolean) {
   grid-template-columns: repeat(4, 1fr);
   margin-top: 24rpx;
   padding: 18rpx 6rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.72);
+  border: 1rpx solid rgba(255, 255, 255, 0.68);
   border-radius: 22rpx;
-  background: rgba(245, 247, 251, 0.5);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.48), rgba(197, 226, 255, 0.3));
 }
 .stats view {
   position: relative;
@@ -457,7 +454,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 132, 255, 0.1);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(131, 194, 255, 0.28));
 }
 .pass-icon {
   width: 60rpx;
@@ -494,7 +491,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 .trade-card {
   margin-top: 16rpx;
-  padding: 20rpx 20rpx 18rpx;
+  padding: 21rpx 20rpx 20rpx;
   border-radius: 26rpx;
 }
 .section-head {
@@ -513,33 +510,71 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 .quick-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  margin-top: 18rpx;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx;
+  margin-top: 17rpx;
 }
-.quick-grid view {
-  position: relative;
+.quick-item {
   display: flex;
-  flex-direction: column;
+  min-width: 0;
   align-items: center;
+  min-height: 92rpx;
+  padding: 12rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
+  border-radius: 20rpx;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.62), rgba(190, 222, 255, 0.28));
+  box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.62);
 }
-.quick-grid view:not(:last-child)::after {
-  position: absolute;
-  top: 4rpx;
-  right: 0;
-  width: 1rpx;
+.quick-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 48rpx;
   height: 48rpx;
-  background: rgba(60, 60, 67, 0.09);
-  content: '';
+  border-radius: 15rpx;
+  color: #fff;
+  background: linear-gradient(145deg, #5db3ff, #1687f7);
+  box-shadow: 0 8rpx 18rpx rgba(10, 126, 245, 0.2);
+  font-size: 18rpx;
+  font-weight: 800;
+}
+.tone-confirm {
+  background: linear-gradient(145deg, #7fa5ff, #4c75ed);
+}
+.tone-active {
+  background: linear-gradient(145deg, #5bc9ff, #1596e6);
+}
+.tone-done {
+  background: linear-gradient(145deg, #88bdff, #4d8fe8);
+}
+.quick-copy {
+  display: flex;
+  overflow: hidden;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  margin-left: 10rpx;
 }
 .quick-value {
-  color: #1d1d1f;
-  font-size: 27rpx;
+  flex: 0 0 auto;
+  margin-left: 6rpx;
+  color: #126fc7;
+  font-size: 25rpx;
   font-weight: 800;
 }
 .quick-label {
-  margin-top: 6rpx;
-  color: #85868c;
-  font-size: 19rpx;
+  color: #2c2c2e;
+  font-size: 21rpx;
+  font-weight: 700;
+}
+.quick-note {
+  overflow: hidden;
+  margin-top: 4rpx;
+  color: #7f8fa3;
+  font-size: 16rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .service-section {
   margin-top: 22rpx;
