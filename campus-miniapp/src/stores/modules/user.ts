@@ -9,6 +9,7 @@ import {
   updateCampusProfile,
   wechatLogin,
 } from '@/services/api/auth';
+import { startCampusAnalytics, stopCampusAnalytics } from '@/utils/analytics';
 import { getToken, isLogin, removeToken, setToken } from '@/utils/auth';
 import { removeCache } from '@/utils/cache';
 import { isUseMock } from '@/utils/env';
@@ -109,6 +110,7 @@ export const useUserStore = defineStore('UserStore', () => {
     if (!userInfo.value) {
       await getUserInfo();
     }
+    startCampusAnalytics(options.scene);
     return true;
   }
 
@@ -135,6 +137,7 @@ export const useUserStore = defineStore('UserStore', () => {
   }
 
   async function logout(options: { clearConsent?: boolean } = {}) {
+    stopCampusAnalytics();
     removeCache(TOKEN_KEY);
     uni.removeStorageSync('yd-demo-login');
     clearCampusLocalData({ keepConsent: !options.clearConsent });

@@ -12,14 +12,15 @@ ON DUPLICATE KEY UPDATE name = VALUES(name), sort = VALUES(sort), parent_id = VA
 INSERT INTO system_menu
     (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
 VALUES
-    (900100, '区域管理', 'campus:region:query', 2, 1, 900000, 'region', 'ep:map-location', 'campus/base/index', 'CampusRegion', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900200, '学校资料', 'campus:school:query', 2, 2, 900000, 'school', 'ep:office-building', 'campus/base/index', 'CampusSchool', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900300, '校区租户', 'campus:tenant-profile:query', 2, 3, 900000, 'tenant-profile', 'ep:coordinate', 'campus/base/index', 'CampusTenantProfile', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900400, '校区代理', 'campus:agent:query', 2, 4, 900000, 'agent', 'ep:user-filled', 'campus/base/index', 'CampusAgent', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900500, '商品管理', 'campus:product:query', 2, 5, 900000, 'product', 'ep:goods', 'campus/base/index', 'CampusProduct', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900600, '学生用户', 'campus:miniapp-user:query', 2, 6, 900000, 'miniapp-user', 'ep:user', 'campus/base/index', 'CampusStudentUser', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900700, '数据日志', 'system:operate-log:query', 2, 8, 900000, 'data-log', 'ep:notebook', 'campus/log/index', 'CampusDataLog', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900800, '内容管理', 'campus:post:query', 2, 7, 900000, 'post', 'ep:document', 'campus/base/index', 'CampusPost', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
+    (900050, '数据看板', 'campus:analytics:query', 2, 1, 900000, 'analytics', 'ep:data-analysis', 'campus/analytics/index', 'CampusAnalytics', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900100, '区域管理', 'campus:region:query', 2, 2, 900000, 'region', 'ep:map-location', 'campus/base/index', 'CampusRegion', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900200, '学校资料', 'campus:school:query', 2, 3, 900000, 'school', 'ep:office-building', 'campus/base/index', 'CampusSchool', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900300, '校区租户', 'campus:tenant-profile:query', 2, 4, 900000, 'tenant-profile', 'ep:coordinate', 'campus/base/index', 'CampusTenantProfile', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900400, '校区代理', 'campus:agent:query', 2, 5, 900000, 'agent', 'ep:user-filled', 'campus/base/index', 'CampusAgent', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900500, '商品管理', 'campus:product:query', 2, 6, 900000, 'product', 'ep:goods', 'campus/base/index', 'CampusProduct', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900600, '学生用户', 'campus:miniapp-user:query', 2, 7, 900000, 'miniapp-user', 'ep:user', 'campus/base/index', 'CampusStudentUser', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900700, '数据日志', 'system:operate-log:query', 2, 9, 900000, 'data-log', 'ep:notebook', 'campus/log/index', 'CampusDataLog', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900800, '内容管理', 'campus:post:query', 2, 8, 900000, 'post', 'ep:document', 'campus/base/index', 'CampusPost', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
 ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), sort = VALUES(sort), parent_id = VALUES(parent_id), path = VALUES(path), icon = VALUES(icon), component = VALUES(component), component_name = VALUES(component_name), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';
 
 INSERT INTO system_menu
