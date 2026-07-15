@@ -3,6 +3,7 @@ import { campusTenants, getDefaultTenant } from '@/mock/campus';
 import { uploadCampusAvatar } from '@/services/api/file';
 import { useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
+import { DEFAULT_CAMPUS_AVATAR, hasAuthorizedCampusAvatar, resolveCampusAvatar } from '@/utils/avatar';
 import { hasCurrentPrivacyConsent, openPolicyPage, recordPrivacyConsent } from '@/utils/privacy';
 
 const step = ref<'login' | 'profile' | 'done'>('login');
@@ -13,7 +14,7 @@ const loginError = ref('');
 const avatarUploading = ref(false);
 const pendingAvatarPath = ref('');
 const avatarUploadError = ref('');
-const DEFAULT_AVATAR = '/static/icons/ui/avatar-default.svg';
+const DEFAULT_AVATAR = DEFAULT_CAMPUS_AVATAR;
 const userStore = useUserStore();
 const tenantStore = useTenantStore();
 const gradeOptions = ['2026级', '2025级', '2024级', '2023级', '2022级及以前', '研究生'];
@@ -24,7 +25,7 @@ const initialTenant = tenantStore.currentTenant && campusTenants.some(item => it
 const form = reactive({ avatar: DEFAULT_AVATAR, nickname: '', schoolName: initialTenant.name, campusName: initialTenant.name === '吉首大学' ? '吉首校区' : '主校区', grade: '2023级', gender: '不公开', roleType: 'student' });
 const schoolOptions = campusTenants.map(item => item.name);
 const campusOptions = computed(() => form.schoolName === '吉首大学' ? ['吉首校区'] : ['主校区']);
-const hasCustomAvatar = computed(() => Boolean(form.avatar && form.avatar !== DEFAULT_AVATAR));
+const hasCustomAvatar = computed(() => hasAuthorizedCampusAvatar(form.avatar));
 const avatarStatusText = computed(() => {
   if (avatarUploading.value)
     return '正在上传头像…';
@@ -34,7 +35,7 @@ const avatarStatusText = computed(() => {
 });
 const navigationTitle = computed(() => {
   if (editing.value)
-    return '编辑资料';
+    return '修改校园资料';
   if (step.value === 'profile')
     return '完善校园资料';
   if (step.value === 'done')
@@ -46,7 +47,7 @@ function fillForm() {
   const user = userStore.userInfo;
   if (!user)
     return;
-  form.avatar = user.avatar || DEFAULT_AVATAR;
+  form.avatar = resolveCampusAvatar(user.avatar);
   form.nickname = user.nickname === '校园体验用户' && !editing.value ? '' : (user.nickname || '');
   form.schoolName = user.schoolName || form.schoolName;
   form.campusName = user.campusName || form.campusName;
@@ -123,7 +124,10 @@ async function uploadSelectedAvatar(showSuccess = false) {
     return true;
   avatarUploading.value = true;
   try {
-    form.avatar = await uploadCampusAvatar(pendingAvatarPath.value);
+    const avatar = await uploadCampusAvatar(pendingAvatarPath.value);
+    if (userStore.loggedIn)
+      await userStore.updateProfile({ avatar });
+    form.avatar = avatar;
     pendingAvatarPath.value = '';
     avatarUploadError.value = '';
     if (showSuccess)
@@ -156,12 +160,6 @@ async function selectAvatarPath(avatarUrl: string) {
   avatarUploadError.value = '';
   await uploadSelectedAvatar(true);
 }
-function useDefaultAvatar() {
-  form.avatar = DEFAULT_AVATAR;
-  pendingAvatarPath.value = '';
-  avatarUploadError.value = '';
-  uni.showToast({ title: '已选择默认头像', icon: 'none' });
-}
 async function finishProfile() {
   if (!form.nickname || !form.schoolName || !form.campusName) {
     uni.showToast({ title: '请完善昵称、学校和校区', icon: 'none' });
@@ -171,7 +169,10 @@ async function finishProfile() {
     return;
   loading.value = true;
   try {
-    await userStore.updateProfile(form);
+    await userStore.updateProfile({
+      ...form,
+      avatar: hasCustomAvatar.value ? form.avatar : undefined,
+    });
     syncTenantFromProfile();
     step.value = 'done';
   } catch {
@@ -283,12 +284,16 @@ function openPolicy(type: 'privacy' | 'agreement') {
     </view>
 
     <view v-else-if="step === 'profile'" class="profile-content">
-      <view class="step-note">
-        {{ editing ? '编辑资料' : '第 2 步 / 2' }}
-      </view><view class="title left">
-        {{ editing ? '修改校园资料' : '完善校园资料' }}
-      </view><view class="subtitle left">
-        资料仅用于匹配同校内容，可随时修改
+      <view class="profile-intro">
+        <text class="profile-kicker">
+          {{ editing ? '校园身份' : '第 2 步 / 2' }}
+        </text>
+        <text class="profile-heading">
+          {{ editing ? '更新你的校园资料' : '完善你的校园资料' }}
+        </text>
+        <text class="profile-summary">
+          用于校内内容匹配与身份展示，你可以随时修改
+        </text>
       </view>
       <view class="avatar-card">
         <view class="avatar-overview">
@@ -307,16 +312,12 @@ function openPolicy(type: 'privacy' | 'agreement') {
             </text>
           </view>
         </view>
-        <view class="avatar-actions">
-          <button
-            class="wechat-avatar-button" open-type="chooseAvatar" @chooseavatar="chooseAvatar"
-          >
-            {{ avatarUploading ? '正在上传头像…' : (hasCustomAvatar ? '重新授权微信头像' : '授权微信头像') }}
-          </button>
-          <button class="default-avatar-button" :class="{ selected: !hasCustomAvatar }" :disabled="avatarUploading" @click="useDefaultAvatar">
-            使用默认头像
-          </button>
-        </view>
+        <button
+          class="wechat-avatar-button" open-type="chooseAvatar" :disabled="avatarUploading" @chooseavatar="chooseAvatar"
+        >
+          <image src="/static/icons/ui/wechat.svg" mode="aspectFit" />
+          <text>{{ avatarUploading ? '正在上传头像…' : (hasCustomAvatar ? '重新授权微信头像' : '授权微信头像') }}</text>
+        </button>
         <view class="avatar-consent-tip">
           微信头像仅在你点击授权后获取，不会自动读取
         </view>
@@ -328,19 +329,42 @@ function openPolicy(type: 'privacy' | 'agreement') {
           重试上传
         </text>
       </view>
+      <view class="form-section-head">
+        <text>基本资料</text><text>请填写真实校园信息</text>
+      </view>
       <view class="profile-form">
-        <label>昵称<input v-model="form.nickname" type="nickname" placeholder="请输入微信昵称"></label>
+        <label>
+          <view class="field-name">
+            <image src="/static/icons/ui/profile.svg" mode="aspectFit" /><text>昵称</text>
+          </view><input v-model="form.nickname" type="nickname" placeholder="请输入微信昵称">
+        </label>
         <picker :range="schoolOptions" @change="selectSchool">
-          <label>学校<view class="picker">{{ form.schoolName }} <text>›</text></view></label>
+          <label>
+            <view class="field-name">
+              <image src="/static/icons/mine/school.svg" mode="aspectFit" /><text>学校</text>
+            </view><view class="picker">{{ form.schoolName }} <text>›</text></view>
+          </label>
         </picker>
         <picker :range="campusOptions" @change="selectOption('campusName', campusOptions, $event)">
-          <label>校区<view class="picker">{{ form.campusName }} <text>›</text></view></label>
+          <label>
+            <view class="field-name">
+              <image src="/static/icons/ui/location.svg" mode="aspectFit" /><text>校区</text>
+            </view><view class="picker">{{ form.campusName }} <text>›</text></view>
+          </label>
         </picker>
         <picker :range="gradeOptions" @change="selectOption('grade', gradeOptions, $event)">
-          <label>年级<view class="picker">{{ form.grade }} <text>›</text></view></label>
+          <label>
+            <view class="field-name">
+              <image src="/static/icons/mine/badge.svg" mode="aspectFit" /><text>年级</text>
+            </view><view class="picker">{{ form.grade }} <text>›</text></view>
+          </label>
         </picker>
         <picker :range="genderOptions" @change="selectOption('gender', genderOptions, $event)">
-          <label>性别（选填）<view class="picker">{{ form.gender }} <text>›</text></view></label>
+          <label>
+            <view class="field-name">
+              <image src="/static/icons/ui/gender.svg" mode="aspectFit" /><text>性别</text><text class="optional">选填</text>
+            </view><view class="picker">{{ form.gender }} <text>›</text></view>
+          </label>
         </picker>
       </view>
       <button class="wechat-btn" :disabled="loading" @click="finishProfile">
@@ -637,12 +661,32 @@ function openPolicy(type: 'privacy' | 'agreement') {
   font-size: 18rpx;
 }
 .profile-content {
-  padding-top: 22rpx;
+  padding-top: 18rpx;
 }
-.step-note {
-  color: var(--yd-coral);
-  font-size: 22rpx;
-  font-weight: 700;
+.profile-intro {
+  display: flex;
+  flex-direction: column;
+  padding: 10rpx 4rpx 2rpx;
+  text-align: left;
+}
+.profile-kicker {
+  color: var(--yd-green-dark);
+  font-size: 21rpx;
+  font-weight: 750;
+  letter-spacing: 1rpx;
+}
+.profile-heading {
+  margin-top: 10rpx;
+  color: var(--yd-ink);
+  font-size: 36rpx;
+  font-weight: 850;
+  line-height: 1.25;
+}
+.profile-summary {
+  margin-top: 10rpx;
+  color: #7d8884;
+  font-size: 23rpx;
+  line-height: 1.55;
 }
 .avatar-card {
   margin: 24rpx 0 20rpx;
@@ -711,45 +755,30 @@ function openPolicy(type: 'privacy' | 'agreement') {
   font-size: 20rpx;
   line-height: 1.45;
 }
-.avatar-actions {
-  display: flex;
-  gap: 12rpx;
-  padding: 0 24rpx;
-}
-.wechat-avatar-button,
-.default-avatar-button {
+.wechat-avatar-button {
   position: relative;
   z-index: 2;
-  height: 72rpx;
-  margin: 0;
+  width: calc(100% - 48rpx);
+  height: 82rpx;
+  margin: 0 24rpx;
   border-radius: 18rpx;
-  font-size: 22rpx;
+  color: #fff;
+  background: linear-gradient(135deg, #4aa6ff, #087cff);
+  box-shadow: 0 10rpx 24rpx rgba(10, 132, 255, 0.22);
+  font-size: 24rpx;
   font-weight: 700;
   line-height: 1.2;
   pointer-events: auto;
 }
-.wechat-avatar-button {
-  flex: 1.4;
-  color: #fff;
-  background: linear-gradient(135deg, #4aa6ff, #087cff);
-  box-shadow: 0 10rpx 24rpx rgba(10, 132, 255, 0.22);
+.wechat-avatar-button image {
+  width: 34rpx;
+  height: 34rpx;
+  margin-right: 12rpx;
 }
-.default-avatar-button {
-  flex: 1;
-  border: 1rpx solid rgba(10, 132, 255, 0.16);
-  color: #276baf;
-  background: rgba(231, 243, 255, 0.72);
-}
-.default-avatar-button.selected {
-  border-color: rgba(10, 132, 255, 0.34);
-  background: rgba(210, 233, 255, 0.86);
-}
-.wechat-avatar-button[disabled],
-.default-avatar-button[disabled] {
+.wechat-avatar-button[disabled] {
   opacity: 0.65;
 }
-.wechat-avatar-button::after,
-.default-avatar-button::after {
+.wechat-avatar-button::after {
   display: none;
 }
 .avatar-consent-tip {
@@ -782,6 +811,21 @@ function openPolicy(type: 'privacy' | 'agreement') {
   color: #c44f42;
   font-weight: 750;
 }
+.form-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin: 30rpx 6rpx 14rpx;
+}
+.form-section-head text:first-child {
+  color: var(--yd-ink);
+  font-size: 28rpx;
+  font-weight: 800;
+}
+.form-section-head text:last-child {
+  color: #969e9a;
+  font-size: 19rpx;
+}
 .profile-form {
   overflow: hidden;
   border: 1rpx solid var(--yd-line);
@@ -792,16 +836,36 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .profile-form label {
   display: flex;
   align-items: center;
-  min-height: 94rpx;
+  min-height: 108rpx;
   padding: 0 24rpx;
   border-bottom: 1rpx solid #efebe5;
   font-size: 25rpx;
   font-weight: 700;
 }
+.field-name {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-width: 188rpx;
+}
+.field-name image {
+  width: 48rpx;
+  height: 48rpx;
+  margin-right: 14rpx;
+  padding: 9rpx;
+  border-radius: 14rpx;
+  background: rgba(10, 132, 255, 0.09);
+}
+.field-name .optional {
+  margin-left: 8rpx;
+  color: #9ba29f;
+  font-size: 18rpx;
+  font-weight: 500;
+}
 .profile-form input,
 .picker {
   flex: 1;
-  margin-left: 30rpx;
+  margin-left: 18rpx;
   color: #5f6b67;
   font-size: 25rpx;
   font-weight: 400;

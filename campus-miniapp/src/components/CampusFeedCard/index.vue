@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import type { CampusPost } from '@/mock/campus';
+import { resolveCampusAvatar } from '@/utils/avatar';
 
 const props = defineProps<{ post: CampusPost }>();
 const channelClasses: Record<string, string> = {
@@ -69,7 +70,7 @@ function openDetail(id: number) {
       </view>
       <view class="author-row">
         <view class="avatar">
-          <image src="/static/icons/ui/avatar-default.svg" mode="aspectFill" />
+          <image :src="resolveCampusAvatar(post.avatar)" mode="aspectFill" />
         </view>
         <text class="author">
           {{ post.author }} · {{ post.time }}

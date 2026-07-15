@@ -3,6 +3,7 @@ import { getDefaultTenant } from '@/mock/campus';
 import { uploadCampusAvatar } from '@/services/api/file';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
+import { resolveCampusAvatar } from '@/utils/avatar';
 
 const userStore = useUserStore();
 const tenantStore = useTenantStore();
@@ -130,7 +131,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
         <button
           class="profile-avatar" open-type="chooseAvatar" @chooseavatar="handleAvatarChoose"
         >
-          <image :src="profile?.avatar || '/static/icons/ui/avatar-default.svg'" mode="aspectFill" />
+          <image :src="resolveCampusAvatar(profile?.avatar)" mode="aspectFill" />
           <view class="avatar-edit-hint">
             <image src="/static/icons/ui/camera.svg" mode="aspectFit" />
           </view>

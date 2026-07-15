@@ -5,7 +5,7 @@ const icons = {
   empty: '/static/icons/ui/empty.svg',
   error: '/static/icons/ui/alert.svg',
   offline: '/static/icons/ui/offline.svg',
-  login: '/static/icons/ui/avatar-default.svg',
+  login: '/static/images/avatar-default-cartoon.png',
 };
 </script>
 

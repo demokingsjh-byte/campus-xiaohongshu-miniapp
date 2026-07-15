@@ -68,8 +68,7 @@ export const useUserStore = defineStore('UserStore', () => {
   const profileCompleted = computed(() => {
     const user = userInfo.value;
     return Boolean(
-      user?.avatar
-      && user.nickname
+      user?.nickname
       && user.nickname !== '校园体验用户'
       && user.schoolName
       && user.campusName

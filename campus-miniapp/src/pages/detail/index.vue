@@ -5,6 +5,7 @@ import { campusPosts } from '@/mock/campus';
 import { reportCampusPost } from '@/services/api/content';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
+import { resolveCampusAvatar } from '@/utils/avatar';
 
 const postId = ref(2001);
 const liked = ref(false);
@@ -171,7 +172,7 @@ function reportPost() {
       <view class="content-card">
         <view class="author-row">
           <view class="author-avatar">
-            <image src="/static/icons/ui/avatar-default.svg" mode="aspectFill" />
+            <image :src="resolveCampusAvatar(post.avatar)" mode="aspectFill" />
           </view><view class="author-main">
             <view class="author-name">
               <text>{{ post.author }}</text><text class="verified-badge">
@@ -212,7 +213,7 @@ function reportPost() {
           评论 {{ comments.length + 14 }}
         </view><view v-for="item in comments" :key="item.content" class="comment">
           <view class="comment-avatar">
-            <image src="/static/icons/ui/avatar-default.svg" mode="aspectFill" />
+            <image src="/static/images/avatar-default-cartoon.png" mode="aspectFill" />
           </view><view class="comment-main">
             <view class="comment-name">
               {{ item.name }} <text>{{ item.time }}</text>

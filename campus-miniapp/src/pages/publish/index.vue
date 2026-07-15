@@ -3,6 +3,7 @@ import { campusPublishTypes, getDefaultTenant } from '@/mock/campus';
 import { uploadCampusPostImage } from '@/services/api/file';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
+import { resolveCampusAvatar } from '@/utils/avatar';
 import { openPolicyPage } from '@/utils/privacy';
 
 const activeType = ref('idle');
@@ -19,6 +20,13 @@ const tenantStore = useTenantStore();
 const contentStore = useCampusContentStore();
 const currentTenant = computed(() => tenantStore.currentTenant || getDefaultTenant());
 const schoolName = computed(() => currentTenant.value.name);
+const publisherAvatar = computed(() => resolveCampusAvatar(userStore.userInfo?.avatar));
+const publisherName = computed(() => userStore.userInfo?.nickname || '未登录用户');
+const publisherCampus = computed(() => {
+  if (!userStore.loggedIn)
+    return '登录后内容会展示你的头像与昵称';
+  return [userStore.userInfo?.schoolName, userStore.userInfo?.campusName].filter(Boolean).join(' · ') || '完善校园资料后再发布';
+});
 const locations = computed(() => [`${schoolName.value} · 校内`, `${schoolName.value} · 宿舍区`, `${schoolName.value} · 校门口`]);
 const visibleRanges = ['仅本校可见', '同城高校可见', '所有人可见'];
 const form = reactive({
@@ -81,6 +89,24 @@ onLoad(() => {
   images.value = Array.isArray(draft.images) ? draft.images.slice(0, 9) : [];
   uni.showToast({ title: '已恢复上次草稿', icon: 'none' });
 });
+
+onShow(async () => {
+  if (!userStore.loggedIn)
+    return;
+  try {
+    await userStore.getUserInfo();
+  } catch {
+    // 发布表单仍可继续编辑，提交时会再校验登录状态。
+  }
+});
+
+function openPublisherProfile() {
+  if (!userStore.loggedIn) {
+    uni.navigateTo({ url: '/pages/login/index' });
+    return;
+  }
+  uni.navigateTo({ url: '/pages/login/index?mode=edit' });
+}
 
 function chooseType(key: string) {
   activeType.value = key;
@@ -231,6 +257,18 @@ function reset() {
 
 <template>
   <view class="publish-page safe-bottom">
+    <view class="publisher-card card-block" @click="openPublisherProfile">
+      <image class="publisher-avatar" :src="publisherAvatar" mode="aspectFill" />
+      <view class="publisher-copy">
+        <view class="publisher-line">
+          <text>{{ publisherName }}</text><text>{{ userStore.loggedIn ? '当前发布者' : '去登录' }}</text>
+        </view>
+        <text>{{ form.anonymous ? '匿名发布时不会展示头像和昵称' : publisherCampus }}</text>
+      </view>
+      <text class="publisher-arrow">
+        ›
+      </text>
+    </view>
     <view class="type-card card-block">
       <view class="block-head">
         <text>内容分类</text><text>选择最合适的一项</text>
@@ -447,6 +485,64 @@ function reset() {
   border-radius: 24rpx;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 8rpx 24rpx rgba(35, 52, 88, 0.045);
+}
+.publisher-card {
+  display: flex;
+  align-items: center;
+  min-height: 112rpx;
+  padding: 18rpx 22rpx;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(231, 244, 255, 0.92));
+}
+.publisher-avatar {
+  width: 76rpx;
+  height: 76rpx;
+  flex: 0 0 auto;
+  border: 3rpx solid #fff;
+  border-radius: 50%;
+  background: #e7f3ff;
+  box-shadow: 0 8rpx 20rpx rgba(10, 132, 255, 0.16);
+}
+.publisher-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  margin-left: 18rpx;
+}
+.publisher-line {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+.publisher-line text:first-child {
+  overflow: hidden;
+  color: #1d2522;
+  font-size: 26rpx;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.publisher-line text:last-child {
+  flex: 0 0 auto;
+  padding: 5rpx 10rpx;
+  border-radius: 999rpx;
+  color: #0877df;
+  background: rgba(10, 132, 255, 0.1);
+  font-size: 18rpx;
+  font-weight: 700;
+}
+.publisher-copy > text {
+  overflow: hidden;
+  margin-top: 7rpx;
+  color: #84908b;
+  font-size: 20rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.publisher-arrow {
+  margin-left: 12rpx;
+  color: #a0aaa5;
+  font-size: 36rpx;
 }
 .block-head {
   display: flex;
