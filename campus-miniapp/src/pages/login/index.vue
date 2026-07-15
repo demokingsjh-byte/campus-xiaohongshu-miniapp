@@ -29,8 +29,8 @@ const avatarStatusText = computed(() => {
   if (avatarUploading.value)
     return '正在上传头像…';
   if (hasCustomAvatar.value)
-    return '已设置，可以随时更换';
-  return '需要你主动点击授权选择';
+    return '已授权微信头像，可以重新选择';
+  return '尚未授权，将使用默认头像';
 });
 const navigationTitle = computed(() => {
   if (editing.value)
@@ -139,6 +139,8 @@ async function uploadSelectedAvatar(showSuccess = false) {
   }
 }
 async function chooseAvatar(event: any) {
+  if (avatarUploading.value)
+    return;
   const avatarUrl = event?.detail?.avatarUrl;
   if (!avatarUrl) {
     const errMsg = event?.detail?.errMsg || '';
@@ -154,17 +156,11 @@ async function selectAvatarPath(avatarUrl: string) {
   avatarUploadError.value = '';
   await uploadSelectedAvatar(true);
 }
-function chooseAvatarFromAlbum() {
-  uni.chooseMedia({
-    count: 1,
-    mediaType: ['image'],
-    sourceType: ['album', 'camera'],
-    success: ({ tempFiles }) => {
-      const avatarUrl = tempFiles[0]?.tempFilePath;
-      if (avatarUrl)
-        void selectAvatarPath(avatarUrl);
-    },
-  });
+function useDefaultAvatar() {
+  form.avatar = DEFAULT_AVATAR;
+  pendingAvatarPath.value = '';
+  avatarUploadError.value = '';
+  uni.showToast({ title: '已选择默认头像', icon: 'none' });
 }
 async function finishProfile() {
   if (!form.nickname || !form.schoolName || !form.campusName) {
@@ -295,7 +291,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
         资料仅用于匹配同校内容，可随时修改
       </view>
       <view class="avatar-card">
-        <button class="avatar-upload" open-type="chooseAvatar" :loading="avatarUploading" @chooseavatar="chooseAvatar">
+        <view class="avatar-overview">
           <view class="avatar-visual">
             <image :src="form.avatar || DEFAULT_AVATAR" mode="aspectFill" />
             <view class="avatar-camera">
@@ -304,21 +300,26 @@ function openPolicy(type: 'privacy' | 'agreement') {
           </view>
           <view class="avatar-copy">
             <text class="avatar-title">
-              {{ hasCustomAvatar ? '更换微信头像' : '授权选择微信头像' }}
+              {{ hasCustomAvatar ? '当前使用微信头像' : '当前使用默认头像' }}
             </text>
             <text class="avatar-description">
               {{ avatarStatusText }}
             </text>
           </view>
-          <text class="avatar-action">
-            {{ avatarUploading ? '上传中' : '去选择' }}
-          </text>
-        </button>
-        <view class="avatar-divider" />
-        <button class="album-avatar" @click="chooseAvatarFromAlbum">
-          <image src="/static/icons/ui/camera.svg" mode="aspectFit" />
-          <text>从相册或相机选择</text>
-        </button>
+        </view>
+        <view class="avatar-actions">
+          <button
+            class="wechat-avatar-button" open-type="chooseAvatar" @chooseavatar="chooseAvatar"
+          >
+            {{ avatarUploading ? '正在上传头像…' : (hasCustomAvatar ? '重新授权微信头像' : '授权微信头像') }}
+          </button>
+          <button class="default-avatar-button" :class="{ selected: !hasCustomAvatar }" :disabled="avatarUploading" @click="useDefaultAvatar">
+            使用默认头像
+          </button>
+        </view>
+        <view class="avatar-consent-tip">
+          微信头像仅在你点击授权后获取，不会自动读取
+        </view>
       </view>
       <view v-if="avatarUploadError" class="avatar-upload-error" @click="uploadSelectedAvatar(true)">
         <text>
@@ -651,17 +652,15 @@ function openPolicy(type: 'privacy' | 'agreement') {
   background: rgba(255, 255, 255, 0.76);
   box-shadow: 0 16rpx 40rpx rgba(33, 50, 86, 0.08);
 }
-.avatar-upload {
+.avatar-overview {
   display: flex;
   align-items: center;
   width: 100%;
-  min-height: 154rpx;
-  margin: 0;
+  min-height: 146rpx;
   padding: 22rpx 24rpx;
   color: var(--yd-ink);
   line-height: 1.3;
   text-align: left;
-  background: transparent;
 }
 .avatar-visual {
   position: relative;
@@ -712,40 +711,53 @@ function openPolicy(type: 'privacy' | 'agreement') {
   font-size: 20rpx;
   line-height: 1.45;
 }
-.avatar-action {
-  flex: 0 0 auto;
-  margin-left: 16rpx;
-  color: var(--yd-green);
+.avatar-actions {
+  display: flex;
+  gap: 12rpx;
+  padding: 0 24rpx;
+}
+.wechat-avatar-button,
+.default-avatar-button {
+  position: relative;
+  z-index: 2;
+  height: 72rpx;
+  margin: 0;
+  border-radius: 18rpx;
   font-size: 22rpx;
   font-weight: 700;
+  line-height: 1.2;
+  pointer-events: auto;
 }
-.avatar-divider {
-  height: 1rpx;
-  margin-left: 150rpx;
-  background: rgba(60, 60, 67, 0.1);
+.wechat-avatar-button {
+  flex: 1.4;
+  color: #fff;
+  background: linear-gradient(135deg, #4aa6ff, #087cff);
+  box-shadow: 0 10rpx 24rpx rgba(10, 132, 255, 0.22);
 }
-.album-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  width: 100%;
-  min-height: 78rpx;
-  margin: 0;
-  padding: 0 24rpx 0 150rpx;
-  border: 0;
-  color: #6f7a76;
-  background: transparent;
-  font-size: 21rpx;
+.default-avatar-button {
+  flex: 1;
+  border: 1rpx solid rgba(10, 132, 255, 0.16);
+  color: #276baf;
+  background: rgba(231, 243, 255, 0.72);
+}
+.default-avatar-button.selected {
+  border-color: rgba(10, 132, 255, 0.34);
+  background: rgba(210, 233, 255, 0.86);
+}
+.wechat-avatar-button[disabled],
+.default-avatar-button[disabled] {
+  opacity: 0.65;
+}
+.wechat-avatar-button::after,
+.default-avatar-button::after {
+  display: none;
+}
+.avatar-consent-tip {
+  padding: 14rpx 24rpx 20rpx;
+  color: #8b96a3;
+  font-size: 18rpx;
   line-height: 1.4;
-}
-.album-avatar image {
-  width: 28rpx;
-  height: 28rpx;
-  margin-right: 12rpx;
-}
-.album-avatar::after,
-.avatar-upload::after {
-  border: 0;
+  text-align: center;
 }
 .avatar-upload-error {
   display: flex;

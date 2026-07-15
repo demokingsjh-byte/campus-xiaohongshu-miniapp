@@ -128,8 +128,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
     <view v-else class="profile-card glass-card">
       <view class="profile-head">
         <button
-          class="profile-avatar" open-type="chooseAvatar" :disabled="avatarUpdating"
-          @chooseavatar="handleAvatarChoose"
+          class="profile-avatar" open-type="chooseAvatar" @chooseavatar="handleAvatarChoose"
         >
           <image :src="profile?.avatar || '/static/icons/ui/avatar-default.svg'" mode="aspectFill" />
           <view class="avatar-edit-hint">
@@ -152,7 +151,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
             {{ currentSchool }} · {{ currentCampus }} · {{ profile?.grade || '学生' }}
           </view>
           <view class="bio">
-            慢慢逛校园，也认真过生活。
+            点击头像，可授权更换微信头像
           </view>
         </view>
         <button class="edit-button" @click="goLogin('edit')">
@@ -385,9 +384,6 @@ function handleMenu(action: string, requiresLogin: boolean) {
   height: 100rpx;
   padding: 0;
   overflow: visible;
-}
-.profile-avatar[disabled] {
-  opacity: 1;
 }
 .profile-avatar > image {
   width: 100%;
