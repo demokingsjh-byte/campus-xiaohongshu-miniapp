@@ -13,8 +13,6 @@ const loginError = ref('');
 const avatarUploading = ref(false);
 const pendingAvatarPath = ref('');
 const avatarUploadError = ref('');
-const phoneBinding = ref(false);
-const phoneAuthError = ref('');
 const DEFAULT_AVATAR = '/static/icons/ui/avatar-default.svg';
 const userStore = useUserStore();
 const tenantStore = useTenantStore();
@@ -26,12 +24,13 @@ const initialTenant = tenantStore.currentTenant && campusTenants.some(item => it
 const form = reactive({ avatar: DEFAULT_AVATAR, nickname: '', schoolName: initialTenant.name, campusName: initialTenant.name === '吉首大学' ? '吉首校区' : '主校区', grade: '2023级', gender: '不公开', roleType: 'student' });
 const schoolOptions = campusTenants.map(item => item.name);
 const campusOptions = computed(() => form.schoolName === '吉首大学' ? ['吉首校区'] : ['主校区']);
-const mobileBound = computed(() => Boolean(userStore.userInfo?.mobileBound || userStore.userInfo?.mobile));
-const mobileLabel = computed(() => {
-  const mobile = userStore.userInfo?.mobile || '';
-  if (mobile)
-    return `${mobile.slice(0, 3)}****${mobile.slice(-4)}`;
-  return phoneAuthError.value || '用于账号安全与必要联系';
+const hasCustomAvatar = computed(() => Boolean(form.avatar && form.avatar !== DEFAULT_AVATAR));
+const avatarStatusText = computed(() => {
+  if (avatarUploading.value)
+    return '正在上传头像…';
+  if (hasCustomAvatar.value)
+    return '已设置，可以随时更换';
+  return '需要你主动点击授权选择';
 });
 const navigationTitle = computed(() => {
   if (editing.value)
@@ -83,31 +82,9 @@ onLoad(async (query) => {
   fillForm();
 });
 
-function getPhoneAuthorizationError(event: any) {
-  const errMsg = event?.detail?.errMsg || '';
-  const platform = uni.getSystemInfoSync().platform;
-  if (/deny|cancel/i.test(errMsg))
-    return '你已取消手机号授权，请重新点击登录';
-  if (platform === 'devtools' || /not support|unsupported|devtools/i.test(errMsg))
-    return '开发者工具不返回真实手机号，请用体验版真机授权';
-  if (/no permission|not authorized|api scope|permission/i.test(errMsg))
-    return '小程序账号尚未开通手机号快速验证能力';
-  return '手机号授权未成功，请在体验版真机重试';
-}
-
-function guardPhoneLogin() {
+async function loginDemo() {
   if (!agreed.value) {
     uni.showToast({ title: '请先同意用户协议与隐私政策', icon: 'none' });
-  }
-}
-
-async function loginWithPhone(event: any) {
-  if (!agreed.value)
-    return;
-  const phoneCode = event?.detail?.code;
-  if (!phoneCode) {
-    loginError.value = getPhoneAuthorizationError(event);
-    uni.showToast({ title: loginError.value, icon: 'none', duration: 3500 });
     return;
   }
   loginError.value = '';
@@ -117,9 +94,8 @@ async function loginWithPhone(event: any) {
     const success = await userStore.silentLogin({ tenantId: initialTenant.id });
     if (!success)
       throw new Error('未完成微信登录');
-    await userStore.bindPhone(phoneCode);
     fillForm();
-    if (userStore.profileCompleted && mobileBound.value) {
+    if (userStore.profileCompleted) {
       syncTenantFromProfile();
       uni.showToast({ title: '登录成功', icon: 'success' });
       returnToPreviousPage(450);
@@ -132,8 +108,6 @@ async function loginWithPhone(event: any) {
       loginError.value = '当前网络域名未完成微信配置，请联系管理员';
     } else if (/login:fail|登录凭证|未返回 code|appid/i.test(message)) {
       loginError.value = '微信登录凭证获取失败，请重新编译后再试';
-    } else if (/手机号|phone/i.test(message)) {
-      loginError.value = '手机号验证失败，请重新点击登录授权';
     } else if (/系统异常|\[500\]/.test(message)) {
       loginError.value = '登录服务暂时繁忙，请稍后再试';
     } else {
@@ -192,31 +166,7 @@ function chooseAvatarFromAlbum() {
     },
   });
 }
-async function bindPhone(event: any) {
-  const phoneCode = event?.detail?.code;
-  if (!phoneCode) {
-    phoneAuthError.value = getPhoneAuthorizationError(event);
-    uni.showToast({ title: phoneAuthError.value, icon: 'none', duration: 3500 });
-    return;
-  }
-  phoneBinding.value = true;
-  phoneAuthError.value = '';
-  try {
-    await userStore.bindPhone(phoneCode);
-    uni.showToast({ title: '手机号已绑定', icon: 'success' });
-  } catch (error) {
-    const message = error instanceof Error ? error.message.replace(/^.*：/, '') : '';
-    phoneAuthError.value = message || '手机号绑定失败，请重试';
-    uni.showToast({ title: phoneAuthError.value, icon: 'none', duration: 3500 });
-  } finally {
-    phoneBinding.value = false;
-  }
-}
 async function finishProfile() {
-  if (!mobileBound.value) {
-    uni.showToast({ title: '请先授权微信手机号', icon: 'none' });
-    return;
-  }
   if (!form.nickname || !form.schoolName || !form.campusName) {
     uni.showToast({ title: '请完善昵称、学校和校区', icon: 'none' });
     return;
@@ -300,21 +250,13 @@ function openPolicy(type: 'privacy' | 'agreement') {
           </view>
         </view>
       </view>
-      <button v-if="agreed" class="wechat-btn" open-type="getPhoneNumber" :disabled="loading" @getphonenumber="loginWithPhone">
+      <button class="wechat-btn" :disabled="loading" @click="loginDemo">
         <view class="button-inner">
           <view v-if="loading" class="button-spinner" />
           <view v-else class="wechat-symbol">
             <image src="/static/icons/ui/wechat.svg" mode="aspectFit" />
           </view>
-          <text>{{ loading ? '正在验证并登录…' : '微信手机号快捷登录' }}</text>
-        </view>
-      </button>
-      <button v-else class="wechat-btn" @click="guardPhoneLogin">
-        <view class="button-inner">
-          <view class="wechat-symbol">
-            <image src="/static/icons/ui/wechat.svg" mode="aspectFit" />
-          </view>
-          <text>微信手机号快捷登录</text>
+          <text>{{ loading ? '正在安全登录…' : '微信登录' }}</text>
         </view>
       </button>
       <view v-if="loginError" class="login-error">
@@ -352,13 +294,32 @@ function openPolicy(type: 'privacy' | 'agreement') {
       </view><view class="subtitle left">
         资料仅用于匹配同校内容，可随时修改
       </view>
-      <button class="avatar-upload" open-type="chooseAvatar" :loading="avatarUploading" @chooseavatar="chooseAvatar">
-        <image :src="form.avatar || DEFAULT_AVATAR" mode="aspectFill" />
-        <text>选择微信头像</text>
-      </button>
-      <button class="album-avatar" @click="chooseAvatarFromAlbum">
-        也可以从相册或相机选择
-      </button>
+      <view class="avatar-card">
+        <button class="avatar-upload" open-type="chooseAvatar" :loading="avatarUploading" @chooseavatar="chooseAvatar">
+          <view class="avatar-visual">
+            <image :src="form.avatar || DEFAULT_AVATAR" mode="aspectFill" />
+            <view class="avatar-camera">
+              <image src="/static/icons/ui/camera.svg" mode="aspectFit" />
+            </view>
+          </view>
+          <view class="avatar-copy">
+            <text class="avatar-title">
+              {{ hasCustomAvatar ? '更换微信头像' : '授权选择微信头像' }}
+            </text>
+            <text class="avatar-description">
+              {{ avatarStatusText }}
+            </text>
+          </view>
+          <text class="avatar-action">
+            {{ avatarUploading ? '上传中' : '去选择' }}
+          </text>
+        </button>
+        <view class="avatar-divider" />
+        <button class="album-avatar" @click="chooseAvatarFromAlbum">
+          <image src="/static/icons/ui/camera.svg" mode="aspectFit" />
+          <text>从相册或相机选择</text>
+        </button>
+      </view>
       <view v-if="avatarUploadError" class="avatar-upload-error" @click="uploadSelectedAvatar(true)">
         <text>
           {{ avatarUploadError }}
@@ -366,15 +327,6 @@ function openPolicy(type: 'privacy' | 'agreement') {
           重试上传
         </text>
       </view>
-      <button class="phone-bind" open-type="getPhoneNumber" :loading="phoneBinding" @getphonenumber="bindPhone">
-        <view class="phone-icon">
-          <image src="/static/icons/mine/smartphone.svg" mode="aspectFit" />
-        </view><view class="phone-copy">
-          <text>{{ mobileBound ? '微信手机号已绑定' : '授权微信手机号' }}</text><text>{{ mobileLabel }}</text>
-        </view><text class="phone-state">
-          {{ mobileBound ? '已完成' : '去授权' }}
-        </text>
-      </button>
       <view class="profile-form">
         <label>昵称<input v-model="form.nickname" type="nickname" placeholder="请输入微信昵称"></label>
         <picker :range="schoolOptions" @change="selectSchool">
@@ -691,32 +643,105 @@ function openPolicy(type: 'privacy' | 'agreement') {
   font-size: 22rpx;
   font-weight: 700;
 }
+.avatar-card {
+  margin: 24rpx 0 20rpx;
+  overflow: hidden;
+  border: 1rpx solid rgba(255, 255, 255, 0.78);
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 16rpx 40rpx rgba(33, 50, 86, 0.08);
+}
 .avatar-upload {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-height: 154rpx;
+  margin: 0;
+  padding: 22rpx 24rpx;
+  color: var(--yd-ink);
+  line-height: 1.3;
+  text-align: left;
+  background: transparent;
+}
+.avatar-visual {
+  position: relative;
+  flex: 0 0 auto;
+  width: 104rpx;
+  height: 104rpx;
+}
+.avatar-visual > image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 4rpx solid #fff;
+  border-radius: 50%;
+  background: var(--yd-mint);
+  box-shadow: 0 8rpx 22rpx rgba(10, 132, 255, 0.14);
+}
+.avatar-camera {
+  position: absolute;
+  right: -4rpx;
+  bottom: -2rpx;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  min-height: 150rpx;
-  margin: 24rpx 0 16rpx;
-  padding: 0;
+  width: 38rpx;
+  height: 38rpx;
+  border: 3rpx solid #fff;
+  border-radius: 50%;
+  background: var(--yd-green);
+}
+.avatar-camera image {
+  width: 22rpx;
+  height: 22rpx;
+}
+.avatar-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  margin-left: 22rpx;
+}
+.avatar-title {
+  font-size: 27rpx;
+  font-weight: 750;
+}
+.avatar-description {
+  margin-top: 8rpx;
+  color: #86908c;
+  font-size: 20rpx;
+  line-height: 1.45;
+}
+.avatar-action {
+  flex: 0 0 auto;
+  margin-left: 16rpx;
   color: var(--yd-green);
-  font-size: 21rpx;
-  line-height: 1.4;
-  background: transparent;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+.avatar-divider {
+  height: 1rpx;
+  margin-left: 150rpx;
+  background: rgba(60, 60, 67, 0.1);
 }
 .album-avatar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-height: 72rpx;
-  margin: -16rpx 0 14rpx;
-  padding: 0 22rpx;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 78rpx;
+  margin: 0;
+  padding: 0 24rpx 0 150rpx;
   border: 0;
   color: #6f7a76;
   background: transparent;
   font-size: 21rpx;
   line-height: 1.4;
+}
+.album-avatar image {
+  width: 28rpx;
+  height: 28rpx;
+  margin-right: 12rpx;
 }
 .album-avatar::after,
 .avatar-upload::after {
@@ -744,77 +769,6 @@ function openPolicy(type: 'privacy' | 'agreement') {
   flex: 0 0 auto;
   color: #c44f42;
   font-weight: 750;
-}
-.phone-bind {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 104rpx;
-  margin: 0 0 18rpx;
-  padding: 14rpx 18rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.72);
-  border-radius: 20rpx;
-  color: var(--yd-ink);
-  background: rgba(255, 255, 255, 0.68);
-  box-shadow: 0 12rpx 30rpx rgba(33, 50, 86, 0.07);
-  line-height: 1.35;
-  text-align: left;
-}
-.phone-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 58rpx;
-  height: 58rpx;
-  border-radius: 18rpx;
-  color: var(--yd-green-dark);
-  background: rgba(10, 132, 255, 0.1);
-  font-size: 21rpx;
-  font-weight: 800;
-}
-.phone-icon image {
-  width: 30rpx;
-  height: 30rpx;
-}
-.phone-copy {
-  display: flex;
-  min-width: 0;
-  margin-left: 14rpx;
-  flex: 1;
-  flex-direction: column;
-}
-.phone-copy text:first-child {
-  font-size: 24rpx;
-  font-weight: 750;
-}
-.phone-copy text:last-child {
-  margin-top: 4rpx;
-  color: #8d9693;
-  font-size: 19rpx;
-}
-.phone-state {
-  flex: 0 0 auto;
-  color: var(--yd-green);
-  font-size: 20rpx;
-  font-weight: 700;
-}
-.avatar-upload > view,
-.avatar-upload > image {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 110rpx;
-  height: 110rpx;
-  margin-bottom: 10rpx;
-  border-radius: 50%;
-  color: var(--yd-green-dark);
-  background: var(--yd-mint);
-  font-size: 38rpx;
-  font-weight: 900;
-}
-.avatar-upload > image {
-  display: block;
 }
 .profile-form {
   overflow: hidden;
@@ -897,7 +851,6 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .profile-form {
   border-radius: 24rpx;
 }
-.avatar-upload > view,
 .picker,
 .profile-form input {
   background: rgba(118, 118, 128, 0.08);
