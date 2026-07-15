@@ -1,11 +1,13 @@
 <script lang="ts" setup>
 import { getDefaultTenant } from '@/mock/campus';
+import { uploadCampusAvatar } from '@/services/api/file';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 
 const userStore = useUserStore();
 const tenantStore = useTenantStore();
 const contentStore = useCampusContentStore();
+const avatarUpdating = ref(false);
 const loggedIn = computed(() => userStore.loggedIn);
 const profile = computed(() => userStore.userInfo);
 const currentSchool = computed(() => profile.value?.schoolName || tenantStore.tenantName || getDefaultTenant().name);
@@ -46,6 +48,35 @@ function goLogin(mode: 'login' | 'edit' = 'login') {
 }
 function handleCampusPass() {
   goLogin(loggedIn.value ? 'edit' : 'login');
+}
+async function handleAvatarChoose(event: any) {
+  const avatarPath = event?.detail?.avatarUrl;
+  if (!avatarPath) {
+    const errMsg = event?.detail?.errMsg || '';
+    if (errMsg && !/cancel/i.test(errMsg))
+      uni.showToast({ title: '未能读取微信头像，请在真机重试', icon: 'none' });
+    return;
+  }
+  if (!profile.value || avatarUpdating.value)
+    return;
+  avatarUpdating.value = true;
+  try {
+    const avatar = await uploadCampusAvatar(avatarPath);
+    await userStore.updateProfile({
+      nickname: profile.value.nickname,
+      avatar,
+      schoolName: profile.value.schoolName || currentSchool.value,
+      campusName: profile.value.campusName || currentCampus.value,
+      grade: profile.value.grade,
+      gender: profile.value.gender,
+      roleType: profile.value.roleType || 'student',
+    });
+    uni.showToast({ title: '头像已更新', icon: 'success' });
+  } catch {
+    uni.showToast({ title: '头像上传失败，请稍后重试', icon: 'none' });
+  } finally {
+    avatarUpdating.value = false;
+  }
 }
 function handleMenu(action: string, requiresLogin: boolean) {
   if (requiresLogin && !loggedIn.value) {
@@ -96,9 +127,18 @@ function handleMenu(action: string, requiresLogin: boolean) {
 
     <view v-else class="profile-card glass-card">
       <view class="profile-head">
-        <view class="profile-avatar">
+        <button
+          class="profile-avatar" open-type="chooseAvatar" :disabled="avatarUpdating"
+          @chooseavatar="handleAvatarChoose"
+        >
           <image :src="profile?.avatar || '/static/icons/ui/avatar-default.svg'" mode="aspectFill" />
-        </view>
+          <view class="avatar-edit-hint">
+            <image src="/static/icons/ui/camera.svg" mode="aspectFit" />
+          </view>
+          <view v-if="avatarUpdating" class="avatar-updating">
+            <view class="avatar-spinner" />
+          </view>
+        </button>
         <view class="profile-info">
           <view class="nickname-row">
             <text class="nickname">
@@ -340,13 +380,61 @@ function handleMenu(action: string, requiresLogin: boolean) {
   font-weight: 750;
 }
 .profile-avatar {
+  position: relative;
   width: 100rpx;
   height: 100rpx;
+  padding: 0;
+  overflow: visible;
 }
-.profile-avatar image {
+.profile-avatar[disabled] {
+  opacity: 1;
+}
+.profile-avatar > image {
   width: 100%;
   height: 100%;
   border-radius: 50%;
+}
+.avatar-edit-hint {
+  position: absolute;
+  right: -4rpx;
+  bottom: -3rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36rpx;
+  height: 36rpx;
+  border: 3rpx solid rgba(255, 255, 255, 0.94);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #58afff, #087cff);
+  box-shadow: 0 7rpx 16rpx rgba(10, 126, 245, 0.26);
+}
+.avatar-edit-hint image {
+  width: 19rpx;
+  height: 19rpx;
+}
+.avatar-updating {
+  position: absolute;
+  inset: -3rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(25, 66, 113, 0.42);
+  backdrop-filter: blur(5rpx);
+  -webkit-backdrop-filter: blur(5rpx);
+}
+.avatar-spinner {
+  width: 28rpx;
+  height: 28rpx;
+  border: 4rpx solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: avatar-spin 0.8s linear infinite;
+}
+@keyframes avatar-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .profile-info {
   overflow: hidden;
