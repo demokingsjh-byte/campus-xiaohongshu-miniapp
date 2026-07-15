@@ -66,11 +66,13 @@ const alovaInstance = createAlova({
           return data as any;
         }
         // 逻辑错误处理，与业务相关
-        handleLogicError(code, errorMessage);
+        if (!config.meta?.silentError)
+          handleLogicError(code, errorMessage);
         throw new Error(`请求错误[${code}]：${errorMessage}`);
       }
       // 处理http状态错误
-      handleHttpStatus(statusCode, errMsg || '');
+      if (!config.meta?.silentError)
+        handleHttpStatus(statusCode, errMsg || '');
       throw new Error(`HTTP请求错误[${statusCode}]：${errMsg}`);
     },
 

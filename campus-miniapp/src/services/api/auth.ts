@@ -50,7 +50,11 @@ export function wechatLogin(params: WechatLoginParams) {
  * 获取当前校园小程序用户
  */
 export function getCurrentCampusUser() {
-  return request.Get<CampusUserInfoModel>(CAMPUS_CURRENT_USER);
+  return request.Get<CampusUserInfoModel>(CAMPUS_CURRENT_USER, {
+    meta: {
+      silentError: true,
+    },
+  });
 }
 
 /**
