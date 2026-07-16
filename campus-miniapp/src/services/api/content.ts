@@ -86,6 +86,10 @@ export function createCampusPostComment(postId: number, content: string) {
   return request.Post<CampusPostComment>(`${POST_BASE}/comment`, { content }, { params: { postId } });
 }
 
+export function createCampusContactRequest(postId: number) {
+  return request.Post<boolean>(`${POST_BASE}/contact-request`, {}, { params: { postId } });
+}
+
 export function setCampusPostLike(id: number, active: boolean) {
   return request.Put<CampusPost>(`${POST_BASE}/like`, { active }, { params: { id } });
 }

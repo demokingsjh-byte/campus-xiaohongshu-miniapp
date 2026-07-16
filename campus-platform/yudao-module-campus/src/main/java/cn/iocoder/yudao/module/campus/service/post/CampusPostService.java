@@ -25,6 +25,8 @@ public interface CampusPostService {
 
     CampusPostCommentRespVO createComment(Long postId, Long userId, CampusPostCommentCreateReqVO reqVO);
 
+    void createContactRequest(Long postId, Long userId);
+
     CampusPostRespVO setInteraction(Long postId, Long userId, String type, boolean active);
 
     void deletePost(Long postId, Long userId);

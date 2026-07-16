@@ -47,7 +47,12 @@ public class CampusResourceRegistry {
             meta("post-report", "campus_post_report",
                     set("status", "result_note", "updater"),
                     set("post_id", "reporter_user_id", "tenant_id", "status"),
-                    set("reason", "detail", "result_note"))
+                    set("reason", "detail", "result_note")),
+            meta("contact-request", "campus_contact_request",
+                    set("status", "result_note", "updater"),
+                    set("post_id", "requester_user_id", "target_user_id", "tenant_id", "status"),
+                    set("post_title", "requester_nickname", "requester_mobile", "target_nickname",
+                            "target_mobile", "message", "result_note"))
     ).stream().collect(Collectors.toMap(CampusResourceMeta::getResource, Function.identity()));
 
     private CampusResourceRegistry() {

@@ -378,6 +378,43 @@ const metas: Record<string, PageMeta> = {
       { label: '处理说明', prop: 'result_note', type: 'textarea' }
     ]
   },
+  'contact-request': {
+    title: '联系申请',
+    searchKey: 'post_title',
+    searchLabel: '帖子标题',
+    statusKey: 'status',
+    statusOptions: [
+      { label: '待处理', value: 0 },
+      { label: '已处理', value: 1 },
+      { label: '已驳回', value: 2 }
+    ],
+    allowCreate: false,
+    filters: [
+      { label: '帖子ID', prop: 'post_id', type: 'number' },
+      { label: '申请用户', prop: 'requester_user_id', type: 'number' },
+      { label: '发布用户', prop: 'target_user_id', type: 'number' },
+      { label: '申请人手机号', prop: 'requester_mobile' },
+      { label: '校区租户ID', prop: 'tenant_id', type: 'number' }
+    ],
+    columns: [
+      { label: '帖子标题', prop: 'post_title' },
+      { label: '申请人', prop: 'requester_nickname' },
+      { label: '申请人手机号', prop: 'requester_mobile' },
+      { label: '发布者', prop: 'target_nickname' },
+      { label: '发布者手机号', prop: 'target_mobile' },
+      { label: '申请说明', prop: 'message' },
+      { label: '处理状态', prop: 'status' },
+      { label: '处理说明', prop: 'result_note' }
+    ],
+    fields: [
+      { label: '处理状态', prop: 'status', options: [
+        { label: '待处理', value: 0 },
+        { label: '已处理', value: 1 },
+        { label: '已驳回', value: 2 }
+      ] },
+      { label: '处理说明', prop: 'result_note', type: 'textarea' }
+    ]
+  },
   'miniapp-user': {
     title: '学生用户',
     searchKey: 'nickname',

@@ -222,6 +222,52 @@ public class CampusPostServiceImpl implements CampusPostService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public void createContactRequest(Long postId, Long userId) {
+        requireUserId(userId);
+        Map<String, Object> post = getPostRow(postId);
+        Long targetUserId = toLongObject(post.get("user_id"));
+        if (userId.equals(targetUserId)) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "不能联系自己发布的内容");
+        }
+
+        Map<String, Object> requester = getUser(userId);
+        Map<String, Object> target = getUser(targetUserId);
+        long postTenantId = toLong(post.get("tenant_id"), DEFAULT_TENANT_ID);
+        long requesterTenantId = toLong(requester.get("tenant_id"), DEFAULT_TENANT_ID);
+        if (postTenantId != requesterTenantId) {
+            throw exception0(GlobalErrorCodeConstants.FORBIDDEN.getCode(), "只能联系本校内容发布者");
+        }
+        String requesterMobile = value(requester, "mobile");
+        if (StrUtil.isBlank(requesterMobile)) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "请先绑定手机号后再联系发布者");
+        }
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("postId", postId)
+                .addValue("requesterUserId", userId)
+                .addValue("targetUserId", targetUserId)
+                .addValue("tenantId", postTenantId)
+                .addValue("postTitle", value(post, "title"))
+                .addValue("requesterNickname", value(requester, "nickname"))
+                .addValue("requesterMobile", requesterMobile)
+                .addValue("targetNickname", value(target, "nickname"))
+                .addValue("targetMobile", value(target, "mobile"))
+                .addValue("message", "希望联系该内容发布者")
+                .addValue("operator", String.valueOf(userId));
+        jdbcTemplate.update("INSERT INTO campus_contact_request (post_id, requester_user_id, target_user_id, tenant_id,"
+                        + " post_title, requester_nickname, requester_mobile, target_nickname, target_mobile, message,"
+                        + " status, result_note, creator, updater, create_time, update_time, deleted) VALUES (:postId,"
+                        + " :requesterUserId, :targetUserId, :tenantId, :postTitle, :requesterNickname,"
+                        + " :requesterMobile, :targetNickname, :targetMobile, :message, 0, '', :operator, :operator,"
+                        + " NOW(), NOW(), b'0') ON DUPLICATE KEY UPDATE post_title = :postTitle,"
+                        + " requester_nickname = :requesterNickname, requester_mobile = :requesterMobile,"
+                        + " target_nickname = :targetNickname, target_mobile = :targetMobile, message = :message,"
+                        + " status = 0, result_note = '', updater = :operator, update_time = NOW(), deleted = b'0'",
+                params);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public CampusPostRespVO setInteraction(Long postId, Long userId, String type, boolean active) {
         requireUserId(userId);
         if (!"LIKE".equals(type) && !"COLLECT".equals(type)) {
@@ -402,7 +448,7 @@ public class CampusPostServiceImpl implements CampusPostService {
 
     private Map<String, Object> getUser(Long userId) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT id, tenant_id, school_name, campus_name FROM campus_miniapp_user"
+                "SELECT id, tenant_id, nickname, mobile, school_name, campus_name FROM campus_miniapp_user"
                         + " WHERE id = :id AND deleted = b'0' LIMIT 1",
                 new MapSqlParameterSource("id", userId));
         if (rows.isEmpty()) {
@@ -413,7 +459,8 @@ public class CampusPostServiceImpl implements CampusPostService {
 
     private Map<String, Object> getPostRow(Long postId) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT id, tenant_id FROM campus_post WHERE id = :id AND status = 1 AND deleted = b'0' LIMIT 1",
+                "SELECT id, tenant_id, user_id, title FROM campus_post"
+                        + " WHERE id = :id AND status = 1 AND deleted = b'0' LIMIT 1",
                 new MapSqlParameterSource("id", postId));
         if (rows.isEmpty()) {
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "内容不存在或已下架");

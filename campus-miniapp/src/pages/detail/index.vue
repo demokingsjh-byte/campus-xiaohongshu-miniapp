@@ -3,7 +3,7 @@ import type { CampusPostComment } from '@/services/api/content';
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
 import { campusPosts } from '@/mock/campus';
-import { createCampusPostComment, getCampusPostCommentPage, reportCampusPost } from '@/services/api/content';
+import { createCampusContactRequest, createCampusPostComment, getCampusPostCommentPage, reportCampusPost } from '@/services/api/content';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { resolveCampusAvatar } from '@/utils/avatar';
@@ -21,6 +21,7 @@ const commentPageNo = ref(1);
 const commentState = ref<'loading' | 'content' | 'error'>('loading');
 const commentSubmitting = ref(false);
 const commentsLoadingMore = ref(false);
+const contactSubmitting = ref(false);
 const contentStore = useCampusContentStore();
 const userStore = useUserStore();
 const post = computed(() => contentStore.getPost(postId.value) || campusPosts[0]);
@@ -106,9 +107,35 @@ async function sendComment() {
     commentSubmitting.value = false;
   }
 }
-function contact() {
-  if (ensureLogin())
-    uni.showToast({ title: '已发送联系请求', icon: 'success' });
+async function contact() {
+  if (!ensureLogin() || contactSubmitting.value)
+    return;
+  if (!userStore.userInfo) {
+    try {
+      await userStore.getUserInfo();
+    } catch {
+      uni.showToast({ title: '用户资料加载失败，请重试', icon: 'none' });
+      return;
+    }
+  }
+  if (!userStore.userInfo?.mobileBound && !userStore.userInfo?.mobile) {
+    uni.showModal({
+      title: '先绑定手机号',
+      content: '联系申请会提交给校园运营，请先授权绑定手机号，以便工作人员联系你。',
+      confirmText: '去绑定',
+      success: res => res.confirm && uni.navigateTo({ url: '/pages/login/index?mode=edit' }),
+    });
+    return;
+  }
+  contactSubmitting.value = true;
+  try {
+    await createCampusContactRequest(postId.value);
+    uni.showToast({ title: '联系申请已提交', icon: 'success' });
+  } catch {
+    uni.showToast({ title: '提交失败，请稍后重试', icon: 'none' });
+  } finally {
+    contactSubmitting.value = false;
+  }
 }
 async function toggleLike() {
   if (!ensureLogin() || interactionBusy.value)
@@ -306,8 +333,8 @@ function reportPost() {
           <image src="/static/icons/mine/heart.svg" mode="aspectFit" /><text>{{ post.likes }}</text>
         </view><view class="action" :class="{ active: collected }" @click="toggleCollect">
           <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>收藏</text>
-        </view><button class="contact-btn" @click="contact">
-          联系TA
+        </view><button class="contact-btn" :disabled="contactSubmitting" @click="contact">
+          {{ contactSubmitting ? '提交中…' : '联系TA' }}
         </button>
       </view>
     </template>
@@ -664,6 +691,9 @@ function reportPost() {
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;
+}
+.contact-btn[disabled] {
+  opacity: 0.62;
 }
 .detail-loading {
   padding: 24rpx;

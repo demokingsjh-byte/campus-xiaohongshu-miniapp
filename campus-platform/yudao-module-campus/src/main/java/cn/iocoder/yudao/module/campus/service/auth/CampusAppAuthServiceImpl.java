@@ -192,6 +192,10 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
                 + " SET detail = '', result_note = '', updater = '', update_time = NOW(), deleted = b'1'"
                 + " WHERE reporter_user_id = :userId OR post_id IN"
                 + " (SELECT id FROM campus_post WHERE user_id = :userId)", params);
+        namedParameterJdbcTemplate.update("UPDATE campus_contact_request"
+                + " SET requester_nickname = '', requester_mobile = '', target_nickname = '', target_mobile = '',"
+                + " message = '', result_note = '', updater = '', update_time = NOW(), deleted = b'1'"
+                + " WHERE requester_user_id = :userId OR target_user_id = :userId", params);
     }
 
     private CampusUserRespVO getByOpenid(String openid) {

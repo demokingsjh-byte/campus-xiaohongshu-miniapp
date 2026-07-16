@@ -100,6 +100,13 @@ public class CampusAppPostController {
         return success(campusPostService.createComment(postId, getLoginUserId(), reqVO));
     }
 
+    @PostMapping("/contact-request")
+    @Operation(summary = "提交联系发布者申请")
+    public CommonResult<Boolean> createContactRequest(@RequestParam("postId") Long postId) {
+        campusPostService.createContactRequest(postId, getLoginUserId());
+        return success(true);
+    }
+
     @PutMapping("/like")
     @Operation(summary = "点赞或取消点赞")
     public CommonResult<CampusPostRespVO> setLike(@RequestParam("id") Long id,
