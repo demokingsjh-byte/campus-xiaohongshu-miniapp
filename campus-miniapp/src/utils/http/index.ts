@@ -4,7 +4,7 @@ import { createAlova } from 'alova';
 import { assign } from 'lodash-es';
 import { ContentTypeEnum, ResultEnum } from '@/enums/httpEnum';
 import { mockAdapter } from '@/mock';
-import { getAuthorization } from '@/utils/auth';
+import { ensureValidToken, getAuthorization } from '@/utils/auth';
 import { getBaseUrl, isUseMock } from '@/utils/env';
 import { getCampusTenantId } from '@/utils/tenant';
 import { handleHttpStatus, handleLogicError } from './faultTolerance';
@@ -32,12 +32,14 @@ const alovaInstance = createAlova({
     method.config.headers = assign(method.config.headers, ContentType);
     const { config } = method;
     const needAuth = !config.meta?.ignoreAuth;
+    if (needAuth)
+      await ensureValidToken();
     const authorization = getAuthorization();
     if (needAuth && !authorization) {
       throw new Error('[请求错误]：未登录');
     }
     if (authorization) {
-      method.config.headers.authorization = authorization;
+      method.config.headers.Authorization = authorization;
     }
     const tenantId = getCampusTenantId();
     if (tenantId) {
@@ -64,6 +66,12 @@ const alovaInstance = createAlova({
         const errorMessage = msg || message || '请求失败，请稍后重试';
         if (code === ResultEnum.SUCCESS || code === 0) {
           return data as any;
+        }
+        if (code === ResultEnum.TIMEOUT && !config.meta?.ignoreAuth && !config.meta?.authRetried) {
+          await ensureValidToken(true);
+          config.meta = { ...config.meta, authRetried: true };
+          method.config.headers.Authorization = getAuthorization() || '';
+          return method.send(true);
         }
         // 逻辑错误处理，与业务相关
         if (!config.meta?.silentError)

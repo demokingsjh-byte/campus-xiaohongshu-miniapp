@@ -1,8 +1,9 @@
 <script lang="ts" setup>
+import type { CampusPostComment } from '@/services/api/content';
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
 import { campusPosts } from '@/mock/campus';
-import { reportCampusPost } from '@/services/api/content';
+import { createCampusPostComment, getCampusPostCommentPage, reportCampusPost } from '@/services/api/content';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { resolveCampusAvatar } from '@/utils/avatar';
@@ -14,6 +15,12 @@ const followed = ref(false);
 const interactionBusy = ref(false);
 const pageState = ref<'loading' | 'content' | 'error'>('loading');
 const comment = ref('');
+const comments = ref<CampusPostComment[]>([]);
+const commentTotal = ref(0);
+const commentPageNo = ref(1);
+const commentState = ref<'loading' | 'content' | 'error'>('loading');
+const commentSubmitting = ref(false);
+const commentsLoadingMore = ref(false);
 const contentStore = useCampusContentStore();
 const userStore = useUserStore();
 const post = computed(() => contentStore.getPost(postId.value) || campusPosts[0]);
@@ -27,7 +34,7 @@ const channelIcons: Record<string, string> = {
 };
 const channelIcon = computed(() => channelIcons[post.value.channel] || '/static/icons/mine/cloud.svg');
 const related = computed(() => contentStore.allPosts.filter(item => item.id !== post.value.id && item.tenantId === post.value.tenantId).slice(0, 2));
-const comments = ref([{ name: '小满同学', avatar: '满', time: '8分钟前', content: '请问具体时间和地点方便再确认一下吗？', likes: 3 }, { name: '山风同学', avatar: '山', time: '刚刚', content: '可以的，直接点下方联系我就好。', likes: 1 }]);
+const hasMoreComments = computed(() => comments.value.length < commentTotal.value);
 
 onLoad(async (query) => {
   postId.value = Number(query?.id || 2001);
@@ -37,24 +44,67 @@ onLoad(async (query) => {
     liked.value = Boolean(loaded.liked);
     collected.value = Boolean(loaded.collected);
     pageState.value = 'content';
+    await loadComments();
   } catch {
     pageState.value = 'error';
   }
 });
+
+async function loadComments(append = false) {
+  if (append) {
+    if (!hasMoreComments.value || commentsLoadingMore.value)
+      return;
+    commentsLoadingMore.value = true;
+  } else {
+    commentState.value = 'loading';
+    commentPageNo.value = 1;
+  }
+  const targetPage = append ? commentPageNo.value + 1 : 1;
+  try {
+    const page = await getCampusPostCommentPage(postId.value, { pageNo: targetPage, pageSize: 20 });
+    comments.value = append ? [...comments.value, ...(page.list || [])] : (page.list || []);
+    commentTotal.value = page.total || 0;
+    commentPageNo.value = targetPage;
+    commentState.value = 'content';
+  } catch {
+    if (!append)
+      commentState.value = 'error';
+    else
+      uni.showToast({ title: '更多评论加载失败，请重试', icon: 'none' });
+  } finally {
+    commentsLoadingMore.value = false;
+  }
+}
 function ensureLogin() {
   if (userStore.loggedIn)
     return true;
   uni.showModal({ title: '登录后参与互动', content: '登录后可以评论、收藏和联系发布者。', confirmText: '去登录', success: res => res.confirm && uni.navigateTo({ url: '/pages/login/index' }) });
   return false;
 }
-function sendComment() {
+async function sendComment() {
   if (!ensureLogin())
     return;
-  if (!comment.value.trim())
+  const content = comment.value.trim();
+  if (!content || commentSubmitting.value)
     return;
-  comments.value.push({ name: '佳佳同学', avatar: '佳', time: '刚刚', content: comment.value, likes: 0 });
-  comment.value = '';
-  uni.showToast({ title: '评论成功', icon: 'success' });
+  if (content.length > 300) {
+    uni.showToast({ title: '评论最多 300 个字', icon: 'none' });
+    return;
+  }
+  commentSubmitting.value = true;
+  try {
+    const created = await createCampusPostComment(postId.value, content);
+    comments.value.unshift(created);
+    commentTotal.value += 1;
+    post.value.comments = commentTotal.value;
+    comment.value = '';
+    commentState.value = 'content';
+    uni.showToast({ title: '评论成功', icon: 'success' });
+  } catch {
+    uni.showToast({ title: '评论发布失败，请重试', icon: 'none' });
+  } finally {
+    commentSubmitting.value = false;
+  }
 }
 function contact() {
   if (ensureLogin())
@@ -210,21 +260,31 @@ function reportPost() {
 
       <view class="comments-card">
         <view class="section-title">
-          评论 {{ comments.length + 14 }}
-        </view><view v-for="item in comments" :key="item.content" class="comment">
+          评论 {{ commentTotal }}
+        </view>
+        <view v-if="commentState === 'loading'" class="comment-status">
+          评论加载中…
+        </view>
+        <view v-else-if="commentState === 'error'" class="comment-status comment-retry" @click="loadComments()">
+          评论加载失败，点击重试
+        </view>
+        <view v-else-if="!comments.length" class="comment-status">
+          还没有评论，来聊聊你的想法吧
+        </view>
+        <view v-for="item in comments" :key="item.id" class="comment">
           <view class="comment-avatar">
-            <image src="/static/images/avatar-default-cartoon.png" mode="aspectFill" />
+            <image :src="resolveCampusAvatar(item.avatar)" mode="aspectFill" />
           </view><view class="comment-main">
             <view class="comment-name">
-              {{ item.name }} <text>{{ item.time }}</text>
+              {{ item.author }} <text>{{ item.time }}</text>
             </view><view class="comment-content">
               {{ item.content }}
             </view>
-          </view><view class="comment-like">
-            <image src="/static/icons/mine/heart.svg" mode="aspectFit" />{{ item.likes }}
+          </view><view v-if="item.owner" class="comment-owner">
+            我
           </view>
-        </view><view class="all-comments">
-          查看全部评论 ›
+        </view><view v-if="hasMoreComments" class="all-comments" @click="loadComments(true)">
+          {{ commentsLoadingMore ? '加载中…' : '加载更多评论 ›' }}
         </view>
       </view>
 
@@ -238,7 +298,10 @@ function reportPost() {
 
       <view class="bottom-bar">
         <view class="comment-input">
-          <input v-model="comment" placeholder="友善评论一下…" confirm-type="send" @confirm="sendComment">
+          <input v-model="comment" :disabled="commentSubmitting" maxlength="300" placeholder="友善评论一下…" confirm-type="send" @confirm="sendComment">
+          <text v-if="comment.trim()" class="comment-send" @click="sendComment">
+            {{ commentSubmitting ? '发送中' : '发送' }}
+          </text>
         </view><view class="action" :class="{ active: liked }" @click="toggleLike">
           <image src="/static/icons/mine/heart.svg" mode="aspectFit" /><text>{{ post.likes }}</text>
         </view><view class="action" :class="{ active: collected }" @click="toggleCollect">
@@ -488,20 +551,27 @@ function reportPost() {
   font-size: 24rpx;
   line-height: 1.55;
 }
-.comment-like {
+.comment-owner {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 5rpx;
-  min-width: 52rpx;
+  justify-content: center;
+  min-width: 44rpx;
+  height: 34rpx;
   margin-left: 10rpx;
-  color: #87918d;
-  font-size: 20rpx;
-  text-align: right;
+  border-radius: 999rpx;
+  color: var(--yd-green-dark);
+  background: var(--yd-mint);
+  font-size: 18rpx;
 }
-.comment-like image {
-  width: 24rpx;
-  height: 24rpx;
+.comment-status {
+  padding: 42rpx 10rpx 24rpx;
+  color: var(--yd-muted);
+  font-size: 23rpx;
+  text-align: center;
+}
+.comment-retry {
+  color: var(--yd-green-dark);
 }
 .all-comments {
   margin-top: 28rpx;
@@ -535,15 +605,26 @@ function reportPost() {
   background: rgba(246, 248, 252, 0.76);
 }
 .comment-input {
+  display: flex;
   min-width: 0;
   height: 76rpx;
+  align-items: center;
   padding: 0 18rpx;
   border-radius: 999rpx;
   background: var(--yd-paper-deep);
 }
 .comment-input input {
+  flex: 1;
+  min-width: 0;
   height: 100%;
   font-size: 22rpx;
+}
+.comment-send {
+  flex: 0 0 auto;
+  margin-left: 8rpx;
+  color: var(--yd-green-dark);
+  font-size: 21rpx;
+  font-weight: 800;
 }
 .action {
   display: flex;

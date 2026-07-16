@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
@@ -57,6 +58,15 @@ public class CampusAppAuthController {
             }
             throw ex;
         }
+    }
+
+    @PostMapping("/refresh-token")
+    @PermitAll
+    @TenantIgnore
+    @Operation(summary = "刷新校园小程序访问令牌")
+    public CommonResult<CampusAuthLoginRespVO> refreshToken(
+            @RequestParam("refreshToken") String refreshToken) {
+        return success(campusAppAuthService.refreshToken(refreshToken));
     }
 
     /**

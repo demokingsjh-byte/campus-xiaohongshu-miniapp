@@ -7,7 +7,21 @@ import { createMock } from '@/mock/utils';
 const POSTS_KEY = 'campus-mock-server-posts';
 const LIKES_KEY = 'campus-mock-server-likes';
 const FAVORITES_KEY = 'campus-mock-server-favorites';
+const COMMENTS_KEY = 'campus-mock-server-comments';
 const PROFILE_KEY = 'campus-mock-profile';
+
+interface MockComment {
+  id: number
+  postId: number
+  userId: number
+  author: string
+  avatar: string
+  avatarText: string
+  content: string
+  time: string
+  owner: boolean
+  createTime: string
+}
 
 const channelMap: Record<string, string> = {
   idle: '二手',
@@ -42,6 +56,15 @@ function getIds(key: string): number[] {
 
 function setIds(key: string, ids: number[]) {
   uni.setStorageSync(key, ids);
+}
+
+function getStoredComments(): Record<string, MockComment[]> {
+  const value = uni.getStorageSync(COMMENTS_KEY);
+  return value && typeof value === 'object' ? value : {};
+}
+
+function setStoredComments(comments: Record<string, MockComment[]>) {
+  uni.setStorageSync(COMMENTS_KEY, comments);
 }
 
 function queryOf(params: any) {
@@ -153,6 +176,37 @@ export const contentMocks = defineMock({
     return post
       ? createMock({ data: post })
       : createMock({ data: null, code: ResultEnum.FAIL, message: '内容不存在或已下架' });
+  },
+  '[GET]/api/campus/post/comment-page': (params) => {
+    const query = queryOf(params);
+    const postId = Number(query.postId);
+    const pageNo = Math.max(Number(query.pageNo || 1), 1);
+    const pageSize = Math.max(Number(query.pageSize || 20), 1);
+    const comments = getStoredComments()[String(postId)] || [];
+    const offset = (pageNo - 1) * pageSize;
+    return createMock({ data: { list: comments.slice(offset, offset + pageSize), total: comments.length } });
+  },
+  '[POST]/api/campus/post/comment': (params) => {
+    const postId = Number(queryOf(params).postId);
+    const content = String(params.data?.content || '').trim();
+    const profile = uni.getStorageSync(PROFILE_KEY) || {};
+    const author = profile.nickname || '校园体验用户';
+    const created: MockComment = {
+      id: Date.now(),
+      postId,
+      userId: 10001,
+      author,
+      avatar: profile.avatar || '',
+      avatarText: author.slice(0, 1),
+      content,
+      time: '刚刚',
+      owner: true,
+      createTime: new Date().toISOString(),
+    };
+    const comments = getStoredComments();
+    comments[String(postId)] = [created, ...(comments[String(postId)] || [])];
+    setStoredComments(comments);
+    return createMock({ data: created });
   },
   '[PUT]/api/campus/post/like': params => setInteraction(Number(queryOf(params).id), Boolean(params.data?.active), LIKES_KEY, 'likes'),
   '[PUT]/api/campus/post/collect': params => setInteraction(Number(queryOf(params).id), Boolean(params.data?.active), FAVORITES_KEY, 'collects'),

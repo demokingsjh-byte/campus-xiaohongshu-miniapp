@@ -11,6 +11,7 @@ const agreed = ref(hasCurrentPrivacyConsent());
 const loading = ref(false);
 const loginError = ref('');
 const avatarUploading = ref(false);
+const phoneBinding = ref(false);
 const pendingAvatarPath = ref('');
 const avatarUploadError = ref('');
 const DEFAULT_AVATAR = DEFAULT_CAMPUS_AVATAR;
@@ -25,6 +26,11 @@ const form = reactive({ avatar: DEFAULT_AVATAR, nickname: '', schoolName: initia
 const schoolOptions = campusTenants.map(item => item.name);
 const campusOptions = computed(() => form.schoolName === '吉首大学' ? ['吉首校区'] : ['主校区']);
 const hasCustomAvatar = computed(() => hasAuthorizedCampusAvatar(form.avatar));
+const mobileBound = computed(() => Boolean(userStore.userInfo?.mobileBound || userStore.userInfo?.mobile));
+const maskedMobile = computed(() => {
+  const mobile = userStore.userInfo?.mobile || '';
+  return mobile.replace(/^(\d{3})\d+(\d{4})$/, '$1****$2');
+});
 const avatarStatusText = computed(() => {
   if (avatarUploading.value)
     return '正在上传头像…';
@@ -156,6 +162,28 @@ async function selectAvatarPath(avatarUrl: string) {
   pendingAvatarPath.value = avatarUrl;
   avatarUploadError.value = '';
   await uploadSelectedAvatar(true);
+}
+async function bindWechatPhone(event: any) {
+  if (phoneBinding.value)
+    return;
+  const phoneCode = event?.detail?.code;
+  if (!phoneCode) {
+    const errMsg = event?.detail?.errMsg || '';
+    if (/deny|cancel/i.test(errMsg))
+      uni.showToast({ title: '已取消手机号授权', icon: 'none' });
+    else
+      uni.showToast({ title: '未获取到手机号授权，请在真机重试', icon: 'none' });
+    return;
+  }
+  phoneBinding.value = true;
+  try {
+    await userStore.bindPhone(phoneCode);
+    uni.showToast({ title: '手机号已绑定', icon: 'success' });
+  } catch {
+    uni.showToast({ title: '手机号绑定失败，请重试', icon: 'none' });
+  } finally {
+    phoneBinding.value = false;
+  }
 }
 async function finishProfile() {
   if (!form.nickname || !form.schoolName || !form.campusName) {
@@ -325,6 +353,29 @@ function openPolicy(type: 'privacy' | 'agreement') {
         </text><text class="retry">
           重试上传
         </text>
+      </view>
+      <view class="phone-card">
+        <view class="phone-main">
+          <view class="phone-icon">
+            <image src="/static/icons/mine/smartphone.svg" mode="aspectFit" />
+          </view>
+          <view class="phone-copy">
+            <text class="phone-title">
+              {{ mobileBound ? '手机号已绑定' : '绑定微信手机号' }}
+            </text>
+            <text class="phone-description">
+              {{ mobileBound ? maskedMobile : '用于账号安全与必要的校园服务联系' }}
+            </text>
+          </view>
+        </view>
+        <button
+          class="phone-button" open-type="getPhoneNumber" :disabled="phoneBinding" @getphonenumber="bindWechatPhone"
+        >
+          {{ phoneBinding ? '绑定中…' : (mobileBound ? '更换手机号' : '授权并绑定') }}
+        </button>
+        <view class="phone-consent-tip">
+          仅在你主动授权后获取，并持久化绑定到当前校园账号
+        </view>
       </view>
       <view class="form-section-head">
         <text>基本资料</text><text>请填写真实校园信息</text>
@@ -807,6 +858,79 @@ function openPolicy(type: 'privacy' | 'agreement') {
   flex: 0 0 auto;
   color: #c44f42;
   font-weight: 750;
+}
+.phone-card {
+  margin: 0 0 22rpx;
+  padding: 22rpx 24rpx 18rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.78);
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 16rpx 40rpx rgba(20, 91, 70, 0.08);
+}
+.phone-main {
+  display: flex;
+  align-items: center;
+  text-align: left;
+}
+.phone-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
+  background: var(--yd-mint);
+}
+.phone-icon image {
+  width: 38rpx;
+  height: 38rpx;
+}
+.phone-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  margin-left: 18rpx;
+}
+.phone-title {
+  color: var(--yd-ink);
+  font-size: 25rpx;
+  font-weight: 750;
+}
+.phone-description {
+  margin-top: 7rpx;
+  color: #86908c;
+  font-size: 20rpx;
+  line-height: 1.4;
+}
+.phone-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 76rpx;
+  margin: 18rpx 0 0;
+  border: 1rpx solid rgba(16, 167, 121, 0.24);
+  border-radius: 18rpx;
+  color: var(--yd-green-dark);
+  background: rgba(232, 249, 241, 0.78);
+  font-size: 23rpx;
+  font-weight: 750;
+  line-height: 1;
+}
+.phone-button::after {
+  display: none;
+}
+.phone-button[disabled] {
+  opacity: 0.6;
+}
+.phone-consent-tip {
+  margin-top: 12rpx;
+  color: #8b96a3;
+  font-size: 18rpx;
+  line-height: 1.4;
+  text-align: center;
 }
 .form-section-head {
   display: flex;

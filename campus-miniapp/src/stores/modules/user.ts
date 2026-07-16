@@ -1,6 +1,5 @@
 import type { UserInfoModel } from '@/services/model/userModel';
 import { defineStore } from 'pinia';
-import { TOKEN_KEY } from '@/enums/cacheEnum';
 import {
   bindCampusPhone,
   deleteCampusAccount,
@@ -11,8 +10,7 @@ import {
 } from '@/services/api/auth';
 import { uploadCampusAvatar } from '@/services/api/file';
 import { startCampusAnalytics, stopCampusAnalytics } from '@/utils/analytics';
-import { getToken, isLogin, removeToken, setToken } from '@/utils/auth';
-import { removeCache } from '@/utils/cache';
+import { getToken, isLogin, removeToken, setAuthSession } from '@/utils/auth';
 import { isUseMock } from '@/utils/env';
 import { clearCampusLocalData, hasCurrentPrivacyConsent, revokePrivacyConsent } from '@/utils/privacy';
 import { getCampusTenantId } from '@/utils/tenant';
@@ -54,6 +52,7 @@ export const useUserStore = defineStore('UserStore', () => {
         token.value = getToken();
         try {
           await getUserInfo();
+          token.value = getToken();
         } catch {
           removeToken();
           token.value = null;
@@ -86,7 +85,7 @@ export const useUserStore = defineStore('UserStore', () => {
   async function login(params: LoginParams) {
     const res = await sendLogin(params);
     token.value = res.token;
-    setToken(res.token);
+    setAuthSession(res);
     await getUserInfo();
   }
 
@@ -110,10 +109,14 @@ export const useUserStore = defineStore('UserStore', () => {
       tenantId: options.tenantId ?? getCampusTenantId() ?? undefined,
     });
     token.value = res.token;
-    setToken(res.token);
-    userInfo.value = (res.userInfo || null) as UserInfoModel | null;
-    if (!userInfo.value) {
+    setAuthSession(res);
+    try {
       await getUserInfo();
+    } catch (error) {
+      removeToken();
+      token.value = null;
+      userInfo.value = null;
+      throw error;
     }
     startCampusAnalytics(options.scene);
     return true;
@@ -166,7 +169,7 @@ export const useUserStore = defineStore('UserStore', () => {
 
   async function logout(options: { clearConsent?: boolean } = {}) {
     stopCampusAnalytics();
-    removeCache(TOKEN_KEY);
+    removeToken();
     uni.removeStorageSync('yd-demo-login');
     clearCampusLocalData({ keepConsent: !options.clearConsent });
     if (options.clearConsent)

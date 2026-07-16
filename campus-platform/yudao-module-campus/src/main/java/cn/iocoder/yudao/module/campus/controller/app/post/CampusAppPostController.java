@@ -4,6 +4,8 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCreateReqVO;
+import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentCreateReqVO;
+import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostInteractionReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
@@ -77,6 +79,25 @@ public class CampusAppPostController {
             @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
             @RequestParam(value = "pageSize", defaultValue = "50") Integer pageSize) {
         return success(campusPostService.getFavoritePostPage(getLoginUserId(), pageNo, pageSize));
+    }
+
+    @GetMapping("/comment-page")
+    @PermitAll
+    @TenantIgnore
+    @Operation(summary = "获取帖子评论")
+    public CommonResult<PageResult<CampusPostCommentRespVO>> getCommentPage(
+            @RequestParam("postId") Long postId,
+            @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize) {
+        return success(campusPostService.getCommentPage(postId, getLoginUserId(), pageNo, pageSize));
+    }
+
+    @PostMapping("/comment")
+    @Operation(summary = "发布帖子评论")
+    public CommonResult<CampusPostCommentRespVO> createComment(
+            @RequestParam("postId") Long postId,
+            @Valid @RequestBody CampusPostCommentCreateReqVO reqVO) {
+        return success(campusPostService.createComment(postId, getLoginUserId(), reqVO));
     }
 
     @PutMapping("/like")

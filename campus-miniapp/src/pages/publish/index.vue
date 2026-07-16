@@ -8,6 +8,7 @@ import { openPolicyPage } from '@/utils/privacy';
 
 const activeType = ref('idle');
 const images = ref<string[]>([]);
+const choosingImages = ref(false);
 const submitting = ref(false);
 const showSuccess = ref(false);
 const showAdvanced = ref(false);
@@ -114,10 +115,63 @@ function chooseType(key: string) {
   form.tradeMode = typeDetails[key].modes[0];
   Object.keys(errors).forEach(keyName => errors[keyName] = '');
 }
-function addImage() {
-  if (images.value.length >= 9)
+function handleChooseImageFailure(error: { errMsg?: string }) {
+  const message = error.errMsg || '';
+  if (/cancel/i.test(message))
     return;
-  uni.chooseImage({ count: 9 - images.value.length, sizeType: ['compressed'], success: res => images.value.push(...res.tempFilePaths) });
+
+  if (/privacy|scope is not declared/i.test(message)) {
+    uni.showModal({
+      title: '暂时无法选择图片',
+      content: '微信隐私保护指引尚未声明“选中的照片或视频信息”，请在小程序后台完成声明并生效后重试。',
+      showCancel: false,
+      confirmText: '知道了',
+    });
+    return;
+  }
+
+  if (/auth deny|permission|authorize/i.test(message)) {
+    uni.showModal({
+      title: '需要相册或相机权限',
+      content: '请在微信右上角“···”的设置中允许使用相册或相机，然后重新选择图片。',
+      showCancel: false,
+      confirmText: '知道了',
+    });
+    return;
+  }
+
+  uni.showToast({ title: '图片选择失败，请重试', icon: 'none' });
+}
+
+function appendSelectedImages(paths: string[]) {
+  const availableCount = 9 - images.value.length;
+  const selectedPaths = paths.filter(Boolean).slice(0, availableCount);
+  if (!selectedPaths.length) {
+    uni.showToast({ title: '没有获取到可用图片', icon: 'none' });
+    return;
+  }
+  images.value.push(...selectedPaths);
+  errors.images = '';
+}
+
+function addImage() {
+  if (images.value.length >= 9 || choosingImages.value)
+    return;
+
+  choosingImages.value = true;
+  const count = 9 - images.value.length;
+  const complete = () => {
+    choosingImages.value = false;
+  };
+
+  uni.chooseImage({
+    count,
+    sourceType: ['album', 'camera'],
+    sizeType: ['compressed'],
+    success: result => appendSelectedImages(result.tempFilePaths || []),
+    fail: handleChooseImageFailure,
+    complete,
+  });
 }
 function removeImage(index: number) {
   images.value.splice(index, 1);
@@ -298,12 +352,12 @@ function reset() {
             ×
           </text>
         </view>
-        <view v-if="images.length < 9" class="add-image" :class="{ 'wide-add': !images.length }" @click="addImage">
+        <view v-if="images.length < 9" class="add-image" :class="{ 'wide-add': !images.length, 'disabled': choosingImages }" @click="addImage">
           <view class="camera-icon">
             <i />
           </view>
           <view class="add-image-copy">
-            <text>添加真实图片</text>
+            <text>{{ choosingImages ? '正在打开相册…' : '添加真实图片' }}</text>
             <text>拍全景、细节和真实瑕疵</text>
           </view>
         </view>
@@ -618,6 +672,9 @@ function reset() {
   height: 190rpx;
   overflow: hidden;
   border-radius: 15rpx;
+}
+.add-image.disabled {
+  opacity: 0.62;
 }
 .image-item image {
   width: 100%;

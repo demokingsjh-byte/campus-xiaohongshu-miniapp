@@ -12,6 +12,8 @@ public interface CampusAppAuthService {
 
     CampusAuthLoginRespVO wechatLogin(@Valid CampusWechatLoginReqVO reqVO);
 
+    CampusAuthLoginRespVO refreshToken(String refreshToken);
+
     CampusUserRespVO getLoginUser(Long userId);
 
     CampusUserRespVO updateProfile(Long userId, @Valid CampusUserProfileUpdateReqVO reqVO);

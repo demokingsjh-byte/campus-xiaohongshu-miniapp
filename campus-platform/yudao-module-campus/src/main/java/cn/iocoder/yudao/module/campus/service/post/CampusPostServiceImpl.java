@@ -6,6 +6,8 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.http.HttpUtils;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCreateReqVO;
+import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentCreateReqVO;
+import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
@@ -166,6 +168,59 @@ public class CampusPostServiceImpl implements CampusPostService {
     }
 
     @Override
+    public PageResult<CampusPostCommentRespVO> getCommentPage(Long postId, Long loginUserId,
+                                                              Integer pageNo, Integer pageSize) {
+        getPostRow(postId);
+        int safePageNo = Math.max(pageNo == null ? 1 : pageNo, 1);
+        int safePageSize = Math.min(Math.max(pageSize == null ? 20 : pageSize, 1), 50);
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("postId", postId)
+                .addValue("offset", (safePageNo - 1) * safePageSize)
+                .addValue("pageSize", safePageSize);
+        Long total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM campus_post_comment c"
+                + " WHERE c.post_id = :postId AND c.status = 1 AND c.deleted = b'0'", params, Long.class);
+        List<CampusPostCommentRespVO> list = jdbcTemplate.queryForList(commentSelectSql()
+                        + " WHERE c.post_id = :postId AND c.status = 1 AND c.deleted = b'0'"
+                        + " ORDER BY c.create_time DESC LIMIT :offset, :pageSize", params)
+                .stream().map(row -> toCommentResp(row, loginUserId)).collect(Collectors.toList());
+        return new PageResult<>(list, total == null ? 0L : total);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CampusPostCommentRespVO createComment(Long postId, Long userId,
+                                                  CampusPostCommentCreateReqVO reqVO) {
+        requireUserId(userId);
+        Map<String, Object> post = getPostRow(postId);
+        Map<String, Object> user = getUser(userId);
+        long postTenantId = toLong(post.get("tenant_id"), DEFAULT_TENANT_ID);
+        long userTenantId = toLong(user.get("tenant_id"), DEFAULT_TENANT_ID);
+        if (postTenantId != userTenantId) {
+            throw exception0(GlobalErrorCodeConstants.FORBIDDEN.getCode(), "只能评论本校内容");
+        }
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("postId", postId)
+                .addValue("userId", userId)
+                .addValue("tenantId", postTenantId)
+                .addValue("content", reqVO.getContent().trim())
+                .addValue("operator", String.valueOf(userId));
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update("INSERT INTO campus_post_comment (post_id, user_id, tenant_id, content, status,"
+                        + " creator, updater, create_time, update_time, deleted) VALUES (:postId, :userId, :tenantId,"
+                        + " :content, 1, :operator, :operator, NOW(), NOW(), b'0')", params, keyHolder);
+        Number key = keyHolder.getKey();
+        if (key == null) {
+            throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "评论发布失败，请稍后重试");
+        }
+        jdbcTemplate.update("UPDATE campus_post SET comment_count = (SELECT COUNT(*) FROM campus_post_comment c"
+                        + " WHERE c.post_id = :postId AND c.status = 1 AND c.deleted = b'0'), update_time = NOW()"
+                        + " WHERE id = :postId AND deleted = b'0'", new MapSqlParameterSource("postId", postId));
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(commentSelectSql()
+                + " WHERE c.id = :id AND c.deleted = b'0' LIMIT 1", new MapSqlParameterSource("id", key.longValue()));
+        return toCommentResp(rows.get(0), userId);
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public CampusPostRespVO setInteraction(Long postId, Long userId, String type, boolean active) {
         requireUserId(userId);
@@ -258,6 +313,28 @@ public class CampusPostServiceImpl implements CampusPostService {
                 + " EXISTS (SELECT 1 FROM campus_post_interaction ci WHERE ci.post_id = p.id"
                 + " AND ci.user_id = :loginUserId AND ci.type = 'COLLECT' AND ci.deleted = b'0') AS login_collected"
                 + " FROM campus_post p LEFT JOIN campus_miniapp_user u ON u.id = p.user_id AND u.deleted = b'0'";
+    }
+
+    private String commentSelectSql() {
+        return "SELECT c.*, u.nickname AS user_nickname, u.avatar AS user_avatar"
+                + " FROM campus_post_comment c LEFT JOIN campus_miniapp_user u"
+                + " ON u.id = c.user_id AND u.deleted = b'0'";
+    }
+
+    private CampusPostCommentRespVO toCommentResp(Map<String, Object> row, Long loginUserId) {
+        CampusPostCommentRespVO vo = new CampusPostCommentRespVO();
+        String author = StrUtil.blankToDefault(value(row, "user_nickname"), "校园同学");
+        vo.setId(toLongObject(row.get("id")));
+        vo.setPostId(toLongObject(row.get("post_id")));
+        vo.setUserId(toLongObject(row.get("user_id")));
+        vo.setAuthor(author);
+        vo.setAvatar(refreshFileUrl(value(row, "user_avatar")));
+        vo.setAvatarText(StrUtil.isBlank(author) ? "校" : author.substring(0, 1));
+        vo.setContent(value(row, "content"));
+        vo.setCreateTime(toLocalDateTime(row.get("create_time")));
+        vo.setTime(relativeTime(vo.getCreateTime()));
+        vo.setOwner(loginUserId != null && loginUserId.equals(vo.getUserId()));
+        return vo;
     }
 
     private CampusPostRespVO toResp(Map<String, Object> row, Long loginUserId) {

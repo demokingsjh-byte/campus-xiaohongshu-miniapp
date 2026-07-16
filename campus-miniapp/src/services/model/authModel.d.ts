@@ -33,7 +33,7 @@ declare interface CampusUserInfoModel {
 declare interface WechatLoginModel {
   token: string
   refreshToken?: string
-  expiresTime?: string
+  expiresTime?: string | number
   userInfo?: CampusUserInfoModel
 }
 

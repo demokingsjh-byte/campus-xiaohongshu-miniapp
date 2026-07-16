@@ -6,6 +6,24 @@ export interface CampusPostPage {
   total: number
 }
 
+export interface CampusPostComment {
+  id: number
+  postId: number
+  userId: number
+  author: string
+  avatar?: string
+  avatarText?: string
+  content: string
+  time: string
+  owner?: boolean
+  createTime?: string
+}
+
+export interface CampusPostCommentPage {
+  list: CampusPostComment[]
+  total: number
+}
+
 export interface CampusPostCreateParams {
   type: string
   title: string
@@ -54,6 +72,18 @@ export function getFavoriteCampusPostPage(params: Pick<CampusPostPageParams, 'pa
 
 export function getCampusPost(id: number) {
   return request.Get<CampusPost>(`${POST_BASE}/get`, { params: { id }, cacheFor: 0, meta: { ignoreAuth: true } });
+}
+
+export function getCampusPostCommentPage(postId: number, params: { pageNo?: number, pageSize?: number } = {}) {
+  return request.Get<CampusPostCommentPage>(`${POST_BASE}/comment-page`, {
+    params: { postId, pageNo: 1, pageSize: 20, ...params },
+    cacheFor: 0,
+    meta: { ignoreAuth: true },
+  });
+}
+
+export function createCampusPostComment(postId: number, content: string) {
+  return request.Post<CampusPostComment>(`${POST_BASE}/comment`, { content }, { params: { postId } });
 }
 
 export function setCampusPostLike(id: number, active: boolean) {

@@ -2,7 +2,7 @@ import { request } from '@/utils/http';
 
 const LOGIN = '/login';
 const LOGIN_OUT = '/logout';
-const REFRESH_TOKEN = '/refresh/token';
+const REFRESH_TOKEN = '/campus/auth/refresh-token';
 const CAMPUS_WECHAT_LOGIN = '/campus/auth/wechat-login';
 const CAMPUS_CURRENT_USER = '/campus/auth/me';
 const CAMPUS_PROFILE = '/campus/auth/profile';
@@ -31,8 +31,14 @@ export function logout() {
 /**
  * 刷新token
  */
-export function refreshToken() {
-  return request.Post<LoginModel>(REFRESH_TOKEN, {});
+export function refreshToken(refreshToken: string) {
+  return request.Post<WechatLoginModel>(REFRESH_TOKEN, {}, {
+    params: { refreshToken },
+    meta: {
+      ignoreAuth: true,
+      silentError: true,
+    },
+  });
 }
 
 /**

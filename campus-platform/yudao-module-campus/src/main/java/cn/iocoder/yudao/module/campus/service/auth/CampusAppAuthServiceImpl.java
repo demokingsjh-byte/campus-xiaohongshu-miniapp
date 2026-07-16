@@ -33,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception0;
 
@@ -90,6 +91,21 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
         tokenReq.setScopes(Collections.singletonList("campus-miniapp"));
         OAuth2AccessTokenRespDTO token = oauth2TokenCommonApi.createAccessToken(tokenReq);
 
+        return buildLoginResp(token, user);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CampusAuthLoginRespVO refreshToken(String refreshToken) {
+        OAuth2AccessTokenRespDTO token = oauth2TokenCommonApi.refreshAccessToken(
+                refreshToken, OAuth2ClientConstants.CLIENT_ID_DEFAULT);
+        if (!Objects.equals(token.getUserType(), UserTypeEnum.MEMBER.getValue())) {
+            throw exception0(GlobalErrorCodeConstants.UNAUTHORIZED.getCode(), "刷新令牌不属于校园用户");
+        }
+        return buildLoginResp(token, getLoginUser(token.getUserId()));
+    }
+
+    private CampusAuthLoginRespVO buildLoginResp(OAuth2AccessTokenRespDTO token, CampusUserRespVO user) {
         CampusAuthLoginRespVO respVO = new CampusAuthLoginRespVO();
         respVO.setToken(token.getAccessToken());
         respVO.setRefreshToken(token.getRefreshToken());
@@ -168,6 +184,9 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
                 + " WHERE user_id = :userId AND deleted = b'0'", params);
         namedParameterJdbcTemplate.update("UPDATE campus_post_interaction"
                 + " SET updater = '', update_time = NOW(), deleted = b'1'"
+                + " WHERE user_id = :userId AND deleted = b'0'", params);
+        namedParameterJdbcTemplate.update("UPDATE campus_post_comment"
+                + " SET content = '', updater = '', update_time = NOW(), deleted = b'1'"
                 + " WHERE user_id = :userId AND deleted = b'0'", params);
         namedParameterJdbcTemplate.update("UPDATE campus_post_report"
                 + " SET detail = '', result_note = '', updater = '', update_time = NOW(), deleted = b'1'"

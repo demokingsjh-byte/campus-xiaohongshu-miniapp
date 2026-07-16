@@ -211,6 +211,24 @@ CREATE TABLE `campus_post_interaction` (
   KEY `idx_user_type_time` (`user_id`, `type`, `create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='校园帖子点赞收藏关系';
 
+CREATE TABLE `campus_post_comment` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '评论编号',
+  `post_id` bigint NOT NULL COMMENT '帖子编号',
+  `user_id` bigint NOT NULL COMMENT '评论用户编号',
+  `tenant_id` bigint NOT NULL COMMENT '校园租户编号',
+  `content` varchar(300) NOT NULL COMMENT '评论内容',
+  `status` tinyint NOT NULL DEFAULT 1 COMMENT '状态：0待审核，1已发布，2已隐藏',
+  `creator` varchar(64) NOT NULL DEFAULT '' COMMENT '创建者',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updater` varchar(64) NOT NULL DEFAULT '' COMMENT '更新者',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_post_status_time` (`post_id`, `status`, `create_time`),
+  KEY `idx_user_time` (`user_id`, `create_time`),
+  KEY `idx_tenant_time` (`tenant_id`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='校园帖子评论';
+
 CREATE TABLE `campus_invite_relation` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '邀请关系编号',
   `system_tenant_id` bigint NOT NULL COMMENT '发生邀请的校区租户',
