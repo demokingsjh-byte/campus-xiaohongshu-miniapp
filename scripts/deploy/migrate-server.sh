@@ -136,6 +136,14 @@ for migration in "${migrations[@]}"; do
   fi
 done
 
+CURRENT_STEP="quarantining broken menu labels"
+broken_menu_rows="$($mysql_bin "${mysql_args[@]}" --batch --skip-column-names \
+  -e "SELECT CONCAT('id=', id, ', parent_id=', parent_id, ', name=', name) FROM system_menu WHERE deleted = b'0' AND visible = b'1' AND name REGEXP '[?？]{2,}' ORDER BY parent_id, id")"
+if [ -n "$broken_menu_rows" ]; then
+  printf '%s\n' "Quarantining broken menu rows after all migrations:" "$broken_menu_rows"
+  "$mysql_bin" "${mysql_args[@]}" -e "UPDATE system_menu SET status = 1, visible = b'0', updater = 'campus', update_time = NOW() WHERE deleted = b'0' AND visible = b'1' AND name REGEXP '[?？]{2,}'"
+fi
+
 CURRENT_STEP="validating menu encoding"
 broken_menu_count="$($mysql_bin "${mysql_args[@]}" --batch --skip-column-names \
   -e "SELECT COUNT(*) FROM system_menu WHERE deleted = b'0' AND visible = b'1' AND name REGEXP '[?？]{2,}'")"
