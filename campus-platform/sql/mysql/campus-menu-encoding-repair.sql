@@ -87,3 +87,15 @@ END,
 END,
 `update_time` = NOW()
 WHERE `id` IN (29, 30, 31);
+
+-- Historical rows outside the maintained ID mapping cannot be restored safely.
+-- Quarantine them so broken labels are never exposed in the admin navigation.
+-- campus-menu.sql runs next and re-enables every campus menu maintained by code.
+UPDATE `system_menu`
+SET `status` = 1,
+    `visible` = b'0',
+    `updater` = 'campus',
+    `update_time` = NOW()
+WHERE `deleted` = b'0'
+  AND `visible` = b'1'
+  AND `name` REGEXP '[?？]{2,}';
