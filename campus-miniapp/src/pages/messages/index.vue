@@ -8,9 +8,9 @@ const activeTab = ref('全部');
 const networkError = ref(false);
 const tabs = ['全部', '评论', '赞与收藏', '系统'];
 const messages = reactive([
-  { type: '评论', icon: '/static/icons/ui/comment.svg', color: '#E8F3FF', title: '小满同学 评论了你的发布', content: '请问桌子的尺寸大概是多少呀？', time: '8分钟前', unread: true },
+  { type: '评论', icon: '/static/icons/ui/comment.svg', color: '#DFF4EC', title: '小满同学 评论了你的发布', content: '请问桌子的尺寸大概是多少呀？', time: '8分钟前', unread: true },
   { type: '赞与收藏', icon: '/static/icons/mine/heart.svg', color: '#FFF0ED', title: '3 位同学赞了你的内容', content: '毕业出九成新折叠桌和台灯', time: '32分钟前', unread: true },
-  { type: '系统', icon: '/static/icons/mine/cloud.svg', color: '#E8F3FF', title: '校园认证已通过', content: '你已获得当前学校的同校认证标识', time: '昨天', unread: false },
+  { type: '系统', icon: '/static/icons/mine/cloud.svg', color: '#DFF4EC', title: '校园认证已通过', content: '你已获得当前学校的同校认证标识', time: '昨天', unread: false },
   { type: '评论', icon: '/static/icons/ui/reply.svg', color: '#FFF6E5', title: '赶高铁 回复了你', content: '可以的，周五 18:20 东门见。', time: '周五', unread: false },
 ]);
 const filtered = computed(() => activeTab.value === '全部' ? messages : messages.filter(item => item.type === activeTab.value));
@@ -146,7 +146,7 @@ function markSingle(item: typeof messages[number]) {
   border: 1rpx solid rgba(255, 255, 255, 0.72);
   border-radius: 24rpx;
   background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 16rpx 40rpx rgba(33, 50, 86, 0.08);
+  box-shadow: 0 16rpx 42rpx rgba(20, 91, 70, 0.1);
 }
 .message-row {
   position: relative;
@@ -163,7 +163,7 @@ function markSingle(item: typeof messages[number]) {
 }
 .message-row.unread {
   border-color: #b8d9cc;
-  background: #eef8f3;
+  background: var(--color-primary-soft);
 }
 .message-icon {
   display: flex;
@@ -241,19 +241,27 @@ function markSingle(item: typeof messages[number]) {
   font-weight: 800;
 }
 
-/* Apple-inspired glass theme */
+/* Emerald glass theme */
 .message-actions,
 .message-tabs,
 .security-card {
   border-color: rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.68);
-  box-shadow: 0 16rpx 40rpx rgba(33, 50, 86, 0.08);
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 16rpx 42rpx rgba(20, 91, 70, 0.1);
   backdrop-filter: blur(28rpx) saturate(155%);
   -webkit-backdrop-filter: blur(28rpx) saturate(155%);
 }
 .message-tabs,
 .security-card {
   border-radius: 24rpx;
+}
+.message-actions {
+  margin: 14rpx 18rpx 0;
+  border-radius: 22rpx;
+}
+.message-tabs {
+  width: auto;
+  margin: 12rpx 18rpx 0;
 }
 .message-row {
   border-color: rgba(60, 60, 67, 0.1);

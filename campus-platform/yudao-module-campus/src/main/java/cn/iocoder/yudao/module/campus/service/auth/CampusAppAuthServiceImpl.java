@@ -203,7 +203,9 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
     private void updateLoginSnapshot(Long userId, SocialUserRespDTO socialUser, CampusWechatLoginReqVO reqVO, Long tenantId) {
         namedParameterJdbcTemplate.update("UPDATE " + TABLE
                         + " SET nickname = COALESCE(NULLIF(:nickname, ''), nickname),"
-                        + " avatar = COALESCE(NULLIF(:avatar, ''), avatar),"
+                        // 用户主动授权并上传的头像已经持久化在资料表中，后续静默登录不能用社交快照覆盖。
+                        + " avatar = CASE WHEN COALESCE(avatar, '') = ''"
+                        + " THEN COALESCE(NULLIF(:avatar, ''), avatar) ELSE avatar END,"
                         + " source_scene = COALESCE(NULLIF(:scene, ''), source_scene),"
                         + " inviter_user_id = COALESCE(:inviterUserId, inviter_user_id),"
                         + " tenant_id = :tenantId, last_login_time = NOW(), update_time = NOW()"

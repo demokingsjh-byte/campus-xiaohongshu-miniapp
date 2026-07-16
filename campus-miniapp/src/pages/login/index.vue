@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import { campusTenants, getDefaultTenant } from '@/mock/campus';
-import { uploadCampusAvatar } from '@/services/api/file';
 import { useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { DEFAULT_CAMPUS_AVATAR, hasAuthorizedCampusAvatar, resolveCampusAvatar } from '@/utils/avatar';
@@ -124,9 +123,7 @@ async function uploadSelectedAvatar(showSuccess = false) {
     return true;
   avatarUploading.value = true;
   try {
-    const avatar = await uploadCampusAvatar(pendingAvatarPath.value);
-    if (userStore.loggedIn)
-      await userStore.updateProfile({ avatar });
+    const avatar = await userStore.bindWechatAvatar(pendingAvatarPath.value);
     form.avatar = avatar;
     pendingAvatarPath.value = '';
     avatarUploadError.value = '';
@@ -395,7 +392,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   min-height: 100vh;
   padding: 0 38rpx 44rpx;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 18%, rgba(10, 132, 255, 0.1), transparent 34%), var(--yd-paper);
+  background: radial-gradient(circle at 50% 18%, rgba(16, 167, 121, 0.16), transparent 36%), var(--yd-paper);
 }
 .login-status {
   height: calc(28rpx + env(safe-area-inset-top));
@@ -440,9 +437,9 @@ function openPolicy(type: 'privacy' | 'agreement') {
   height: 96rpx;
   margin: 0 auto;
   border-radius: 32rpx 32rpx 32rpx 9rpx;
-  border: 1rpx solid rgba(10, 132, 255, 0.16);
-  background: linear-gradient(145deg, #fff, #eaf5ff);
-  box-shadow: 0 18rpx 38rpx rgba(10, 132, 255, 0.2);
+  border: 1rpx solid rgba(16, 167, 121, 0.18);
+  background: var(--color-glass-strong);
+  box-shadow: 0 18rpx 38rpx rgba(16, 167, 121, 0.2);
 }
 .logo image {
   width: 56rpx;
@@ -471,7 +468,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   border: 1rpx solid rgba(255, 255, 255, 0.72);
   border-radius: 28rpx;
   background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 18rpx 44rpx rgba(33, 50, 86, 0.085);
+  box-shadow: 0 18rpx 44rpx rgba(20, 91, 70, 0.1);
   text-align: left;
 }
 .feature-list > view {
@@ -495,9 +492,9 @@ function openPolicy(type: 'privacy' | 'agreement') {
   justify-content: center;
   width: var(--yd-icon-large);
   height: var(--yd-icon-large);
-  border: 1rpx solid rgba(10, 132, 255, 0.1);
+  border: 1rpx solid rgba(16, 167, 121, 0.12);
   border-radius: 20rpx;
-  background: linear-gradient(145deg, #f4faff, #e3f1ff);
+  background: var(--color-primary-soft);
 }
 .feature-icon image {
   width: 40rpx;
@@ -530,11 +527,11 @@ function openPolicy(type: 'privacy' | 'agreement') {
   height: var(--yd-control-large);
   margin-top: 28rpx;
   padding: 0 34rpx;
-  border: 1rpx solid rgba(10, 132, 255, 0.16);
+  border: 1rpx solid rgba(16, 167, 121, 0.18);
   border-radius: var(--yd-control-radius);
   color: #fff;
   background: var(--yd-green);
-  box-shadow: 0 14rpx 32rpx rgba(10, 132, 255, 0.25);
+  box-shadow: 0 14rpx 32rpx rgba(16, 167, 121, 0.25);
   font-size: 28rpx;
   font-weight: 650;
   line-height: 1.2;
@@ -546,7 +543,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
 }
 .wechat-btn[disabled] {
   opacity: 0.72;
-  box-shadow: 0 8rpx 18rpx rgba(10, 132, 255, 0.16);
+  box-shadow: 0 8rpx 18rpx rgba(16, 167, 121, 0.18);
 }
 .button-inner {
   display: flex;
@@ -694,7 +691,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   border: 1rpx solid rgba(255, 255, 255, 0.78);
   border-radius: 24rpx;
   background: rgba(255, 255, 255, 0.76);
-  box-shadow: 0 16rpx 40rpx rgba(33, 50, 86, 0.08);
+  box-shadow: 0 16rpx 40rpx rgba(20, 91, 70, 0.1);
 }
 .avatar-overview {
   display: flex;
@@ -719,7 +716,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   border: 4rpx solid #fff;
   border-radius: 50%;
   background: var(--yd-mint);
-  box-shadow: 0 8rpx 22rpx rgba(10, 132, 255, 0.14);
+  box-shadow: 0 8rpx 22rpx rgba(16, 167, 121, 0.16);
 }
 .avatar-camera {
   position: absolute;
@@ -763,8 +760,8 @@ function openPolicy(type: 'privacy' | 'agreement') {
   margin: 0 24rpx;
   border-radius: 18rpx;
   color: #fff;
-  background: linear-gradient(135deg, #4aa6ff, #087cff);
-  box-shadow: 0 10rpx 24rpx rgba(10, 132, 255, 0.22);
+  background: var(--color-primary);
+  box-shadow: 0 10rpx 24rpx rgba(16, 167, 121, 0.24);
   font-size: 24rpx;
   font-weight: 700;
   line-height: 1.2;
@@ -828,25 +825,30 @@ function openPolicy(type: 'privacy' | 'agreement') {
 }
 .profile-form {
   overflow: hidden;
-  border: 1rpx solid var(--yd-line);
-  border-radius: 18rpx;
-  background: var(--yd-card);
-  box-shadow: 0 5rpx 0 rgba(75, 59, 44, 0.035);
+  border: 1rpx solid rgba(16, 167, 121, 0.16);
+  border-radius: var(--radius-lg);
+  background: var(--color-glass);
+  box-shadow: 0 14rpx 38rpx rgba(16, 167, 121, 0.11);
 }
 .profile-form label {
   display: flex;
   align-items: center;
   min-height: 108rpx;
   padding: 0 24rpx;
-  border-bottom: 1rpx solid #efebe5;
+  border-bottom: 1rpx solid rgba(16, 167, 121, 0.1);
+  color: #49657f;
   font-size: 25rpx;
   font-weight: 700;
+}
+.profile-form picker:last-child label {
+  border-bottom: 0;
 }
 .field-name {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   min-width: 188rpx;
+  color: #49657f;
 }
 .field-name image {
   width: 48rpx;
@@ -854,7 +856,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   margin-right: 14rpx;
   padding: 9rpx;
   border-radius: 14rpx;
-  background: rgba(10, 132, 255, 0.09);
+  background: var(--color-primary-soft);
 }
 .field-name .optional {
   margin-left: 8rpx;
@@ -865,16 +867,31 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .profile-form input,
 .picker {
   flex: 1;
+  min-height: 68rpx;
   margin-left: 18rpx;
-  color: #5f6b67;
+  padding: 0 16rpx;
+  border: 1rpx solid rgba(16, 167, 121, 0.12);
+  border-radius: 14rpx;
+  color: #2f6fa8;
+  background: rgba(230, 242, 255, 0.62);
   font-size: 25rpx;
-  font-weight: 400;
+  font-weight: 550;
   text-align: right;
 }
 .picker {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 10rpx;
+}
+.picker text {
+  color: var(--color-primary);
+  font-size: 30rpx;
+}
+.profile-form input:focus {
+  border-color: rgba(16, 167, 121, 0.42);
+  background: rgba(238, 247, 255, 0.92);
+  box-shadow: 0 0 0 5rpx rgba(16, 167, 121, 0.1);
 }
 .skip {
   margin-top: 12rpx;
@@ -900,35 +917,36 @@ function openPolicy(type: 'privacy' | 'agreement') {
   font-weight: 900;
 }
 
-/* Apple-inspired glass theme */
+/* Emerald glass theme */
 .back,
 .profile-form,
 .login-error {
   border: 1rpx solid rgba(255, 255, 255, 0.72);
   background: rgba(255, 255, 255, 0.68);
-  box-shadow: 0 18rpx 44rpx rgba(33, 50, 86, 0.085);
+  box-shadow: 0 18rpx 44rpx rgba(16, 167, 121, 0.11);
   backdrop-filter: blur(28rpx) saturate(155%);
   -webkit-backdrop-filter: blur(28rpx) saturate(155%);
 }
 .done-icon {
   border-radius: 30rpx;
   background: var(--yd-green);
-  box-shadow: 0 18rpx 38rpx rgba(10, 132, 255, 0.24);
+  box-shadow: 0 18rpx 38rpx rgba(16, 167, 121, 0.24);
 }
 .wechat-btn {
   border: 1rpx solid rgba(255, 255, 255, 0.32);
   border-radius: var(--yd-control-radius);
   background: var(--yd-green);
-  box-shadow: 0 14rpx 32rpx rgba(10, 132, 255, 0.25);
+  box-shadow: 0 14rpx 32rpx rgba(16, 167, 121, 0.25);
 }
 .feature-list > view {
   border-radius: 0;
 }
 .profile-form {
+  border-color: rgba(16, 167, 121, 0.16);
   border-radius: 24rpx;
 }
 .picker,
 .profile-form input {
-  background: rgba(118, 118, 128, 0.08);
+  background: rgba(230, 242, 255, 0.62);
 }
 </style>

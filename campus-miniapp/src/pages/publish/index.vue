@@ -417,7 +417,7 @@ function reset() {
         <view class="setting-main">
           <text>匿名发布</text><text>昵称将显示为“同校同学”</text>
         </view>
-        <switch :checked="form.anonymous" color="#0a84ff" @change="form.anonymous = $event.detail.value" />
+        <switch :checked="form.anonymous" color="#10a779" @change="form.anonymous = $event.detail.value" />
       </view>
     </view>
 
@@ -491,7 +491,7 @@ function reset() {
   align-items: center;
   min-height: 112rpx;
   padding: 18rpx 22rpx;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(231, 244, 255, 0.92));
+  background: var(--color-glass-strong);
 }
 .publisher-avatar {
   width: 76rpx;
@@ -500,7 +500,7 @@ function reset() {
   border: 3rpx solid #fff;
   border-radius: 50%;
   background: #e7f3ff;
-  box-shadow: 0 8rpx 20rpx rgba(10, 132, 255, 0.16);
+  box-shadow: 0 8rpx 20rpx rgba(16, 167, 121, 0.18);
 }
 .publisher-copy {
   display: flex;
@@ -516,7 +516,7 @@ function reset() {
 }
 .publisher-line text:first-child {
   overflow: hidden;
-  color: #1d2522;
+  color: var(--color-text);
   font-size: 26rpx;
   font-weight: 800;
   text-overflow: ellipsis;
@@ -527,7 +527,7 @@ function reset() {
   padding: 5rpx 10rpx;
   border-radius: 999rpx;
   color: #0877df;
-  background: rgba(10, 132, 255, 0.1);
+  background: var(--color-primary-soft);
   font-size: 18rpx;
   font-weight: 700;
 }
@@ -551,7 +551,7 @@ function reset() {
   margin-bottom: 20rpx;
 }
 .block-head > text:first-child {
-  color: #1c2623;
+  color: var(--color-text);
   font-size: 27rpx;
   font-weight: 800;
 }
@@ -596,7 +596,7 @@ function reset() {
   font-weight: 650;
 }
 .type-item.active {
-  border-color: rgba(10, 132, 255, 0.42);
+  border-color: rgba(16, 167, 121, 0.42);
   color: var(--yd-green-dark);
   background: var(--yd-mint);
 }
@@ -652,7 +652,7 @@ function reset() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 2rpx dashed rgba(10, 132, 255, 0.32);
+  border: 2rpx dashed rgba(16, 167, 121, 0.34);
   color: #64748b;
   background: rgba(239, 246, 255, 0.52);
   font-size: 20rpx;
@@ -720,7 +720,7 @@ function reset() {
 .title-editor input {
   flex: 1;
   height: 76rpx;
-  color: #17201d;
+  color: var(--color-text);
   font-size: 31rpx;
   font-weight: 700;
 }
@@ -772,9 +772,9 @@ function reset() {
   font-size: 20rpx;
 }
 .tag-chip.active {
-  border-color: rgba(10, 132, 255, 0.35);
+  border-color: rgba(16, 167, 121, 0.36);
   color: var(--yd-green-dark);
-  background: rgba(10, 132, 255, 0.1);
+  background: var(--color-primary-soft);
   font-weight: 700;
 }
 .price-row {
@@ -782,7 +782,7 @@ function reset() {
   align-items: flex-end;
   gap: 26rpx;
   padding: 5rpx 0 22rpx;
-  border-bottom: 1rpx solid #eeece7;
+  border-bottom: 1rpx solid var(--color-divider);
 }
 .price-main {
   display: flex;
@@ -809,7 +809,7 @@ function reset() {
   height: 60rpx;
   padding: 0 16rpx;
   border-radius: 14rpx;
-  background: #f5f4f0;
+  background: var(--color-surface-subtle);
 }
 .original-price text {
   margin-right: 10rpx;
@@ -822,7 +822,7 @@ function reset() {
 }
 .mode-label {
   margin-top: 21rpx;
-  color: #303b37;
+  color: var(--color-text-secondary);
   font-size: 23rpx;
   font-weight: 700;
 }
@@ -849,9 +849,9 @@ function reset() {
   border-radius: 50%;
 }
 .mode-list .active {
-  border-color: rgba(10, 132, 255, 0.35);
+  border-color: rgba(16, 167, 121, 0.36);
   color: var(--yd-green-dark);
-  background: rgba(10, 132, 255, 0.1);
+  background: var(--color-primary-soft);
 }
 .mode-list .active i {
   border: 4rpx solid var(--yd-green);
@@ -878,7 +878,7 @@ function reset() {
   height: 60rpx;
   margin-right: var(--yd-icon-gap);
   border-radius: 16rpx;
-  background: rgba(10, 132, 255, 0.1);
+  background: var(--color-primary-soft);
 }
 .setting-icon image {
   width: 36rpx;
@@ -890,7 +890,7 @@ function reset() {
   flex-direction: column;
 }
 .setting-main > text:first-child {
-  color: #25302c;
+  color: var(--color-text-secondary);
   font-size: 24rpx;
   font-weight: 700;
 }
@@ -989,7 +989,7 @@ function reset() {
   gap: 10rpx;
   color: #fff;
   background: var(--yd-green);
-  box-shadow: 0 12rpx 28rpx rgba(10, 132, 255, 0.26);
+  box-shadow: 0 12rpx 28rpx rgba(16, 167, 121, 0.26);
 }
 .publish-btn[disabled] {
   color: rgba(255, 255, 255, 0.86);
@@ -1051,7 +1051,7 @@ function reset() {
 }
 .success-title {
   margin-top: 24rpx;
-  color: #19231f;
+  color: var(--color-text);
   font-size: 36rpx;
   font-weight: 900;
 }

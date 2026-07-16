@@ -45,7 +45,7 @@ const icons = {
   border: 1rpx solid rgba(255, 255, 255, 0.7);
   border-radius: 32rpx;
   background: var(--yd-mint);
-  box-shadow: 0 16rpx 38rpx rgba(43, 82, 126, 0.1);
+  box-shadow: var(--shadow-card);
 }
 .state-icon image {
   width: 58rpx;
@@ -60,7 +60,7 @@ const icons = {
 .state-desc {
   max-width: 520rpx;
   margin-top: 14rpx;
-  color: #7a8581;
+  color: var(--color-text-secondary);
   font-size: 25rpx;
   line-height: 1.55;
 }
@@ -72,7 +72,7 @@ const icons = {
   border-radius: var(--yd-control-radius);
   color: #fff;
   background: var(--yd-green);
-  box-shadow: 0 10rpx 24rpx rgba(10, 132, 255, 0.22);
+  box-shadow: 0 8rpx 22rpx rgba(16, 167, 121, 0.24);
   font-size: 26rpx;
   font-weight: 700;
   line-height: 1;

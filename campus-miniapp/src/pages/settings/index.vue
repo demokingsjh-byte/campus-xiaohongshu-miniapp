@@ -289,7 +289,7 @@ function deleteAccount() {
 .settings-page {
   min-height: 100vh;
   padding: 24rpx 24rpx calc(60rpx + env(safe-area-inset-bottom));
-  color: #1d1d1f;
+  color: var(--color-text);
   background: var(--yd-paper);
 }
 .privacy-hero {
@@ -299,7 +299,7 @@ function deleteAccount() {
   border: 1rpx solid rgba(255, 255, 255, 0.82);
   border-radius: 30rpx;
   background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 20rpx 54rpx rgba(31, 45, 70, 0.085);
+  box-shadow: 0 20rpx 56rpx rgba(20, 91, 70, 0.1);
   backdrop-filter: blur(30rpx) saturate(150%);
 }
 .shield {
@@ -310,7 +310,7 @@ function deleteAccount() {
   height: 88rpx;
   border-radius: 27rpx 27rpx 32rpx 32rpx;
   background: var(--yd-green);
-  box-shadow: 0 12rpx 28rpx rgba(10, 132, 255, 0.22);
+  box-shadow: 0 12rpx 28rpx rgba(16, 167, 121, 0.24);
 }
 .shield-check {
   width: 27rpx;
@@ -355,7 +355,7 @@ function deleteAccount() {
   border: 1rpx solid rgba(255, 255, 255, 0.8);
   border-radius: 25rpx;
   background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 15rpx 40rpx rgba(31, 45, 70, 0.065);
+  box-shadow: 0 15rpx 42rpx rgba(20, 91, 70, 0.09);
   backdrop-filter: blur(26rpx) saturate(145%);
 }
 .setting-row,
@@ -392,14 +392,14 @@ function deleteAccount() {
   height: var(--yd-icon-regular);
   margin-right: var(--yd-icon-gap);
   border-radius: 18rpx;
-  background: rgba(10, 132, 255, 0.1);
+  background: var(--color-primary-soft);
 }
 .row-icon image {
   width: 36rpx;
   height: 36rpx;
 }
 .blue {
-  background: rgba(10, 132, 255, 0.12);
+  background: rgba(16, 167, 121, 0.14);
 }
 .cyan {
   background: rgba(50, 173, 230, 0.12);
@@ -414,7 +414,7 @@ function deleteAccount() {
   background: rgba(255, 159, 10, 0.12);
 }
 .soft {
-  background: rgba(10, 132, 255, 0.08);
+  background: rgba(16, 167, 121, 0.1);
 }
 .danger-icon {
   background: rgba(255, 69, 58, 0.1);

@@ -1,6 +1,5 @@
 <script lang="ts" setup>
 import { getDefaultTenant } from '@/mock/campus';
-import { uploadCampusAvatar } from '@/services/api/file';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { resolveCampusAvatar } from '@/utils/avatar';
@@ -62,16 +61,7 @@ async function handleAvatarChoose(event: any) {
     return;
   avatarUpdating.value = true;
   try {
-    const avatar = await uploadCampusAvatar(avatarPath);
-    await userStore.updateProfile({
-      nickname: profile.value.nickname,
-      avatar,
-      schoolName: profile.value.schoolName || currentSchool.value,
-      campusName: profile.value.campusName || currentCampus.value,
-      grade: profile.value.grade,
-      gender: profile.value.gender,
-      roleType: profile.value.roleType || 'student',
-    });
+    await userStore.bindWechatAvatar(avatarPath);
     uni.showToast({ title: '头像已更新', icon: 'success' });
   } catch {
     uni.showToast({ title: '头像上传失败，请稍后重试', icon: 'none' });
@@ -266,7 +256,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   position: relative;
   min-height: 100vh;
   padding: 0 24rpx 36rpx;
-  background: linear-gradient(155deg, #dcecff 0%, #edf6ff 42%, #d8eaff 100%);
+  background: var(--color-page);
 }
 .ambient-layer {
   position: fixed;
@@ -279,28 +269,28 @@ function handleMenu(action: string, requiresLogin: boolean) {
   position: absolute;
   border-radius: 50%;
   filter: blur(70rpx);
-  opacity: 0.72;
+  opacity: 0.42;
 }
 .ambient-blue {
   top: -60rpx;
   right: -130rpx;
   width: 460rpx;
   height: 460rpx;
-  background: rgba(20, 126, 255, 0.3);
+  background: rgba(16, 167, 121, 0.3);
 }
 .ambient-indigo {
   top: 520rpx;
   left: -160rpx;
   width: 390rpx;
   height: 390rpx;
-  background: rgba(78, 107, 255, 0.2);
+  background: rgba(42, 190, 145, 0.2);
 }
 .ambient-sky {
   right: -100rpx;
   bottom: 80rpx;
   width: 340rpx;
   height: 340rpx;
-  background: rgba(72, 192, 255, 0.22);
+  background: rgba(92, 222, 177, 0.22);
 }
 .mine-status,
 .guest-card,
@@ -317,18 +307,16 @@ function handleMenu(action: string, requiresLogin: boolean) {
 }
 .glass-card {
   border: 1rpx solid rgba(255, 255, 255, 0.78);
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(221, 238, 255, 0.46));
-  box-shadow:
-    0 20rpx 54rpx rgba(24, 91, 173, 0.13),
-    inset 0 1rpx 0 rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(38rpx) saturate(170%);
-  -webkit-backdrop-filter: blur(38rpx) saturate(170%);
+  background: var(--color-glass);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(24rpx) saturate(150%);
+  -webkit-backdrop-filter: blur(24rpx) saturate(150%);
 }
 .guest-card,
 .profile-card {
   padding: 26rpx;
   border-radius: 30rpx;
-  background: linear-gradient(140deg, rgba(255, 255, 255, 0.78), rgba(197, 225, 255, 0.5));
+  background: var(--color-glass-strong);
 }
 .guest-main,
 .profile-head {
@@ -343,8 +331,8 @@ function handleMenu(action: string, requiresLogin: boolean) {
   justify-content: center;
   border: 3rpx solid rgba(255, 255, 255, 0.9);
   border-radius: 50%;
-  background: rgba(10, 132, 255, 0.1);
-  box-shadow: 0 12rpx 30rpx rgba(10, 132, 255, 0.12);
+  background: var(--color-primary-soft);
+  box-shadow: 0 12rpx 30rpx rgba(16, 167, 121, 0.13);
 }
 .guest-avatar {
   width: 82rpx;
@@ -374,8 +362,8 @@ function handleMenu(action: string, requiresLogin: boolean) {
   margin-top: 22rpx;
   border-radius: 19rpx;
   color: #fff;
-  background: linear-gradient(135deg, #4aa6ff, #087cff);
-  box-shadow: 0 12rpx 28rpx rgba(10, 132, 255, 0.24);
+  background: var(--color-primary);
+  box-shadow: 0 12rpx 28rpx rgba(16, 167, 121, 0.24);
   font-size: 25rpx;
   font-weight: 750;
 }
@@ -402,7 +390,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   height: 36rpx;
   border: 3rpx solid rgba(255, 255, 255, 0.94);
   border-radius: 50%;
-  background: linear-gradient(145deg, #58afff, #087cff);
+  background: var(--color-primary);
   box-shadow: 0 7rpx 16rpx rgba(10, 126, 245, 0.26);
 }
 .avatar-edit-hint image {
@@ -457,8 +445,8 @@ function handleMenu(action: string, requiresLogin: boolean) {
   margin-left: 9rpx;
   padding: 5rpx 9rpx;
   border-radius: 999rpx;
-  color: #0a6fd8;
-  background: rgba(10, 132, 255, 0.1);
+  color: var(--color-primary-strong);
+  background: var(--color-primary-soft);
   font-size: 17rpx;
   font-weight: 700;
 }
@@ -486,7 +474,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   padding: 0 17rpx;
   border: 1rpx solid rgba(60, 60, 67, 0.1);
   border-radius: 999rpx;
-  color: #0a6fd8;
+  color: var(--color-primary-strong);
   background: rgba(255, 255, 255, 0.66);
   font-size: 19rpx;
   font-weight: 650;
@@ -498,7 +486,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   padding: 18rpx 6rpx;
   border: 1rpx solid rgba(255, 255, 255, 0.68);
   border-radius: 22rpx;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.48), rgba(197, 226, 255, 0.3));
+  background: rgba(255, 255, 255, 0.58);
 }
 .stats view {
   position: relative;
@@ -539,7 +527,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(131, 194, 255, 0.28));
+  background: var(--color-primary-soft);
 }
 .pass-icon {
   width: 60rpx;
@@ -607,7 +595,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   padding: 12rpx;
   border: 1rpx solid rgba(255, 255, 255, 0.7);
   border-radius: 20rpx;
-  background: linear-gradient(140deg, rgba(255, 255, 255, 0.62), rgba(190, 222, 255, 0.28));
+  background: rgba(255, 255, 255, 0.58);
   box-shadow: inset 0 1rpx 0 rgba(255, 255, 255, 0.62);
 }
 .quick-icon {
@@ -619,19 +607,19 @@ function handleMenu(action: string, requiresLogin: boolean) {
   height: 48rpx;
   border-radius: 15rpx;
   color: #fff;
-  background: linear-gradient(145deg, #5db3ff, #1687f7);
+  background: var(--color-primary);
   box-shadow: 0 8rpx 18rpx rgba(10, 126, 245, 0.2);
   font-size: 18rpx;
   font-weight: 800;
 }
 .tone-confirm {
-  background: linear-gradient(145deg, #7fa5ff, #4c75ed);
+  background: #5856d6;
 }
 .tone-active {
-  background: linear-gradient(145deg, #5bc9ff, #1596e6);
+  background: #32ade6;
 }
 .tone-done {
-  background: linear-gradient(145deg, #88bdff, #4d8fe8);
+  background: #5e5ce6;
 }
 .quick-copy {
   display: flex;
@@ -644,7 +632,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 .quick-value {
   flex: 0 0 auto;
   margin-left: 6rpx;
-  color: #126fc7;
+  color: var(--color-primary-strong);
   font-size: 25rpx;
   font-weight: 800;
 }

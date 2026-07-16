@@ -42,13 +42,13 @@ export default defineConfig({
   ],
   theme: {
     colors: {
-      primary: '#007AFF',
-      secondary: '#4CD964',
-      danger: '#FF3B30',
-      warning: '#FF9500',
-      info: '#5AC8FA',
-      light: '#F0F0F0',
-      dark: '#1A1A1A',
+      primary: '#0A84FF',
+      secondary: '#F2675A',
+      danger: '#D94F45',
+      warning: '#D69A20',
+      info: '#397D92',
+      light: '#F2F6FB',
+      dark: '#1D2733',
     },
     fontSize: {
       mini: ['20rpx', '26rpx'],

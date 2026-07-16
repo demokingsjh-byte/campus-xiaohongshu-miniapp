@@ -179,7 +179,7 @@ onLoad((query) => {
 .policy-page {
   min-height: 100vh;
   padding: 24rpx 24rpx calc(56rpx + env(safe-area-inset-bottom));
-  color: #1d1d1f;
+  color: var(--color-text);
   background: var(--yd-paper);
 }
 .hero {
@@ -187,7 +187,7 @@ onLoad((query) => {
   border: 1rpx solid rgba(255, 255, 255, 0.84);
   border-radius: 32rpx;
   background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 22rpx 56rpx rgba(31, 45, 70, 0.09);
+  box-shadow: 0 22rpx 58rpx rgba(20, 91, 70, 0.1);
   backdrop-filter: blur(30rpx) saturate(150%);
 }
 .hero-icon {
@@ -199,7 +199,7 @@ onLoad((query) => {
   border-radius: 23rpx;
   color: #fff;
   background: var(--yd-green);
-  box-shadow: 0 12rpx 28rpx rgba(10, 132, 255, 0.22);
+  box-shadow: 0 12rpx 28rpx rgba(16, 167, 121, 0.24);
   font-size: 30rpx;
   font-weight: 800;
 }
@@ -228,7 +228,7 @@ onLoad((query) => {
   border: 1rpx solid rgba(255, 255, 255, 0.8);
   border-radius: 26rpx;
   background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 15rpx 40rpx rgba(31, 45, 70, 0.065);
+  box-shadow: 0 15rpx 42rpx rgba(20, 91, 70, 0.09);
   backdrop-filter: blur(26rpx) saturate(145%);
 }
 .section-title {

@@ -267,7 +267,7 @@ onLoad(async (query) => {
   font-size: 30rpx;
 }
 .discover-head text {
-  color: #929c98;
+  color: var(--color-text-tertiary);
   font-size: 21rpx;
 }
 .chip-list {
@@ -367,7 +367,7 @@ onLoad(async (query) => {
 }
 .result-count {
   padding: 0 24rpx 16rpx;
-  color: #929c98;
+  color: var(--color-text-tertiary);
   font-size: 20rpx;
 }
 .result-grid {
@@ -377,14 +377,14 @@ onLoad(async (query) => {
   padding: 0 20rpx 30rpx;
 }
 
-/* Apple-inspired glass theme */
+/* Emerald glass theme */
 .search-input,
 .discover-section,
 .filters {
   border: 1rpx solid rgba(255, 255, 255, 0.7);
   border-radius: 24rpx;
   background: rgba(255, 255, 255, 0.68);
-  box-shadow: 0 16rpx 40rpx rgba(33, 50, 86, 0.08);
+  box-shadow: 0 16rpx 42rpx rgba(20, 91, 70, 0.1);
   backdrop-filter: blur(28rpx) saturate(155%);
   -webkit-backdrop-filter: blur(28rpx) saturate(155%);
 }

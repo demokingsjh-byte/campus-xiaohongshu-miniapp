@@ -161,7 +161,7 @@ function reportPost() {
       @action="uni.switchTab({ url: '/pages/index/index' })"
     />
     <template v-else>
-      <swiper class="media" indicator-dots indicator-active-color="#0A84FF">
+      <swiper class="media" indicator-dots indicator-active-color="#10A779">
         <swiper-item>
           <image v-if="post.coverImage" class="detail-photo" :src="post.coverImage" mode="aspectFill" />
           <view v-else class="media-item" :style="{ background: post.coverColor }">
@@ -263,7 +263,7 @@ function reportPost() {
 .detail-photo {
   width: 100%;
   height: 100%;
-  background: #eef0eb;
+  background: var(--color-page-deep);
 }
 .media-item {
   position: relative;
@@ -590,7 +590,7 @@ function reportPost() {
 .hero-sk,
 .line-sk {
   border-radius: 20rpx;
-  background: #e9e7e1;
+  background: var(--color-page-deep);
   animation: pulse 1.1s infinite alternate;
 }
 .hero-sk {
@@ -613,20 +613,25 @@ function reportPost() {
   }
 }
 
-/* Apple-inspired glass theme */
+/* Emerald glass theme */
 .content-card,
 .comments-card,
 .related,
 .bottom-bar {
   border-color: rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 18rpx 46rpx rgba(33, 50, 86, 0.09);
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 18rpx 48rpx rgba(20, 91, 70, 0.1);
   backdrop-filter: blur(30rpx) saturate(155%);
   -webkit-backdrop-filter: blur(30rpx) saturate(155%);
 }
 .content-card,
 .comments-card {
   border-radius: 26rpx;
+}
+.related {
+  margin: 16rpx 18rpx 0;
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-lg);
 }
 .tags text,
 .comment-input {
@@ -635,6 +640,6 @@ function reportPost() {
 }
 .contact-btn {
   background: var(--yd-green);
-  box-shadow: 0 10rpx 26rpx rgba(10, 132, 255, 0.24);
+  box-shadow: 0 10rpx 26rpx rgba(16, 167, 121, 0.24);
 }
 </style>

@@ -1,33 +1,91 @@
 page {
   min-height: 100%;
-  --yd-paper: #f3f5f9;
-  --yd-paper-deep: rgba(229, 233, 241, 0.78);
-  --yd-card: rgba(255, 255, 255, 0.76);
-  --yd-card-strong: rgba(255, 255, 255, 0.92);
-  --yd-ink: #1d1d1f;
-  --yd-muted: #6e6e73;
-  --yd-line: rgba(60, 60, 67, 0.13);
-  --yd-green: #0a84ff;
-  --yd-green-dark: #0066cc;
-  --yd-mint: rgba(10, 132, 255, 0.1);
-  --yd-coral: #ff6b5f;
-  --yd-coral-soft: rgba(255, 107, 95, 0.11);
-  --yd-yellow: #ffd60a;
-  --yd-glass-shadow: 0 18rpx 48rpx rgba(32, 47, 78, 0.1);
-  --yd-control-compact: 72rpx;
-  --yd-control-regular: 92rpx;
-  --yd-control-large: 100rpx;
-  --yd-control-radius: 18rpx;
-  --yd-icon-compact: 56rpx;
-  --yd-icon-regular: 64rpx;
+
+  /* Brand and semantic colors */
+  --color-primary: #10a779;
+  --color-primary-strong: #08785a;
+  --color-primary-soft: rgba(16, 167, 121, 0.12);
+  --color-accent: #ff9f0a;
+  --color-accent-soft: rgba(255, 159, 10, 0.1);
+  --color-warning: #ff9f0a;
+  --color-danger: #ff3b30;
+  --color-success: #34c759;
+
+  /* Neutral surfaces and content */
+  --color-page: #edf6f2;
+  --color-page-deep: #dcebe5;
+  --color-surface: #ffffff;
+  --color-surface-subtle: rgba(237, 246, 242, 0.82);
+  --color-glass: rgba(255, 255, 255, 0.62);
+  --color-glass-strong: rgba(255, 255, 255, 0.78);
+  --color-text: #16352b;
+  --color-text-secondary: #587168;
+  --color-text-tertiary: #81958e;
+  --color-border: rgba(22, 89, 69, 0.14);
+  --color-divider: rgba(22, 89, 69, 0.1);
+  --color-mask: rgba(0, 0, 0, 0.32);
+
+  /* Typography */
+  --font-size-caption: 20rpx;
+  --font-size-meta: 22rpx;
+  --font-size-label: 24rpx;
+  --font-size-body: 28rpx;
+  --font-size-title: 32rpx;
+  --font-size-display: 42rpx;
+  --line-height-tight: 1.25;
+  --line-height-body: 1.55;
+
+  /* Spacing */
+  --space-1: 8rpx;
+  --space-2: 12rpx;
+  --space-3: 16rpx;
+  --space-4: 24rpx;
+  --space-5: 32rpx;
+  --space-6: 40rpx;
+  --page-gutter: 24rpx;
+
+  /* Shape, elevation and interaction */
+  --radius-sm: 12rpx;
+  --radius-md: 20rpx;
+  --radius-lg: 28rpx;
+  --radius-xl: 36rpx;
+  --radius-pill: 999rpx;
+  --shadow-card: 0 10rpx 30rpx rgba(20, 91, 70, 0.085);
+  --shadow-floating: 0 26rpx 70rpx rgba(10, 70, 53, 0.18);
+  --touch-compact: 64rpx;
+  --touch-regular: 80rpx;
+  --touch-large: 96rpx;
+
+  /* Legacy aliases kept while the remaining pages migrate. */
+  --yd-paper: var(--color-page);
+  --yd-paper-deep: var(--color-page-deep);
+  --yd-card: var(--color-surface);
+  --yd-card-strong: var(--color-surface);
+  --yd-ink: var(--color-text);
+  --yd-muted: var(--color-text-secondary);
+  --yd-line: var(--color-border);
+  --yd-green: var(--color-primary);
+  --yd-green-dark: var(--color-primary-strong);
+  --yd-mint: var(--color-primary-soft);
+  --yd-coral: var(--color-accent);
+  --yd-coral-soft: var(--color-accent-soft);
+  --yd-yellow: #ffcc00;
+  --yd-glass-shadow: var(--shadow-card);
+  --yd-control-compact: var(--touch-compact);
+  --yd-control-regular: var(--touch-regular);
+  --yd-control-large: var(--touch-large);
+  --yd-control-radius: var(--radius-md);
+  --yd-icon-compact: 48rpx;
+  --yd-icon-regular: 60rpx;
   --yd-icon-large: 72rpx;
   --yd-icon-glyph: 36rpx;
-  --yd-icon-gap: 18rpx;
-  --yd-copy-gap: 6rpx;
-  --yd-touch-row: 104rpx;
-  color: var(--yd-ink);
-  background: var(--yd-paper);
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --yd-icon-gap: var(--space-3);
+  --yd-copy-gap: var(--space-1);
+  --yd-touch-row: var(--touch-large);
+
+  color: var(--color-text);
+  background: var(--color-page);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   font-synthesis: none;
 }
 
@@ -44,30 +102,36 @@ button {
   background: transparent;
   color: inherit;
   font-family: inherit;
-  min-height: var(--yd-control-compact);
-  font-size: 26rpx;
+  min-height: var(--touch-compact);
+  font-size: var(--font-size-label);
   line-height: 1.2;
   letter-spacing: 0;
   text-align: center;
 }
 
 button::after { display: none; border: 0; }
+button[disabled] { opacity: 0.5; }
+button:active { opacity: 0.72; }
 
-button[disabled] { opacity: 0.56; }
+input,
+textarea {
+  color: var(--color-text);
+  caret-color: var(--color-primary);
+}
 
 .yd-page {
   min-height: 100vh;
-  padding: 0 24rpx 32rpx;
-  background: var(--yd-paper);
+  padding: 0 var(--page-gutter) var(--space-5);
+  background: var(--color-page);
 }
 
 .yd-card {
-  border: 1rpx solid var(--yd-line);
-  border-radius: 26rpx;
-  background: var(--yd-card);
-  box-shadow: var(--yd-glass-shadow);
-  backdrop-filter: blur(28rpx) saturate(150%);
-  -webkit-backdrop-filter: blur(28rpx) saturate(150%);
+  border: 1rpx solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-glass);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(20rpx) saturate(140%);
+  -webkit-backdrop-filter: blur(20rpx) saturate(140%);
 }
 
 .yd-primary-btn,
@@ -75,99 +139,121 @@ button[disabled] { opacity: 0.56; }
   display: flex;
   align-items: center;
   justify-content: center;
-  height: var(--yd-control-large);
-  border-radius: var(--yd-control-radius);
-  font-size: 30rpx;
-  padding: 0 30rpx;
-  font-weight: 650;
+  height: var(--touch-large);
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-body);
+  font-weight: 700;
   line-height: 1.2;
-  letter-spacing: 0.5rpx;
 }
 
 .yd-primary-btn {
   color: #fff;
-  background: var(--yd-green);
-  box-shadow: 0 12rpx 28rpx rgba(10, 132, 255, 0.24);
+  background: var(--color-primary);
+  box-shadow: 0 8rpx 22rpx rgba(16, 167, 121, 0.24);
 }
+
 .yd-secondary-btn {
-  border: 1rpx solid rgba(60, 60, 67, 0.12);
-  color: var(--yd-green-dark);
-  background: rgba(255, 255, 255, 0.68);
-  backdrop-filter: blur(20rpx);
-  -webkit-backdrop-filter: blur(20rpx);
+  border: 1rpx solid var(--color-border);
+  color: var(--color-primary-strong);
+  background: var(--color-glass);
+  backdrop-filter: blur(18rpx) saturate(145%);
+  -webkit-backdrop-filter: blur(18rpx) saturate(145%);
 }
 
 .yd-section-title {
-  color: var(--yd-ink);
-  font-size: 32rpx;
+  color: var(--color-text);
+  font-size: var(--font-size-title);
   font-weight: 800;
-  line-height: 1.25;
+  line-height: var(--line-height-tight);
 }
 
-.yd-section-subtitle { color: var(--yd-muted); font-size: 24rpx; }
+.yd-section-subtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-label);
+}
 
 .yd-chip {
   display: inline-flex;
   align-items: center;
-  min-height: 64rpx;
-  padding: 0 24rpx;
-  border: 1rpx solid var(--yd-line);
-  border-radius: 999rpx;
-  color: var(--yd-muted);
-  background: rgba(255, 255, 255, 0.66);
-  backdrop-filter: blur(18rpx);
-  -webkit-backdrop-filter: blur(18rpx);
-  font-size: 26rpx;
+  min-height: var(--touch-compact);
+  padding: 0 var(--space-4);
+  border: 1rpx solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-secondary);
+  background: var(--color-glass);
+  font-size: var(--font-size-label);
 }
 
-.yd-chip.active { border-color: var(--yd-green); color: #fff; background: var(--yd-green); }
+.yd-chip.active {
+  border-color: var(--color-primary);
+  color: var(--color-primary-strong);
+  background: var(--color-primary-soft);
+}
 
 .yd-input {
   width: 100%;
-  min-height: 84rpx;
-  padding: 0 24rpx;
+  min-height: var(--touch-regular);
+  padding: 0 var(--space-4);
   border: 2rpx solid transparent;
-  border-radius: 18rpx;
-  color: var(--yd-ink);
-  background: rgba(255, 255, 255, 0.62);
-  font-size: 28rpx;
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  background: var(--color-surface-subtle);
+  font-size: var(--font-size-body);
 }
 
 .yd-input.focused {
-  border-color: rgba(10, 132, 255, 0.58);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 0 0 6rpx rgba(10, 132, 255, 0.08);
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 6rpx rgba(16, 167, 121, 0.12);
 }
 
-input,
-textarea {
-  color: var(--yd-ink);
-  caret-color: var(--yd-green);
+.apple-group {
+  overflow: hidden;
+  border: 1rpx solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-glass-strong);
+  box-shadow: var(--shadow-card);
+}
+
+.apple-row {
+  min-height: var(--touch-large);
+  padding: 0 var(--space-4);
+  border-bottom: 1rpx solid var(--color-divider);
+}
+
+.apple-row:last-child { border-bottom: 0; }
+
+.apple-caption {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  letter-spacing: 1rpx;
+  text-transform: uppercase;
 }
 
 .yd-kicker {
-  color: var(--yd-coral);
-  font-size: 20rpx;
+  color: var(--color-accent);
+  font-size: var(--font-size-caption);
   font-weight: 800;
   letter-spacing: 2rpx;
 }
 
-.safe-bottom { padding-bottom: calc(24rpx + env(safe-area-inset-bottom)); }
+.safe-bottom { padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom)); }
 
-/* Mobile touch targets: keep frequently tapped controls comfortable on real devices. */
+/* Temporary compatibility rules until each legacy page moves to shared controls. */
 page .back,
 page .clear,
 page .message-entry,
 page .picker-close {
-  min-width: 72rpx !important;
-  min-height: 72rpx !important;
+  min-width: var(--touch-regular) !important;
+  min-height: var(--touch-regular) !important;
 }
 
 page .school-trigger,
 page .refresh-entry,
 page .channel {
-  min-height: 72rpx !important;
-  font-size: 25rpx !important;
+  min-height: var(--touch-regular) !important;
 }
 
 page .hot-list > view,
@@ -175,48 +261,140 @@ page .message-row,
 page .setting-row,
 page .contact-row,
 page .menu-row {
-  min-height: 104rpx !important;
+  min-height: var(--touch-large) !important;
 }
 
-page .hot-list > view,
-page .menu-label,
-page .setting-title,
-page .contact-title {
-  font-size: 26rpx !important;
-}
-
-page .type-item {
-  min-height: 112rpx !important;
-}
-
-page .type-title,
-page .quick-label {
-  font-size: 23rpx !important;
-}
+page .type-item { min-height: 112rpx !important; }
 
 page .tag-chip {
-  min-height: 64rpx !important;
-  padding-right: 22rpx !important;
-  padding-left: 22rpx !important;
-  font-size: 22rpx !important;
+  min-height: var(--touch-compact) !important;
+  padding-right: var(--space-4) !important;
+  padding-left: var(--space-4) !important;
 }
 
 page .follow-btn {
-  min-height: 72rpx !important;
-  padding-right: 24rpx !important;
-  padding-left: 24rpx !important;
-  font-size: 24rpx !important;
+  min-height: var(--touch-regular) !important;
+  padding-right: var(--space-4) !important;
+  padding-left: var(--space-4) !important;
 }
 
 page .action {
-  min-width: 80rpx !important;
-  min-height: 80rpx !important;
+  min-width: var(--touch-regular) !important;
+  min-height: var(--touch-regular) !important;
 }
 
-page .action > text {
-  font-size: 20rpx !important;
+page .quick-item { min-height: var(--touch-large) !important; }
+
+/* Emerald glass page harmonization. Keep page logic local, unify visual language here. */
+page .home-page,
+page .detail-page,
+page .publish-page,
+page .search-page,
+page .messages-page,
+page .mine-page,
+page .login-page,
+page .settings-page,
+page .policy-page {
+  color: var(--color-text);
+  background:
+    radial-gradient(circle at 88% 4%, rgba(67, 211, 163, 0.2), transparent 30%),
+    radial-gradient(circle at 4% 68%, rgba(37, 180, 137, 0.12), transparent 28%),
+    var(--color-page) !important;
 }
 
-page .quick-item {
-  min-height: 104rpx !important;
+page .post-card,
+page .publish-page .card-block,
+page .detail-page .content-card,
+page .detail-page .comments-card,
+page .messages-page .message-card,
+page .messages-page .security-card,
+page .mine-page .glass-card,
+page .login-page .avatar-card,
+page .login-page .profile-form,
+page .settings-page .settings-card,
+page .policy-page .policy-card {
+  border: 1rpx solid var(--color-border) !important;
+  border-radius: var(--radius-lg) !important;
+  background: var(--color-glass) !important;
+  box-shadow: var(--shadow-card) !important;
+  backdrop-filter: blur(26rpx) saturate(155%) !important;
+  -webkit-backdrop-filter: blur(26rpx) saturate(155%) !important;
+}
+
+page .home-page .search-entry,
+page .search-page .search-input,
+page .publish-page input,
+page .publish-page textarea,
+page .login-page input {
+  border-color: transparent !important;
+  color: var(--color-text) !important;
+  background: rgba(118, 118, 128, 0.09) !important;
+  box-shadow: none !important;
+}
+
+page .home-page .topbar,
+page .search-page .search-top {
+  background: var(--color-glass) !important;
+  backdrop-filter: blur(22rpx) saturate(145%);
+  -webkit-backdrop-filter: blur(22rpx) saturate(145%);
+}
+
+page .publish-page .publish-bar,
+page .detail-page .bottom-bar {
+  border-top: 1rpx solid var(--color-divider) !important;
+  background: var(--color-glass-strong) !important;
+  box-shadow: 0 -10rpx 30rpx rgba(20, 91, 70, 0.08) !important;
+  backdrop-filter: blur(26rpx) saturate(150%);
+  -webkit-backdrop-filter: blur(26rpx) saturate(150%);
+}
+
+page .publish-page .publish-btn,
+page .detail-page .send,
+page .login-page .wechat-btn,
+page .login-page .save-button,
+page .mine-page .login-button,
+page .settings-page .primary-action {
+  border-radius: var(--radius-md) !important;
+  color: #fff !important;
+  background: var(--color-primary) !important;
+  box-shadow: 0 8rpx 24rpx rgba(16, 167, 121, 0.24) !important;
+}
+
+page .channel.active,
+page .tabs .active,
+page .message-tabs .active,
+page .filters .active,
+page .tag-chip.active,
+page .type-item.active {
+  color: var(--color-primary) !important;
+}
+
+page .tag-chip.active,
+page .type-item.active,
+page .filters .active {
+  border-color: rgba(16, 167, 121, 0.22) !important;
+  background: var(--color-primary-soft) !important;
+}
+
+page .settings-page .setting-row,
+page .messages-page .message-row,
+page .mine-page .menu-row,
+page .login-page .profile-form > label {
+  border-color: var(--color-divider) !important;
+}
+
+page .settings-page .danger,
+page .settings-page .danger-action,
+page .detail-page .report-entry,
+page .login-page .login-error {
+  color: var(--color-danger) !important;
+}
+
+page .campus-picker,
+page .publish-page .success-card {
+  border-color: rgba(255, 255, 255, 0.7) !important;
+  background: rgba(232, 245, 239, 0.86) !important;
+  box-shadow: var(--shadow-floating) !important;
+  backdrop-filter: blur(34rpx) saturate(155%);
+  -webkit-backdrop-filter: blur(34rpx) saturate(155%);
 }

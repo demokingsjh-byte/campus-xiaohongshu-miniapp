@@ -81,6 +81,7 @@ jobs:
           cp scripts/deploy/migrate-server.sh release/migrate-server.sh
           cp campus-platform/sql/mysql/campus-student-user-upgrade.sql release/migrations/
           cp campus-platform/sql/mysql/campus-community-upgrade.sql release/migrations/
+          cp campus-platform/sql/mysql/campus-menu-prune.sql release/migrations/
           cp campus-platform/sql/mysql/campus-menu-encoding-repair.sql release/migrations/
           cp campus-platform/sql/mysql/campus-menu.sql release/migrations/
           cp campus-platform/sql/mysql/campus-school-data-upgrade.sql release/migrations/

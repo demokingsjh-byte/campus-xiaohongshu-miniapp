@@ -3,6 +3,14 @@
 
 SET NAMES utf8mb4;
 
+-- Older databases may have been created with a latin1 default. In that case
+-- even a UTF-8 migration connection stores Chinese menu names as question
+-- marks. Normalize the two user-facing metadata tables before rewriting data.
+ALTER TABLE `system_menu`
+  CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+ALTER TABLE `system_dict_data`
+  CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 UPDATE `system_menu`
 SET `name` = CASE `id`
   WHEN 1 THEN '系统管理'
@@ -25,13 +33,32 @@ SET `name` = CASE `id`
   WHEN 1040 THEN '操作查询'
   WHEN 1042 THEN '日志导出'
   WHEN 900000 THEN '校园运营'
+  WHEN 900050 THEN '数据看板'
   WHEN 900100 THEN '区域管理'
+  WHEN 900101 THEN '区域新增'
+  WHEN 900102 THEN '区域修改'
+  WHEN 900103 THEN '区域删除'
   WHEN 900200 THEN '学校资料'
+  WHEN 900201 THEN '学校新增'
+  WHEN 900202 THEN '学校修改'
+  WHEN 900203 THEN '学校删除'
   WHEN 900300 THEN '校区租户'
+  WHEN 900301 THEN '校区新增'
+  WHEN 900302 THEN '校区修改'
+  WHEN 900303 THEN '校区删除'
   WHEN 900400 THEN '校区代理'
+  WHEN 900401 THEN '代理新增'
+  WHEN 900402 THEN '代理修改'
+  WHEN 900403 THEN '代理删除'
   WHEN 900500 THEN '商品管理'
+  WHEN 900501 THEN '商品新增'
+  WHEN 900502 THEN '商品修改'
+  WHEN 900503 THEN '商品删除'
   WHEN 900600 THEN '学生用户'
+  WHEN 900601 THEN '学生用户修改'
+  WHEN 900602 THEN '学生用户删除'
   WHEN 900700 THEN '数据日志'
+  WHEN 900701 THEN '日志导出'
   WHEN 900800 THEN '内容管理'
   WHEN 900801 THEN '内容修改'
   WHEN 900802 THEN '内容删除'
@@ -40,8 +67,10 @@ END,
 `updater` = 'campus',
 `update_time` = NOW()
 WHERE `id` IN (1, 2, 100, 101, 102, 103, 104, 105, 106, 107, 108, 110, 114, 115, 116,
-               500, 501, 1040, 1042, 900000, 900100, 900200, 900300, 900400, 900500, 900600, 900700,
-               900800, 900801, 900802);
+               500, 501, 1040, 1042, 900000, 900050, 900100, 900101, 900102, 900103,
+               900200, 900201, 900202, 900203, 900300, 900301, 900302, 900303,
+               900400, 900401, 900402, 900403, 900500, 900501, 900502, 900503,
+               900600, 900601, 900602, 900700, 900701, 900800, 900801, 900802);
 
 UPDATE `system_dict_data`
 SET `label` = CASE `id`

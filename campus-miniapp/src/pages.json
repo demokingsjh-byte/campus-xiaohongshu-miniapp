@@ -15,14 +15,14 @@
   "globalStyle": {
     "navigationBarTextStyle": "black",
     "navigationBarTitleText": "云点校园",
-    "navigationBarBackgroundColor": "#F3F5F9",
-    "backgroundColor": "#F3F5F9",
+    "navigationBarBackgroundColor": "#EDF6F2",
+    "backgroundColor": "#EDF6F2",
     "navigationStyle": "default"
   },
   "tabBar": {
-    "color": "#7A837F",
-    "selectedColor": "#0A84FF",
-    "backgroundColor": "#F9FAFC",
+    "color": "#8E8E93",
+    "selectedColor": "#10A779",
+    "backgroundColor": "#FFFFFF",
     "borderStyle": "white",
     "list": [
       { "pagePath": "pages/index/index", "text": "首页", "iconPath": "static/images/tabBar/home.png", "selectedIconPath": "static/images/tabBar/selectedHome.png" },

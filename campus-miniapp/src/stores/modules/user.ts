@@ -9,6 +9,7 @@ import {
   updateCampusProfile,
   wechatLogin,
 } from '@/services/api/auth';
+import { uploadCampusAvatar } from '@/services/api/file';
 import { startCampusAnalytics, stopCampusAnalytics } from '@/utils/analytics';
 import { getToken, isLogin, removeToken, setToken } from '@/utils/auth';
 import { removeCache } from '@/utils/cache';
@@ -30,6 +31,10 @@ function uniLoginCode() {
       fail: error => reject(new Error(error.errMsg || '无法获取微信登录凭证')),
     });
   });
+}
+
+function isTemporaryLocalAvatar(path: string) {
+  return /^(?:wxfile|file|blob):|^https?:\/\/tmp\//i.test(path);
 }
 
 export const useUserStore = defineStore('UserStore', () => {
@@ -125,6 +130,29 @@ export const useUserStore = defineStore('UserStore', () => {
     return userInfo.value;
   }
 
+  /**
+   * 将微信 chooseAvatar 返回的临时文件上传为永久文件，并绑定到当前校园用户。
+   * 绑定后重新从服务端读取资料，避免页面只保留本地临时路径。
+   */
+  async function bindWechatAvatar(temporaryFilePath: string) {
+    if (!loggedIn.value || !userInfo.value)
+      throw new Error('请先登录后再绑定头像');
+
+    const uploadedAvatar = await uploadCampusAvatar(temporaryFilePath);
+    if (!uploadedAvatar)
+      throw new Error('头像上传未返回永久地址');
+    if (!isUseMock() && isTemporaryLocalAvatar(uploadedAvatar))
+      throw new Error('头像上传仍返回临时地址，无法持久化绑定');
+
+    await sendUpdateProfile({ avatar: uploadedAvatar });
+    const persistedUser = (await _getUserInfo()) as UserInfoModel;
+    if (!persistedUser?.avatar)
+      throw new Error('头像未能绑定到当前用户');
+
+    userInfo.value = persistedUser;
+    return persistedUser.avatar;
+  }
+
   const { send: sendBindPhone } = useRequest(bindCampusPhone, { immediate: false });
   async function bindPhone(phoneCode: string) {
     userInfo.value = (await sendBindPhone({ phoneCode })) as UserInfoModel;
@@ -157,6 +185,7 @@ export const useUserStore = defineStore('UserStore', () => {
     initUserInfo,
     silentLogin,
     updateProfile,
+    bindWechatAvatar,
     bindPhone,
     deleteAccount,
   };

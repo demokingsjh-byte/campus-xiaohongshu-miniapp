@@ -105,19 +105,20 @@ export const authMocks = defineMock({
     });
   },
   '[PUT]/api/campus/auth/profile': (params) => {
+    const currentProfile = getMockProfile() || {};
     const profile = saveMockProfile({
-      ...(getMockProfile() || {}),
+      ...currentProfile,
       id: 10001,
       openid: 'mock-openid-10001',
-      nickname: params.data?.nickname || '校园体验用户',
-      avatar: params.data?.avatar || '',
-      mobile: '',
-      schoolName: params.data?.schoolName || '未选择学校',
-      campusName: params.data?.campusName || '默认校区',
-      grade: params.data?.grade || '2023级',
-      gender: params.data?.gender || '不公开',
-      roleType: params.data?.roleType || 'student',
-      mobileBound: false,
+      nickname: params.data?.nickname ?? currentProfile.nickname ?? '校园体验用户',
+      avatar: params.data?.avatar ?? currentProfile.avatar ?? '',
+      mobile: currentProfile.mobile ?? '',
+      schoolName: params.data?.schoolName ?? currentProfile.schoolName ?? '未选择学校',
+      campusName: params.data?.campusName ?? currentProfile.campusName ?? '默认校区',
+      grade: params.data?.grade ?? currentProfile.grade ?? '2023级',
+      gender: params.data?.gender ?? currentProfile.gender ?? '不公开',
+      roleType: params.data?.roleType ?? currentProfile.roleType ?? 'student',
+      mobileBound: currentProfile.mobileBound ?? false,
       lastLoginTime: '2026-07-13 10:00:00',
     });
     return createMock({

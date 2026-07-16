@@ -32,3 +32,8 @@ application-local.yml
 # Build caches
 .cache/
 .vite/
+
+# WeChat DevTools local state
+campus-miniapp/project.private.config.json
+campus-miniapp/wechat-devtools-login-result.json
+campus-miniapp/wechat-devtools-login.png

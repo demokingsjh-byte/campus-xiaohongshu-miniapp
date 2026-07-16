@@ -112,6 +112,7 @@ CURRENT_STEP="backing up affected database tables"
 migrations=(
   campus-student-user-upgrade.sql
   campus-community-upgrade.sql
+  campus-menu-prune.sql
   campus-menu-encoding-repair.sql
   campus-menu.sql
   campus-school-data-upgrade.sql
@@ -134,5 +135,13 @@ for migration in "${migrations[@]}"; do
     exit 1
   fi
 done
+
+CURRENT_STEP="validating menu encoding"
+broken_menu_count="$($mysql_bin "${mysql_args[@]}" --batch --skip-column-names \
+  -e "SELECT COUNT(*) FROM system_menu WHERE deleted = b'0' AND visible = b'1' AND name REGEXP '[?？]{2,}'")"
+if [ "$broken_menu_count" != "0" ]; then
+  echo "::error title=Menu encoding validation failed::$broken_menu_count visible menu names still contain repeated question marks." >&2
+  exit 1
+fi
 
 echo "Database migration completed. Backup: $BACKUP_DIR/affected-tables.sql.gz"

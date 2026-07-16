@@ -48,6 +48,15 @@ INSERT IGNORE INTO campus_menu_hide (id) VALUES
   (110),  -- 定时任务
   (2740); -- 监控中心
 
+-- Hide legacy campus entries whose names were permanently stored as question marks.
+-- Limit the match to direct children of 校园运营 so unrelated menus are untouched.
+INSERT IGNORE INTO campus_menu_hide (id)
+SELECT id
+FROM system_menu
+WHERE parent_id = 900000
+  AND deleted = b'0'
+  AND TRIM(name) REGEXP '^[?]+$';
+
 -- Include descendants. Repeat a few times because MySQL 5.7 has no recursive CTE.
 TRUNCATE TABLE campus_menu_next;
 INSERT IGNORE INTO campus_menu_next (id)

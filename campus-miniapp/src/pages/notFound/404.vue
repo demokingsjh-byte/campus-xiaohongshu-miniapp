@@ -19,9 +19,9 @@ function backHome() {
 </script>
 
 <template>
-  <view class="w-screen flex flex-col items-center pt-320rpx">
-    <image class="w-360rpx" mode="widthFix" src="/static/svg/weep.svg" />
-    <view class="mb-40rpx">
+  <view class="not-found-page w-screen flex flex-col items-center">
+    <image class="not-found-art" mode="widthFix" src="/static/svg/weep.svg" />
+    <view class="not-found-title">
       <text>{{ go }} 页面找不到了~</text>
     </view>
     <BasicButton @click="backHome">
@@ -30,4 +30,24 @@ function backHome() {
   </view>
 </template>
 
-<style lang="scss" scoped></style>
+<style lang="scss" scoped>
+.not-found-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 140rpx var(--page-gutter) 60rpx;
+  color: var(--color-text);
+  background: var(--color-page);
+}
+.not-found-art {
+  width: 300rpx;
+  padding: 24rpx;
+  border-radius: var(--radius-xl);
+  background: var(--color-glass-strong);
+  box-shadow: var(--shadow-card);
+}
+.not-found-title {
+  margin: 36rpx 0 32rpx;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-body);
+}
+</style>

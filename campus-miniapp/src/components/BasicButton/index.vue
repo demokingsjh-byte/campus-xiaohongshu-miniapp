@@ -26,11 +26,11 @@ function click() {
   justify-content: center;
   min-height: var(--yd-control-regular);
   padding: 0 32rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.28);
+  border: 1rpx solid rgba(255, 255, 255, 0.2);
   border-radius: var(--yd-control-radius);
   color: #fff;
   background: var(--yd-green);
-  box-shadow: 0 12rpx 30rpx rgba(10, 132, 255, 0.24);
+  box-shadow: 0 8rpx 22rpx rgba(16, 167, 121, 0.24);
   font-size: 27rpx;
   font-weight: 650;
   line-height: 1.2;
@@ -43,7 +43,7 @@ function click() {
 .default-btn--pressed {
   opacity: 0.9;
   transform: scale(0.98);
-  box-shadow: 0 6rpx 16rpx rgba(10, 132, 255, 0.18);
+  box-shadow: 0 4rpx 14rpx rgba(16, 167, 121, 0.18);
 }
 .is-disabled {
   opacity: 0.48;

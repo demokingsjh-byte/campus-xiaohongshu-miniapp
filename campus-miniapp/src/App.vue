@@ -24,7 +24,7 @@ onHide(() => {
 
 <style>
 page {
-  background: #f3f5f9;
+  background: #f2f6fb;
 }
 view,
 scroll-view,
