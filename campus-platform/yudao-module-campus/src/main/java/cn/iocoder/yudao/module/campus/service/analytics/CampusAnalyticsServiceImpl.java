@@ -38,7 +38,7 @@ public class CampusAnalyticsServiceImpl implements CampusAnalyticsService {
     private static final String HEARTBEAT_EVENT = "HEARTBEAT";
     private static final String APP_HIDE_EVENT = "APP_HIDE";
 
-    @Resource
+    @Resource(name = "namedParameterJdbcTemplate")
     private NamedParameterJdbcTemplate jdbcTemplate;
 
     @Override
