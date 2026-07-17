@@ -47,6 +47,9 @@ async function selectCampus(campus: typeof campusTenants[number]) {
   try {
     if (userStore.loggedIn) {
       await userStore.silentLogin({ tenantId: campus.id });
+      // Keep the tenant header in sync with the token before issuing any authenticated
+      // request for the newly selected campus.
+      tenantStore.selectTenant(campus);
       await userStore.updateProfile({
         nickname: userStore.userInfo?.nickname,
         avatar: userStore.userInfo?.avatar,
@@ -56,9 +59,10 @@ async function selectCampus(campus: typeof campusTenants[number]) {
         gender: userStore.userInfo?.gender,
         roleType: userStore.userInfo?.roleType || 'student',
       });
+    } else {
+      tenantStore.selectTenant(campus);
     }
     activeChannel.value = '推荐';
-    tenantStore.selectTenant(campus);
     showCampusPicker.value = false;
     uni.showToast({ title: `已切换到${campus.name}`, icon: 'success' });
   } catch {

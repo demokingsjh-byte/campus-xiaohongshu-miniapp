@@ -111,7 +111,12 @@ export const useUserStore = defineStore('UserStore', () => {
     token.value = res.token;
     setAuthSession(res);
     try {
-      await getUserInfo();
+      // The login response and token already belong to the requested tenant. Reading /me
+      // before the tenant store is switched would combine the new token with the old
+      // X-Tenant-Id header and be rejected by the tenant security filter.
+      if (!res.userInfo)
+        throw new Error('微信登录未返回用户信息');
+      userInfo.value = res.userInfo as UserInfoModel;
     } catch (error) {
       removeToken();
       token.value = null;
