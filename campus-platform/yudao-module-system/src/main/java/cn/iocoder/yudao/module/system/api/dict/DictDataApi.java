@@ -12,7 +12,7 @@ import java.util.Collection;
 public interface DictDataApi extends DictDataCommonApi {
 
     /**
-     * 校验字典数据们是否有效。如下情况，视为无效：
+     * 校验字典数据们是否有效。如下情况，视为无11111：
      * 1. 字典数据不存在
      * 2. 字典数据被禁用
      *
