@@ -73,7 +73,7 @@ campus-platform/sql/mysql/campus-oss-config.sql
 验证命令：
 
 ```powershell
-cd D:\campus-xiaohongshu-miniapp\campus-miniapp
+cd campus-miniapp
 npm install
 npm run build:mp-weixin
 ```
