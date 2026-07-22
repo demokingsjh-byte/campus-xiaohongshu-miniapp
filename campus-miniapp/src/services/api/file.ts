@@ -49,3 +49,7 @@ export function uploadCampusAvatar(filePath: string) {
 export function uploadCampusPostImage(filePath: string) {
   return uploadCampusFile(filePath, 'campus/post', '内容图片');
 }
+
+export function uploadCampusCommentImage(filePath: string) {
+  return uploadCampusFile(filePath, 'campus/comment', '评论图片');
+}

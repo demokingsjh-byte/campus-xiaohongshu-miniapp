@@ -1,9 +1,9 @@
 <script lang="ts" setup>
 import type { CampusPostComment } from '@/services/api/content';
-import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
 import { campusPosts } from '@/mock/campus';
 import { createCampusContactRequest, createCampusPostComment, deleteCampusComment, getCampusPostCommentPage, reportCampusComment, reportCampusPost, setCampusCommentLike } from '@/services/api/content';
+import { uploadCampusCommentImage } from '@/services/api/file';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { resolveCampusAvatar } from '@/utils/avatar';
@@ -22,8 +22,15 @@ const commentState = ref<'loading' | 'content' | 'error'>('loading');
 const commentSubmitting = ref(false);
 const commentsLoadingMore = ref(false);
 let commentsRequestToken = 0;
-const commentSort = ref<'latest' | 'likes' | 'seller'>('latest');
+const commentSort = ref<'latest' | 'likes'>('latest');
 const replyTarget = ref<CampusPostComment | null>(null);
+const commentImages = ref<string[]>([]);
+const mentionUserIds = ref<number[]>([]);
+const showEmojiPanel = ref(false);
+const showMentionPanel = ref(false);
+const showCommentComposer = ref(false);
+const emojiList = ['😀', '😂', '🥹', '😍', '😎', '👍', '❤️', '👏', '🎉', '🤔', '😭', '🙏', '🐱', '✨', '😊', '🔥'];
+const expandedReplyCounts = ref<Record<number, number>>({});
 const contactSubmitting = ref(false);
 const contentStore = useCampusContentStore();
 const userStore = useUserStore();
@@ -37,8 +44,19 @@ const channelIcons: Record<string, string> = {
   社团: '/static/icons/login/event.svg',
 };
 const channelIcon = computed(() => channelIcons[post.value.channel] || '/static/icons/mine/cloud.svg');
-const related = computed(() => contentStore.allPosts.filter(item => item.id !== post.value.id && item.tenantId === post.value.tenantId).slice(0, 2));
 const hasMoreComments = computed(() => comments.value.length < commentTotal.value);
+const topLevelComments = computed(() => comments.value.filter(item => !item.parentId));
+const mentionCandidates = computed(() => {
+  const candidates = new Map<number, { id: number, name: string, avatar?: string }>();
+  if (post.value.userId && post.value.author) {
+    candidates.set(Number(post.value.userId), { id: Number(post.value.userId), name: post.value.author, avatar: post.value.avatar });
+  }
+  comments.value.forEach((item) => {
+    if (item.userId && item.author)
+      candidates.set(Number(item.userId), { id: Number(item.userId), name: item.author, avatar: item.avatar });
+  });
+  return [...candidates.values()];
+});
 
 onLoad(async (query) => {
   postId.value = Number(query?.id || 2001);
@@ -100,7 +118,7 @@ async function sendComment() {
   if (!ensureLogin())
     return;
   const content = comment.value.trim();
-  if (!content || commentSubmitting.value)
+  if ((!content && !commentImages.value.length) || commentSubmitting.value)
     return;
   if (content.length > 300) {
     uni.showToast({ title: '评论最多 300 个字', icon: 'none' });
@@ -108,14 +126,26 @@ async function sendComment() {
   }
   commentSubmitting.value = true;
   try {
-    const created = await createCampusPostComment(postId.value, content, replyTarget.value?.id);
+    const uploadedImages = await Promise.all(commentImages.value.map(image => uploadCampusCommentImage(image)));
+    const created = await createCampusPostComment(postId.value, {
+      content,
+      parentId: replyTarget.value?.id,
+      replyToUserId: replyTarget.value?.userId,
+      mentionUserIds: mentionUserIds.value,
+      images: uploadedImages,
+    });
     if (Number(created.postId) !== postId.value)
       throw new Error('评论所属帖子不一致');
     comments.value.unshift(created);
     commentTotal.value += 1;
     post.value.comments = commentTotal.value;
     comment.value = '';
+    commentImages.value = [];
+    mentionUserIds.value = [];
     replyTarget.value = null;
+    showEmojiPanel.value = false;
+    showMentionPanel.value = false;
+    showCommentComposer.value = false;
     commentState.value = 'content';
     // Re-read the current post's comments so the list and total use server data.
     await loadComments();
@@ -128,9 +158,85 @@ async function sendComment() {
 }
 
 function replyToComment(item: CampusPostComment) {
-  if (!ensureLogin())
-    return;
   replyTarget.value = item;
+  showCommentComposer.value = true;
+  showEmojiPanel.value = false;
+  showMentionPanel.value = false;
+}
+
+function openCommentComposer() {
+  showCommentComposer.value = true;
+}
+
+function closeCommentComposer() {
+  showEmojiPanel.value = false;
+  showMentionPanel.value = false;
+  showCommentComposer.value = false;
+}
+
+function toggleMentionPanel() {
+  showMentionPanel.value = !showMentionPanel.value;
+  showEmojiPanel.value = false;
+}
+
+function toggleEmojiPanel() {
+  showEmojiPanel.value = !showEmojiPanel.value;
+  showMentionPanel.value = false;
+}
+
+function insertEmoji(emoji: string) {
+  comment.value += emoji;
+}
+
+function insertMention(candidate: { id: number, name: string }) {
+  comment.value += `@${candidate.name} `;
+  if (!mentionUserIds.value.includes(candidate.id))
+    mentionUserIds.value.push(candidate.id);
+  showMentionPanel.value = false;
+}
+
+function handleCommentInput(event: any) {
+  const value = String(event?.detail?.value || '');
+  comment.value = value;
+  showMentionPanel.value = value.endsWith('@');
+}
+
+function chooseCommentImages() {
+  const remain = 3 - commentImages.value.length;
+  if (remain <= 0) {
+    uni.showToast({ title: '每条评论最多上传 3 张图片', icon: 'none' });
+    return;
+  }
+  uni.chooseImage({
+    count: remain,
+    sizeType: ['compressed'],
+    sourceType: ['album', 'camera'],
+    success: result => commentImages.value.push(...(result.tempFilePaths || []).slice(0, remain)),
+  });
+}
+
+function removeCommentImage(index: number) {
+  commentImages.value.splice(index, 1);
+}
+
+function previewCommentImages(images: string[], current: string) {
+  uni.previewImage({ urls: images, current });
+}
+
+function repliesOf(parentId: number) {
+  return comments.value.filter(item => Number(item.parentId) === Number(parentId));
+}
+
+function visibleRepliesOf(parentId: number) {
+  const replies = repliesOf(parentId);
+  const count = expandedReplyCounts.value[parentId] || 3;
+  return replies.slice(0, count);
+}
+
+function toggleReplies(parentId: number) {
+  const replies = repliesOf(parentId);
+  const current = expandedReplyCounts.value[parentId] || 3;
+  expandedReplyCounts.value[parentId] = current >= replies.length ? 3 : replies.length;
 }
 
 async function toggleCommentLike(item: CampusPostComment) {
@@ -197,7 +303,7 @@ function reportCommentItem(item: CampusPostComment) {
   });
 }
 
-async function changeCommentSort(sort: 'latest' | 'likes' | 'seller') {
+async function changeCommentSort(sort: 'latest' | 'likes') {
   if (commentSort.value === sort)
     return;
   commentSort.value = sort;
@@ -379,6 +485,17 @@ function reportPost() {
             </text>
           </view>
         </view>
+        <view class="detail-actions">
+          <view class="detail-action" :class="{ active: liked }" @click="toggleLike">
+            <image src="/static/icons/mine/heart.svg" mode="aspectFit" /><text>{{ post.likes || 0 }}</text>
+          </view>
+          <view class="detail-action" :class="{ active: collected }" @click="toggleCollect">
+            <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>{{ collected ? '已收藏' : '收藏' }}</text>
+          </view>
+          <button class="detail-contact" :disabled="contactSubmitting" @click="contact">
+            {{ contactSubmitting ? '提交中…' : '联系TA' }}
+          </button>
+        </view>
       </view>
 
       <view class="comments-card">
@@ -388,7 +505,6 @@ function reportPost() {
         <view class="comment-sort">
           <text :class="{ active: commentSort === 'latest' }" @click="changeCommentSort('latest')">最新</text>
           <text :class="{ active: commentSort === 'likes' }" @click="changeCommentSort('likes')">最热</text>
-          <text :class="{ active: commentSort === 'seller' }" @click="changeCommentSort('seller')">卖家回复</text>
         </view>
         <view v-if="commentState === 'loading'" class="comment-status">
           评论加载中…
@@ -399,54 +515,120 @@ function reportPost() {
         <view v-else-if="!comments.length" class="comment-status">
           还没有评论，来聊聊你的想法吧
         </view>
-        <view v-for="item in comments" :key="item.id" class="comment" :class="{ 'comment-reply': item.parentId }">
-          <view class="comment-avatar">
-            <image :src="resolveCampusAvatar(item.avatar)" mode="aspectFill" />
-          </view><view class="comment-main">
-            <view class="comment-name">
-              {{ item.author }} <text>{{ item.time }}</text>
-            </view><view class="comment-content">
-              <text v-if="item.parentId" class="reply-mark">回复评论：</text>
-              {{ item.content }}
+        <view v-for="item in topLevelComments" :key="item.id" class="comment-block">
+          <view class="comment" @click="replyToComment(item)">
+            <view class="comment-avatar">
+              <image :src="resolveCampusAvatar(item.avatar)" mode="aspectFill" />
+            </view><view class="comment-main">
+              <view class="comment-name">
+                {{ item.author }}
+              </view><view class="comment-content">
+                {{ item.content }}
+              </view>
+              <view v-if="item.images?.length" class="comment-images">
+                <image v-for="image in item.images" :key="image" :src="image" mode="aspectFill" @click.stop="previewCommentImages(item.images || [], image)" />
+              </view>
+              <view class="comment-meta-row">
+                <view class="comment-left-actions">
+                  <text v-if="!item.owner" class="comment-report" @click.stop="reportCommentItem(item)">举报</text>
+                  <text v-if="item.owner" class="comment-report danger" @click.stop="removeComment(item)">删除</text>
+                </view>
+                <text class="comment-time">{{ item.time }}</text>
+                <text class="comment-reply-action" @click.stop="replyToComment(item)">回复</text>
+                <text
+                  class="comment-like" :class="{ active: item.liked }" @click.stop="toggleCommentLike(item)"
+                >{{ item.liked ? '♥' : '♡' }} {{ item.likeCount || 0 }}</text>
+              </view>
+            </view><view v-if="item.owner" class="comment-owner">
+              我
             </view>
-            <view class="comment-actions">
-              <text @click="replyToComment(item)">回复</text>
-              <text :class="{ active: item.liked }" @click="toggleCommentLike(item)">赞 {{ item.likeCount || 0 }}</text>
-              <text v-if="!item.owner" @click="reportCommentItem(item)">举报</text>
-              <text v-if="item.owner" class="danger" @click="removeComment(item)">删除</text>
+          </view>
+          <view v-if="repliesOf(item.id).length" class="reply-thread">
+            <view
+              v-for="reply in visibleRepliesOf(item.id)" :key="reply.id" class="comment comment-reply"
+              @click="replyToComment(reply)"
+            >
+              <view class="comment-avatar">
+                <image :src="resolveCampusAvatar(reply.avatar)" mode="aspectFill" />
+              </view><view class="comment-main">
+                <view class="comment-name">
+                  {{ reply.author }}
+                </view><view class="comment-content">
+                  <text class="reply-mark">回复 {{ reply.replyToAuthor || item.author }}：</text>{{ reply.content }}
+                </view>
+                <view v-if="reply.images?.length" class="comment-images">
+                  <image
+                    v-for="image in reply.images" :key="image" :src="image" mode="aspectFill"
+                    @click.stop="previewCommentImages(reply.images || [], image)"
+                  />
+                </view>
+                <view class="comment-meta-row">
+                  <view class="comment-left-actions">
+                    <text v-if="!reply.owner" class="comment-report" @click.stop="reportCommentItem(reply)">举报</text>
+                    <text v-if="reply.owner" class="comment-report danger" @click.stop="removeComment(reply)">删除</text>
+                  </view>
+                  <text class="comment-time">{{ reply.time }}</text>
+                  <text class="comment-reply-action" @click.stop="replyToComment(reply)">回复</text>
+                  <text
+                    class="comment-like" :class="{ active: reply.liked }" @click.stop="toggleCommentLike(reply)"
+                  >{{ reply.liked ? '♥' : '♡' }} {{ reply.likeCount || 0 }}</text>
+                </view>
+              </view><view v-if="reply.owner" class="comment-owner">
+                我
+              </view>
             </view>
-          </view><view v-if="item.owner" class="comment-owner">
-            我
+          </view>
+          <view v-if="repliesOf(item.id).length > 3" class="reply-expand" @click="toggleReplies(item.id)">
+            {{ (expandedReplyCounts[item.id] || 3) >= repliesOf(item.id).length ? '收起回复' : `展开 ${repliesOf(item.id).length} 条回复` }}
           </view>
         </view><view v-if="hasMoreComments" class="all-comments" @click="loadComments(true)">
           {{ commentsLoadingMore ? '加载中…' : '加载更多评论 ›' }}
+        </view><view v-else-if="comments.length" class="all-comments no-more-comments">
+          没有更多评论了
         </view>
       </view>
 
-      <view class="related">
-        <view class="section-title">
-          同校同学还在看
-        </view><view class="related-grid">
-          <CampusPostCard v-for="item in related" :key="item.id" :post="item" />
-        </view>
-      </view>
-
-      <view v-if="replyTarget" class="replying-bar" @click="replyTarget = null">
-        正在回复 {{ replyTarget.author }}，点击取消
-      </view>
       <view class="bottom-bar">
-        <view class="comment-input">
-          <input v-model="comment" :disabled="commentSubmitting" maxlength="300" placeholder="友善评论一下…" confirm-type="send" @confirm="sendComment">
-          <text v-if="comment.trim()" class="comment-send" @click="sendComment">
-            {{ commentSubmitting ? '发送中' : '发送' }}
-          </text>
-        </view><view class="action" :class="{ active: liked }" @click="toggleLike">
-          <image src="/static/icons/mine/heart.svg" mode="aspectFit" /><text>{{ post.likes }}</text>
-        </view><view class="action" :class="{ active: collected }" @click="toggleCollect">
-          <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>收藏</text>
-        </view><button class="contact-btn" :disabled="contactSubmitting" @click="contact">
-          {{ contactSubmitting ? '提交中…' : '联系TA' }}
-        </button>
+        <view class="comment-trigger" @click="openCommentComposer">
+          <text>{{ replyTarget ? `回复 ${replyTarget.author}…` : '写下你的评论…' }}</text>
+        </view>
+      </view>
+      <view v-if="showCommentComposer" class="comment-overlay" @click="closeCommentComposer">
+        <view class="comment-composer" @click.stop>
+          <view class="composer-header">
+            <text>{{ replyTarget ? `回复 ${replyTarget.author}` : `评论 ${post.author}` }}</text>
+            <text class="composer-close" @click="closeCommentComposer">×</text>
+          </view>
+          <textarea
+            class="composer-textarea" :value="comment" :disabled="commentSubmitting" maxlength="300"
+            :placeholder="replyTarget ? `回复 ${replyTarget.author}…` : '写下你的评论…'"
+            auto-height @input="handleCommentInput" @confirm="sendComment"
+          />
+          <view v-if="commentImages.length" class="comment-upload-preview">
+            <view v-for="(image, index) in commentImages" :key="image" class="comment-upload-item">
+              <image :src="image" mode="aspectFill" /><text @click="removeCommentImage(index)">×</text>
+            </view>
+          </view>
+          <view class="composer-toolbar">
+            <view class="comment-tools">
+              <text :class="{ active: showMentionPanel }" @click="toggleMentionPanel">＠</text>
+              <text :class="{ active: showEmojiPanel }" @click="toggleEmojiPanel">☺</text>
+              <text @click="chooseCommentImages">▧</text>
+            </view>
+            <text class="comment-send" :class="{ disabled: !comment.trim() && !commentImages.length }" @click="sendComment">
+              {{ commentSubmitting ? '发送中' : '发布' }}
+            </text>
+          </view>
+          <view v-if="showMentionPanel" class="mention-panel">
+            <view v-for="candidate in mentionCandidates" :key="candidate.id" class="mention-item" @click="insertMention(candidate)">
+              <image :src="resolveCampusAvatar(candidate.avatar)" mode="aspectFill" /><text>@{{ candidate.name }}</text>
+            </view>
+          </view>
+          <view v-if="showEmojiPanel" class="emoji-panel">
+            <view class="emoji-title">全部表情</view>
+            <text v-for="emoji in emojiList" :key="emoji" @click="insertEmoji(emoji)">{{ emoji }}</text>
+          </view>
+        </view>
       </view>
     </template>
   </view>
@@ -455,7 +637,7 @@ function reportPost() {
 <style lang="scss" scoped>
 .detail-page {
   min-height: 100vh;
-  padding-bottom: 190rpx;
+  padding-bottom: 132rpx;
   background: var(--yd-paper);
 }
 .media {
@@ -495,6 +677,9 @@ function reportPost() {
   border-radius: 26rpx;
   background: var(--yd-card);
   box-shadow: 0 5rpx 0 rgba(75, 59, 44, 0.035);
+}
+.comments-card {
+  padding: 30rpx 26rpx 38rpx;
 }
 .author-row {
   display: flex;
@@ -647,6 +832,44 @@ function reportPost() {
   gap: 18rpx;
   margin-left: 18rpx;
 }
+.detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  margin-top: 22rpx;
+}
+.detail-action {
+  display: flex;
+  min-width: 78rpx;
+  height: 60rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  color: var(--yd-muted);
+  font-size: 20rpx;
+}
+.detail-action image {
+  width: 30rpx;
+  height: 30rpx;
+}
+.detail-action.active {
+  color: var(--yd-coral);
+}
+.detail-contact {
+  display: flex;
+  flex: 1;
+  height: 64rpx;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 0 auto;
+  padding: 0 24rpx;
+  border-radius: var(--yd-control-radius);
+  color: #fff;
+  background: var(--yd-green);
+  font-size: 23rpx;
+  font-weight: 800;
+  line-height: 1;
+}
 .report-entry {
   color: #777b84;
 }
@@ -668,15 +891,30 @@ function reportPost() {
 .comment {
   display: flex;
   align-items: flex-start;
-  margin-top: 28rpx;
+  margin-top: 32rpx;
 }
 .comment-reply {
-  margin-left: 48rpx;
+  margin: 16rpx 0 0;
+  padding: 14rpx 16rpx;
+  border-radius: 16rpx;
+  background: rgba(16, 167, 121, 0.045);
+}
+.reply-thread .comment-reply:first-child {
+  margin-top: 0;
+}
+.reply-thread {
+  margin: 20rpx 0 0 76rpx;
+  padding: 6rpx 0 6rpx 18rpx;
+  border-left: 6rpx solid rgba(16, 167, 121, 0.28);
+  border-radius: 0 20rpx 20rpx 0;
+  background: rgba(16, 167, 121, 0.025);
 }
 .comment-avatar {
   overflow: hidden;
-  width: 64rpx;
-  height: 64rpx;
+  width: 60rpx;
+  height: 60rpx;
+  flex: 0 0 auto;
+  border-radius: 50%;
 }
 .comment-avatar image {
   width: 100%;
@@ -685,10 +923,10 @@ function reportPost() {
 .comment-main {
   flex: 1;
   min-width: 0;
-  margin-left: 16rpx;
+  margin-left: 14rpx;
 }
 .comment-name {
-  font-size: 23rpx;
+  font-size: 24rpx;
   font-weight: 800;
 }
 .comment-name text {
@@ -698,10 +936,22 @@ function reportPost() {
   font-weight: 400;
 }
 .comment-content {
-  margin-top: var(--yd-copy-gap);
+  margin-top: 12rpx;
   color: #505c57;
-  font-size: 24rpx;
+  font-size: 27rpx;
   line-height: 1.55;
+}
+.comment-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 14rpx;
+}
+.comment-images image {
+  width: 150rpx;
+  height: 150rpx;
+  border-radius: 12rpx;
+  background: rgba(118, 118, 128, 0.08);
 }
 .reply-mark {
   color: var(--yd-green-dark);
@@ -721,6 +971,55 @@ function reportPost() {
 }
 .comment-actions .danger {
   color: #d95757;
+}
+.comment-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  min-height: 34rpx;
+  margin-top: 18rpx;
+  color: var(--yd-muted);
+  font-size: 19rpx;
+}
+.comment-left-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10rpx;
+}
+.comment-like {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 5rpx 10rpx;
+  border-radius: 999rpx;
+  color: #7b8581;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+.comment-like.active {
+  color: #e45858;
+  background: rgba(228, 88, 88, 0.08);
+}
+.comment-report {
+  padding: 5rpx 8rpx;
+  color: #7b8581;
+}
+.comment-time {
+  flex: 0 0 auto;
+  color: #98a09d;
+}
+.comment-reply-action {
+  flex: 0 0 auto;
+  padding: 5rpx 8rpx;
+  color: var(--yd-green-dark);
+  font-weight: 700;
+}
+.reply-expand {
+  margin: 18rpx 0 0 96rpx;
+  padding: 8rpx 0;
+  color: var(--yd-green-dark);
+  font-size: 21rpx;
+  font-weight: 700;
 }
 .comment-owner {
   display: flex;
@@ -750,28 +1049,8 @@ function reportPost() {
   font-size: 23rpx;
   text-align: center;
 }
-.replying-bar {
-  position: fixed;
-  z-index: 11;
-  right: 0;
-  bottom: 142rpx;
-  left: 0;
-  padding: 12rpx 24rpx;
-  color: var(--yd-green-dark);
-  background: var(--yd-mint);
-  font-size: 21rpx;
-  text-align: center;
-}
-.related {
-  padding: 32rpx 20rpx;
-}
-.related .section-title {
-  margin: 0 4rpx 20rpx;
-}
-.related-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 18rpx;
+.no-more-comments {
+  color: var(--yd-muted);
 }
 .bottom-bar {
   position: fixed;
@@ -779,16 +1058,43 @@ function reportPost() {
   right: 0;
   bottom: 0;
   left: 0;
-  display: grid;
-  grid-template-columns: minmax(172rpx, 1fr) 70rpx 70rpx 198rpx;
+  display: flex;
   align-items: center;
-  gap: 10rpx;
-  padding: 14rpx 22rpx calc(16rpx + env(safe-area-inset-bottom));
+  padding: 12rpx 22rpx calc(16rpx + env(safe-area-inset-bottom));
   border-top: 1rpx solid var(--yd-line);
   background: rgba(246, 248, 252, 0.76);
 }
+.comment-trigger {
+  display: flex;
+  width: 100%;
+  height: 76rpx;
+  align-items: center;
+  padding: 0 26rpx;
+  border-radius: 999rpx;
+  color: #8c9691;
+  background: rgba(118, 118, 128, 0.1);
+  font-size: 28rpx;
+}
+.comment-tools {
+  display: flex;
+  gap: 24rpx;
+  height: 32rpx;
+  align-items: center;
+  color: var(--yd-muted);
+  font-size: 27rpx;
+}
+.comment-tools text.active,
+.comment-tools text:active {
+  color: var(--yd-green-dark);
+}
+.comment-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
 .comment-input {
   display: flex;
+  flex: 1;
   min-width: 0;
   height: 76rpx;
   align-items: center;
@@ -802,54 +1108,165 @@ function reportPost() {
   height: 100%;
   font-size: 22rpx;
 }
+.comment-overlay {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.42);
+}
+.comment-composer {
+  position: relative;
+  width: 100%;
+  min-height: 50vh;
+  max-height: 84vh;
+  box-sizing: border-box;
+  padding: 28rpx 34rpx calc(28rpx + env(safe-area-inset-bottom));
+  border-radius: 30rpx 30rpx 0 0;
+  background: #fff;
+  box-shadow: 0 -10rpx 40rpx rgba(0, 0, 0, 0.12);
+}
+.composer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--yd-ink);
+  font-size: 29rpx;
+  font-weight: 800;
+}
+.composer-close {
+  display: flex;
+  width: 52rpx;
+  height: 52rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #7b8581;
+  background: rgba(118, 118, 128, 0.1);
+  font-size: 38rpx;
+  font-weight: 400;
+}
+.composer-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 180rpx;
+  max-height: 320rpx;
+  margin-top: 20rpx;
+  padding: 24rpx;
+  border-radius: 22rpx;
+  color: var(--yd-ink);
+  background: rgba(118, 118, 128, 0.08);
+  font-size: 29rpx;
+  line-height: 1.55;
+}
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18rpx;
+}
+.composer-toolbar .comment-tools {
+  height: 58rpx;
+  font-size: 38rpx;
+}
+.composer-toolbar .comment-send {
+  min-width: 110rpx;
+  height: 58rpx;
+  font-size: 24rpx;
+}
+.comment-send.disabled {
+  opacity: 0.45;
+}
 .comment-send {
+  display: flex;
   flex: 0 0 auto;
-  margin-left: 8rpx;
+  min-width: 76rpx;
+  height: 76rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
   color: var(--yd-green-dark);
+  background: var(--yd-mint);
   font-size: 21rpx;
   font-weight: 800;
 }
-.action {
+.comment-upload-preview {
   display: flex;
-  width: 70rpx;
-  height: 76rpx;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #717c77;
-  font-size: 17rpx;
-  line-height: 1.05;
+  gap: 10rpx;
 }
-.action image {
-  width: 30rpx;
-  height: 30rpx;
-  margin-bottom: 6rpx;
+.comment-upload-item {
+  position: relative;
+  width: 78rpx;
+  height: 78rpx;
 }
-.action > text {
-  font-size: 17rpx;
-  line-height: 1;
-}
-.action.active {
-  color: var(--yd-coral);
-}
-.contact-btn {
-  display: flex;
+.comment-upload-item image {
   width: 100%;
-  height: var(--yd-control-regular);
-  margin: 0;
-  padding: 0;
+  height: 100%;
+  border-radius: 10rpx;
+}
+.comment-upload-item text {
+  position: absolute;
+  top: -10rpx;
+  right: -10rpx;
+  display: flex;
+  width: 28rpx;
+  height: 28rpx;
   align-items: center;
   justify-content: center;
-  border-radius: var(--yd-control-radius);
+  border-radius: 50%;
   color: #fff;
-  background: var(--yd-green);
-  font-size: 26rpx;
-  font-weight: 800;
-  line-height: 1;
-  white-space: nowrap;
+  background: #d95757;
+  font-size: 22rpx;
 }
-.contact-btn[disabled] {
-  opacity: 0.62;
+.emoji-panel,
+.mention-panel {
+  position: static;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx;
+  max-height: 350rpx;
+  overflow-y: auto;
+  margin-top: 20rpx;
+  padding: 20rpx 8rpx 4rpx;
+  border-top: 1rpx solid rgba(60, 60, 67, 0.08);
+  border-radius: 0;
+  border: 1rpx solid rgba(60, 60, 67, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: none;
+}
+.emoji-title {
+  width: 100%;
+  margin-bottom: 4rpx;
+  color: var(--yd-muted);
+  font-size: 23rpx;
+}
+.emoji-panel text {
+  width: 58rpx;
+  height: 58rpx;
+  font-size: 40rpx;
+  line-height: 58rpx;
+  text-align: center;
+}
+.mention-panel {
+  display: block;
+}
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 8rpx;
+  color: var(--yd-ink);
+  font-size: 22rpx;
+}
+.mention-item image {
+  width: 46rpx;
+  height: 46rpx;
+  border-radius: 50%;
 }
 .detail-loading {
   padding: 24rpx;
@@ -905,8 +1322,7 @@ function reportPost() {
   border-color: rgba(60, 60, 67, 0.1);
   background: rgba(118, 118, 128, 0.08);
 }
-.contact-btn {
-  background: var(--yd-green);
+.detail-contact {
   box-shadow: 0 10rpx 26rpx rgba(16, 167, 121, 0.24);
 }
 </style>

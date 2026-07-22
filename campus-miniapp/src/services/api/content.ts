@@ -11,10 +11,14 @@ export interface CampusPostComment {
   postId: number
   userId: number
   parentId?: number
+  replyToUserId?: number
   author: string
   avatar?: string
   avatarText?: string
   content: string
+  mentionUserIds?: number[]
+  images?: string[]
+  replyToAuthor?: string
   time: string
   owner?: boolean
   likeCount: number
@@ -83,7 +87,7 @@ export function getCampusPost(id: number) {
   return request.Get<CampusPost>(`${POST_BASE}/get`, { params: { id }, cacheFor: 0, meta: { ignoreAuth: true } });
 }
 
-export function getCampusPostCommentPage(postId: number, params: { pageNo?: number, pageSize?: number, sort?: 'latest' | 'likes' | 'seller' } = {}) {
+export function getCampusPostCommentPage(postId: number, params: { pageNo?: number, pageSize?: number, sort?: 'latest' | 'likes' } = {}) {
   return request.Get<CampusPostCommentPage>(`${POST_BASE}/comment-page`, {
     params: { postId, pageNo: 1, pageSize: 20, sort: 'latest', ...params },
     cacheFor: 0,
@@ -91,12 +95,20 @@ export function getCampusPostCommentPage(postId: number, params: { pageNo?: numb
   });
 }
 
-export function createCampusPostComment(postId: number, content: string, parentId?: number) {
-  return request.Post<CampusPostComment>(`${POST_BASE}/comment`, { content, parentId }, { params: { postId } });
+export function createCampusPostComment(postId: number, payload: Pick<CampusPostCommentCreateParams, 'content' | 'parentId' | 'replyToUserId' | 'mentionUserIds' | 'images'>) {
+  return request.Post<CampusPostComment>(`${POST_BASE}/comment`, payload, { params: { postId } });
 }
 
-export function replyCampusPostComment(postId: number, parentId: number, content: string) {
-  return request.Post<CampusPostComment>(`${POST_BASE}/comment/reply`, { content, parentId }, { params: { postId } });
+export function replyCampusPostComment(postId: number, payload: Pick<CampusPostCommentCreateParams, 'content' | 'parentId' | 'replyToUserId' | 'mentionUserIds' | 'images'>) {
+  return request.Post<CampusPostComment>(`${POST_BASE}/comment/reply`, payload, { params: { postId } });
+}
+
+export interface CampusPostCommentCreateParams {
+  content: string
+  parentId?: number
+  replyToUserId?: number
+  mentionUserIds?: number[]
+  images?: string[]
 }
 
 export function setCampusCommentLike(id: number, active: boolean) {

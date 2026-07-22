@@ -83,6 +83,14 @@ public class CampusCrudServiceImpl implements CampusCrudService {
         String sql = "UPDATE " + meta.getTableName() + " SET " + sets
                 + ", update_time = NOW() WHERE id = :id AND deleted = b'0'";
         namedParameterJdbcTemplate.update(sql, values);
+        if ("comment".equals(resource) && data.containsKey("status")) {
+            List<Map<String, Object>> rows = namedParameterJdbcTemplate.queryForList(
+                    "SELECT post_id FROM campus_post_comment WHERE id = :id LIMIT 1",
+                    new MapSqlParameterSource("id", id));
+            if (!rows.isEmpty()) {
+                refreshCommentCount(rows.get(0).get("post_id"));
+            }
+        }
     }
 
     @Override
@@ -92,6 +100,10 @@ public class CampusCrudServiceImpl implements CampusCrudService {
     public void delete(String resource, Long id) {
         LogRecordContext.putVariable("campusDataId", id);
         CampusResourceMeta meta = CampusResourceRegistry.get(resource);
+        if ("comment".equals(resource)) {
+            deleteCommentTree(id);
+            return;
+        }
         namedParameterJdbcTemplate.update("UPDATE " + meta.getTableName()
                 + " SET deleted = b'1', update_time = NOW() WHERE id = :id",
                 new MapSqlParameterSource(ID, id));
@@ -108,6 +120,10 @@ public class CampusCrudServiceImpl implements CampusCrudService {
         LogRecordContext.putVariable("campusDataId", ids.get(0));
         LogRecordContext.putVariable("campusDataIds", CollUtil.join(ids, ","));
         CampusResourceMeta meta = CampusResourceRegistry.get(resource);
+        if ("comment".equals(resource)) {
+            ids.forEach(this::deleteCommentTree);
+            return;
+        }
         namedParameterJdbcTemplate.update("UPDATE " + meta.getTableName()
                 + " SET deleted = b'1', update_time = NOW() WHERE id IN (:ids)",
                 new MapSqlParameterSource("ids", ids));
@@ -149,6 +165,25 @@ public class CampusCrudServiceImpl implements CampusCrudService {
             }
         }
         return values;
+    }
+
+    private void deleteCommentTree(Long commentId) {
+        List<Map<String, Object>> rows = namedParameterJdbcTemplate.queryForList(
+                "SELECT post_id FROM campus_post_comment WHERE id = :id AND deleted = b'0' LIMIT 1",
+                new MapSqlParameterSource("id", commentId));
+        if (rows.isEmpty()) {
+            return;
+        }
+        MapSqlParameterSource params = new MapSqlParameterSource("id", commentId);
+        namedParameterJdbcTemplate.update("UPDATE campus_post_comment SET deleted = b'1', status = 2, update_time = NOW()"
+                + " WHERE (id = :id OR parent_id = :id) AND deleted = b'0'", params);
+        refreshCommentCount(rows.get(0).get("post_id"));
+    }
+
+    private void refreshCommentCount(Object postId) {
+        namedParameterJdbcTemplate.update("UPDATE campus_post SET comment_count = (SELECT COUNT(*)"
+                + " FROM campus_post_comment c WHERE c.post_id = :postId AND c.status = 1 AND c.deleted = b'0'),"
+                + " update_time = NOW() WHERE id = :postId", new MapSqlParameterSource("postId", postId));
     }
 
     private String buildWhere(CampusResourceMeta meta, Map<String, Object> params, MapSqlParameterSource sqlParams) {

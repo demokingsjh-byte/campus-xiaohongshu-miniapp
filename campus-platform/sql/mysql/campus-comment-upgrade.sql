@@ -40,6 +40,45 @@ PREPARE campus_comment_parent_stmt FROM @campus_comment_parent_sql;
 EXECUTE campus_comment_parent_stmt;
 DEALLOCATE PREPARE campus_comment_parent_stmt;
 
+SET @campus_comment_reply_user_exists = (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'campus_post_comment' AND column_name = 'reply_to_user_id'
+);
+SET @campus_comment_reply_user_sql = IF(
+  @campus_comment_reply_user_exists = 0,
+  'ALTER TABLE `campus_post_comment` ADD COLUMN `reply_to_user_id` bigint DEFAULT NULL AFTER `parent_id`',
+  'SELECT 1'
+);
+PREPARE campus_comment_reply_user_stmt FROM @campus_comment_reply_user_sql;
+EXECUTE campus_comment_reply_user_stmt;
+DEALLOCATE PREPARE campus_comment_reply_user_stmt;
+
+SET @campus_comment_mentions_exists = (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'campus_post_comment' AND column_name = 'mention_user_ids_json'
+);
+SET @campus_comment_mentions_sql = IF(
+  @campus_comment_mentions_exists = 0,
+  'ALTER TABLE `campus_post_comment` ADD COLUMN `mention_user_ids_json` text NULL AFTER `content`',
+  'SELECT 1'
+);
+PREPARE campus_comment_mentions_stmt FROM @campus_comment_mentions_sql;
+EXECUTE campus_comment_mentions_stmt;
+DEALLOCATE PREPARE campus_comment_mentions_stmt;
+
+SET @campus_comment_images_exists = (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'campus_post_comment' AND column_name = 'images_json'
+);
+SET @campus_comment_images_sql = IF(
+  @campus_comment_images_exists = 0,
+  'ALTER TABLE `campus_post_comment` ADD COLUMN `images_json` text NULL AFTER `mention_user_ids_json`',
+  'SELECT 1'
+);
+PREPARE campus_comment_images_stmt FROM @campus_comment_images_sql;
+EXECUTE campus_comment_images_stmt;
+DEALLOCATE PREPARE campus_comment_images_stmt;
+
 SET @campus_comment_like_count_exists = (
   SELECT COUNT(*) FROM information_schema.columns
   WHERE table_schema = DATABASE() AND table_name = 'campus_post_comment' AND column_name = 'like_count'

@@ -49,7 +49,7 @@ public class CampusResourceRegistry {
                     set("post_id", "reporter_user_id", "tenant_id", "status"),
                     set("reason", "detail", "result_note")),
             meta("comment", "campus_post_comment",
-                    set("status", "updater"),
+                    set("status", "mention_user_ids_json", "images_json", "updater"),
                     set("post_id", "user_id", "parent_id", "tenant_id", "status"),
                     set("content")),
             meta("comment-report", "campus_post_comment_report",

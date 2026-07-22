@@ -202,26 +202,46 @@ public class CampusPostServiceImpl implements CampusPostService {
             throw exception0(GlobalErrorCodeConstants.FORBIDDEN.getCode(), "只能评论本校内容");
         }
         Long parentId = reqVO.getParentId();
+        Long replyToUserId = reqVO.getReplyToUserId();
         if (parentId != null) {
-            List<Map<String, Object>> parentRows = jdbcTemplate.queryForList("SELECT post_id FROM campus_post_comment"
+            List<Map<String, Object>> parentRows = jdbcTemplate.queryForList("SELECT post_id, parent_id, user_id FROM campus_post_comment"
                     + " WHERE id = :parentId AND status = 1 AND deleted = b'0' LIMIT 1",
                     new MapSqlParameterSource("parentId", parentId));
             Long parentPostId = parentRows.isEmpty() ? null : toLongObject(parentRows.get(0).get("post_id"));
             if (parentPostId == null || !postId.equals(parentPostId)) {
                 throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "回复的评论不存在或不属于当前帖子");
             }
+            Map<String, Object> parent = parentRows.get(0);
+            if (parent.get("parent_id") != null) {
+                parentId = toLongObject(parent.get("parent_id"));
+            }
+            if (replyToUserId == null) {
+                replyToUserId = toLongObject(parent.get("user_id"));
+            }
+        }
+        String content = trimToEmpty(reqVO.getContent());
+        List<String> images = defaultList(reqVO.getImages()).stream()
+                .filter(StrUtil::isNotBlank).limit(3).map(HttpUtils::removeUrlQuery).collect(Collectors.toList());
+        if (StrUtil.isBlank(content) && images.isEmpty()) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "请输入评论内容或上传图片");
         }
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("postId", postId)
                 .addValue("userId", userId)
                 .addValue("parentId", parentId)
+                .addValue("replyToUserId", replyToUserId)
                 .addValue("tenantId", postTenantId)
-                .addValue("content", reqVO.getContent().trim())
+                .addValue("content", content)
+                .addValue("mentionUserIdsJson", JsonUtils.toJsonString((reqVO.getMentionUserIds() == null
+                        ? Collections.<Long>emptyList() : reqVO.getMentionUserIds()).stream()
+                        .filter(java.util.Objects::nonNull).distinct().limit(20).collect(Collectors.toList())))
+                .addValue("imagesJson", JsonUtils.toJsonString(images))
                 .addValue("operator", String.valueOf(userId));
         KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update("INSERT INTO campus_post_comment (post_id, user_id, parent_id, tenant_id, content, status,"
-                        + " like_count, creator, updater, create_time, update_time, deleted) VALUES (:postId, :userId,"
-                        + " :parentId, :tenantId, :content, 1, 0, :operator, :operator, NOW(), NOW(), b'0')", params, keyHolder);
+        jdbcTemplate.update("INSERT INTO campus_post_comment (post_id, user_id, parent_id, reply_to_user_id, tenant_id, content,"
+                        + " mention_user_ids_json, images_json, status, like_count, creator, updater, create_time, update_time, deleted)"
+                        + " VALUES (:postId, :userId, :parentId, :replyToUserId, :tenantId, :content, :mentionUserIdsJson,"
+                        + " :imagesJson, 1, 0, :operator, :operator, NOW(), NOW(), b'0')", params, keyHolder);
         Number key = keyHolder.getKey();
         if (key == null) {
             throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "评论发布失败，请稍后重试");
@@ -462,23 +482,30 @@ public class CampusPostServiceImpl implements CampusPostService {
     }
 
     private String commentSelectSql() {
-        return "SELECT c.*, u.nickname AS user_nickname, u.avatar AS user_avatar, p.user_id AS post_owner_user_id,"
+        return "SELECT c.*, u.nickname AS user_nickname, u.avatar AS user_avatar, reply_user.nickname AS reply_to_author,"
+                + " p.user_id AS post_owner_user_id, root.create_time AS root_create_time, root.like_count AS root_like_count,"
                 + " (SELECT COUNT(*) FROM campus_post_comment r WHERE r.parent_id = c.id"
                 + " AND r.status = 1 AND r.deleted = b'0') AS reply_count,"
                 + " EXISTS (SELECT 1 FROM campus_post_comment_like cl WHERE cl.comment_id = c.id"
                 + " AND cl.user_id = :loginUserId AND cl.deleted = b'0') AS login_liked"
-                + " FROM campus_post_comment c LEFT JOIN campus_miniapp_user u"
-                + " ON u.id = c.user_id AND u.deleted = b'0' LEFT JOIN campus_post p ON p.id = c.post_id";
+                + " FROM campus_post_comment c LEFT JOIN campus_post_comment root"
+                + " ON root.id = COALESCE(c.parent_id, c.id) AND root.deleted = b'0'"
+                + " LEFT JOIN campus_miniapp_user u ON u.id = c.user_id AND u.deleted = b'0'"
+                + " LEFT JOIN campus_miniapp_user reply_user ON reply_user.id = c.reply_to_user_id"
+                + " AND reply_user.deleted = b'0' LEFT JOIN campus_post p ON p.id = c.post_id";
     }
 
     private String commentOrderBy(String sort) {
         if ("likes".equalsIgnoreCase(sort)) {
-            return "c.like_count DESC, c.create_time DESC, c.id DESC";
+            return "root.like_count DESC, root.create_time DESC, root.id DESC,"
+                    + " CASE WHEN c.id = root.id THEN 0 ELSE 1 END ASC, c.create_time ASC, c.id ASC";
         }
         if ("seller".equalsIgnoreCase(sort)) {
-            return "CASE WHEN c.user_id = p.user_id THEN 0 ELSE 1 END ASC, c.create_time DESC, c.id DESC";
+            return "CASE WHEN root.user_id = p.user_id THEN 0 ELSE 1 END ASC, root.create_time DESC, root.id DESC,"
+                    + " CASE WHEN c.id = root.id THEN 0 ELSE 1 END ASC, c.create_time ASC, c.id ASC";
         }
-        return "c.create_time DESC, c.id DESC";
+        return "root.create_time DESC, root.id DESC, CASE WHEN c.id = root.id THEN 0 ELSE 1 END ASC,"
+                + " c.create_time ASC, c.id ASC";
     }
 
     private Map<String, Object> getCommentRow(Long commentId) {
@@ -516,10 +543,15 @@ public class CampusPostServiceImpl implements CampusPostService {
         vo.setPostId(toLongObject(row.get("post_id")));
         vo.setUserId(toLongObject(row.get("user_id")));
         vo.setParentId(toLongObject(row.get("parent_id")));
+        vo.setReplyToUserId(toLongObject(row.get("reply_to_user_id")));
+        vo.setReplyToAuthor(value(row, "reply_to_author"));
         vo.setAuthor(author);
         vo.setAvatar(refreshFileUrl(value(row, "user_avatar")));
         vo.setAvatarText(StrUtil.isBlank(author) ? "校" : author.substring(0, 1));
         vo.setContent(value(row, "content"));
+        vo.setMentionUserIds(parseLongList(value(row, "mention_user_ids_json")));
+        vo.setImages(parseStringList(value(row, "images_json")).stream()
+                .map(this::refreshFileUrl).collect(Collectors.toList()));
         vo.setCreateTime(toLocalDateTime(row.get("create_time")));
         vo.setTime(relativeTime(vo.getCreateTime()));
         vo.setOwner(loginUserId != null && loginUserId.equals(vo.getUserId()));
@@ -637,6 +669,14 @@ public class CampusPostServiceImpl implements CampusPostService {
             return Collections.emptyList();
         }
         List<String> list = JsonUtils.parseObjectQuietly(value, new TypeReference<List<String>>() { });
+        return list == null ? Collections.emptyList() : list;
+    }
+
+    private static List<Long> parseLongList(String value) {
+        if (StrUtil.isBlank(value)) {
+            return Collections.emptyList();
+        }
+        List<Long> list = JsonUtils.parseObjectQuietly(value, new TypeReference<List<Long>>() { });
         return list == null ? Collections.emptyList() : list;
     }
 
