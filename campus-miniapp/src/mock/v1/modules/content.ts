@@ -8,18 +8,24 @@ const POSTS_KEY = 'campus-mock-server-posts';
 const LIKES_KEY = 'campus-mock-server-likes';
 const FAVORITES_KEY = 'campus-mock-server-favorites';
 const COMMENTS_KEY = 'campus-mock-server-comments';
+const COMMENT_LIKES_KEY = 'campus-mock-server-comment-likes';
+const COMMENT_REPORTS_KEY = 'campus-mock-server-comment-reports';
 const PROFILE_KEY = 'campus-mock-profile';
 
 interface MockComment {
   id: number
   postId: number
   userId: number
+  parentId?: number
   author: string
   avatar: string
   avatarText: string
   content: string
   time: string
   owner: boolean
+  likeCount: number
+  replyCount: number
+  liked: boolean
   createTime: string
 }
 
@@ -58,6 +64,15 @@ function setIds(key: string, ids: number[]) {
   uni.setStorageSync(key, ids);
 }
 
+function getKeys(key: string): string[] {
+  const value = uni.getStorageSync(key);
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
+function setKeys(key: string, keys: string[]) {
+  uni.setStorageSync(key, keys);
+}
+
 function getStoredComments(): Record<string, MockComment[]> {
   const value = uni.getStorageSync(COMMENTS_KEY);
   return value && typeof value === 'object' ? value : {};
@@ -89,6 +104,64 @@ function page(list: CampusPost[]) {
 
 function findPost(id: number) {
   return allPosts().find(item => item.id === id);
+}
+
+function getMockComment(postId: number, commentId: number) {
+  return (getStoredComments()[String(postId)] || []).find(item => item.id === commentId);
+}
+
+function decorateComments(postId: number, userId = 10001) {
+  const likedKeys = getKeys(COMMENT_LIKES_KEY);
+  const list = getStoredComments()[String(postId)] || [];
+  return list.map((item) => {
+    const likeCount = likedKeys.filter(key => key.startsWith(`${item.id}:`)).length;
+    return {
+      ...item,
+      likeCount,
+      replyCount: list.filter(reply => reply.parentId === item.id).length,
+      liked: likedKeys.includes(`${item.id}:${userId}`),
+    };
+  });
+}
+
+function createMockComment(params: any) {
+  const postId = Number(queryOf(params).postId);
+  const parentId = params.data?.parentId == null ? undefined : Number(params.data.parentId);
+  const content = String(params.data?.content || '').trim();
+  if (!Number.isFinite(postId) || !findPost(postId))
+    return createMock({ data: null, code: ResultEnum.FAIL, message: '帖子不存在' });
+  if (parentId !== undefined && (!Number.isFinite(parentId) || !getMockComment(postId, parentId)))
+    return createMock({ data: null, code: ResultEnum.FAIL, message: '回复的评论不存在' });
+  if (!content)
+    return createMock({ data: null, code: ResultEnum.FAIL, message: '评论内容不能为空' });
+  const profile = uni.getStorageSync(PROFILE_KEY) || {};
+  const author = profile.nickname || '校园体验用户';
+  const created: MockComment = {
+    id: Date.now(),
+    postId,
+    userId: 10001,
+    parentId,
+    author,
+    avatar: profile.avatar || '',
+    avatarText: author.slice(0, 1),
+    content,
+    time: '刚刚',
+    owner: true,
+    likeCount: 0,
+    replyCount: 0,
+    liked: false,
+    createTime: new Date().toISOString(),
+  };
+  const comments = getStoredComments();
+  comments[String(postId)] = [created, ...(comments[String(postId)] || [])];
+  setStoredComments(comments);
+  const storedPosts = getStoredPosts();
+  const index = storedPosts.findIndex(item => item.id === postId);
+  if (index >= 0) {
+    storedPosts[index] = { ...storedPosts[index]!, comments: (storedPosts[index]!.comments || 0) + 1 };
+    setStoredPosts(storedPosts);
+  }
+  return createMock({ data: created });
 }
 
 function setInteraction(id: number, active: boolean, key: string, countKey: 'likes' | 'collects') {
@@ -180,33 +253,65 @@ export const contentMocks = defineMock({
   '[GET]/api/campus/post/comment-page': (params) => {
     const query = queryOf(params);
     const postId = Number(query.postId);
+    if (!Number.isFinite(postId))
+      return createMock({ data: null, code: ResultEnum.FAIL, message: '帖子不存在' });
     const pageNo = Math.max(Number(query.pageNo || 1), 1);
     const pageSize = Math.max(Number(query.pageSize || 20), 1);
-    const comments = getStoredComments()[String(postId)] || [];
+    if (!findPost(postId)) {
+      return createMock({ data: null, code: ResultEnum.FAIL, message: '帖子不存在' });
+    }
+    const comments = decorateComments(postId);
+    if (query.sort === 'likes') {
+      comments.sort((a, b) => b.likeCount - a.likeCount || Date.parse(b.createTime) - Date.parse(a.createTime));
+    } else if (query.sort === 'seller') {
+      const ownerId = findPost(postId)?.userId;
+      comments.sort((a, b) => Number(a.userId !== ownerId) - Number(b.userId !== ownerId) || Date.parse(b.createTime) - Date.parse(a.createTime));
+    }
     const offset = (pageNo - 1) * pageSize;
     return createMock({ data: { list: comments.slice(offset, offset + pageSize), total: comments.length } });
   },
-  '[POST]/api/campus/post/comment': (params) => {
-    const postId = Number(queryOf(params).postId);
-    const content = String(params.data?.content || '').trim();
-    const profile = uni.getStorageSync(PROFILE_KEY) || {};
-    const author = profile.nickname || '校园体验用户';
-    const created: MockComment = {
-      id: Date.now(),
-      postId,
-      userId: 10001,
-      author,
-      avatar: profile.avatar || '',
-      avatarText: author.slice(0, 1),
-      content,
-      time: '刚刚',
-      owner: true,
-      createTime: new Date().toISOString(),
-    };
+  '[POST]/api/campus/post/comment': createMockComment,
+  '[POST]/api/campus/post/comment/reply': createMockComment,
+  '[PUT]/api/campus/post/comment/like': (params) => {
+    const commentId = Number(queryOf(params).id);
+    const active = Boolean(params.data?.active);
+    const postId = Object.keys(getStoredComments()).map(Number).find(id => Boolean(getMockComment(id, commentId)));
+    if (!postId)
+      return createMock({ data: null, code: ResultEnum.FAIL, message: '评论不存在' });
+    const key = `${commentId}:10001`;
+    const keys = getKeys(COMMENT_LIKES_KEY);
+    const next = active ? [...new Set([...keys, key])] : keys.filter(item => item !== key);
+    setKeys(COMMENT_LIKES_KEY, next);
+    return createMock({ data: decorateComments(postId).find(item => item.id === commentId) });
+  },
+  '[DELETE]/api/campus/post/comment/delete': (params) => {
+    const commentId = Number(queryOf(params).id);
     const comments = getStoredComments();
-    comments[String(postId)] = [created, ...(comments[String(postId)] || [])];
+    const postId = Object.keys(comments).map(Number).find(id => Boolean(getMockComment(id, commentId)));
+    if (!postId)
+      return createMock({ data: false, code: ResultEnum.FAIL, message: '评论不存在' });
+    const current = comments[String(postId)] || [];
+    const removedIds = new Set([commentId, ...current.filter(item => item.parentId === commentId).map(item => item.id)]);
+    comments[String(postId)] = current.filter(item => !removedIds.has(item.id));
     setStoredComments(comments);
-    return createMock({ data: created });
+    const storedPosts = getStoredPosts();
+    const index = storedPosts.findIndex(item => item.id === postId);
+    if (index >= 0) {
+      storedPosts[index] = { ...storedPosts[index]!, comments: comments[String(postId)]!.length };
+      setStoredPosts(storedPosts);
+    }
+    return createMock({ data: true });
+  },
+  '[POST]/api/campus/post/comment/report': (params) => {
+    const commentId = Number(queryOf(params).id);
+    const comments = getStoredComments();
+    const postId = Object.keys(comments).map(Number).find(id => Boolean(getMockComment(id, commentId)));
+    if (!postId)
+      return createMock({ data: false, code: ResultEnum.FAIL, message: '评论不存在' });
+    const reports = uni.getStorageSync(COMMENT_REPORTS_KEY) || {};
+    reports[`${commentId}:10001`] = { postId, commentId, reason: params.data?.reason, detail: params.data?.detail || '', status: 0 };
+    uni.setStorageSync(COMMENT_REPORTS_KEY, reports);
+    return createMock({ data: true });
   },
   '[PUT]/api/campus/post/like': params => setInteraction(Number(queryOf(params).id), Boolean(params.data?.active), LIKES_KEY, 'likes'),
   '[PUT]/api/campus/post/collect': params => setInteraction(Number(queryOf(params).id), Boolean(params.data?.active), FAVORITES_KEY, 'collects'),

@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRespVO;
+import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostInteractionReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
@@ -88,8 +89,9 @@ public class CampusAppPostController {
     public CommonResult<PageResult<CampusPostCommentRespVO>> getCommentPage(
             @RequestParam("postId") Long postId,
             @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
-            @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize) {
-        return success(campusPostService.getCommentPage(postId, getLoginUserId(), pageNo, pageSize));
+            @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize,
+            @RequestParam(value = "sort", defaultValue = "latest") String sort) {
+        return success(campusPostService.getCommentPage(postId, getLoginUserId(), pageNo, pageSize, sort));
     }
 
     @PostMapping("/comment")
@@ -98,6 +100,37 @@ public class CampusAppPostController {
             @RequestParam("postId") Long postId,
             @Valid @RequestBody CampusPostCommentCreateReqVO reqVO) {
         return success(campusPostService.createComment(postId, getLoginUserId(), reqVO));
+    }
+
+    @PostMapping("/comment/reply")
+    @Operation(summary = "回复帖子评论")
+    public CommonResult<CampusPostCommentRespVO> replyComment(
+            @RequestParam("postId") Long postId,
+            @Valid @RequestBody CampusPostCommentCreateReqVO reqVO) {
+        return success(campusPostService.createComment(postId, getLoginUserId(), reqVO));
+    }
+
+    @PutMapping("/comment/like")
+    @Operation(summary = "点赞或取消点赞评论")
+    public CommonResult<CampusPostCommentRespVO> setCommentLike(
+            @RequestParam("id") Long id,
+            @Valid @RequestBody CampusPostInteractionReqVO reqVO) {
+        return success(campusPostService.setCommentLike(id, getLoginUserId(), reqVO.getActive()));
+    }
+
+    @DeleteMapping("/comment/delete")
+    @Operation(summary = "删除自己的评论")
+    public CommonResult<Boolean> deleteComment(@RequestParam("id") Long id) {
+        campusPostService.deleteComment(id, getLoginUserId());
+        return success(true);
+    }
+
+    @PostMapping("/comment/report")
+    @Operation(summary = "举报帖子评论")
+    public CommonResult<Boolean> reportComment(@RequestParam("id") Long id,
+                                                @Valid @RequestBody CampusPostCommentReportReqVO reqVO) {
+        campusPostService.reportComment(id, getLoginUserId(), reqVO);
+        return success(true);
     }
 
     @PostMapping("/contact-request")

@@ -33,3 +33,19 @@ VALUES
     (900901, '举报处理修改', 'campus:post-report:update', 3, 1, 900900, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900902, '举报记录删除', 'campus:post-report:delete', 3, 2, 900900, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
 ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), parent_id = VALUES(parent_id), sort = VALUES(sort), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';
+
+INSERT INTO system_menu
+    (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
+VALUES
+    (900903, '评论管理', 'campus:comment:query', 2, 10, 900000, 'comment', 'ep:chat-dot-round', 'campus/base/index', 'CampusComment', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900904, '评论审核修改', 'campus:comment:update', 3, 1, 900903, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900905, '评论删除', 'campus:comment:delete', 3, 2, 900903, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
+ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), parent_id = VALUES(parent_id), sort = VALUES(sort), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';
+
+INSERT INTO system_menu
+    (id, name, permission, type, sort, parent_id, path, icon, component, component_name, status, visible, keep_alive, always_show, creator, create_time, updater, update_time, deleted)
+VALUES
+    (900906, '评论举报处理', 'campus:comment-report:query', 2, 11, 900000, 'comment-report', 'ep:warning', 'campus/base/index', 'CampusCommentReport', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900907, '评论举报修改', 'campus:comment-report:update', 3, 1, 900906, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900908, '评论举报删除', 'campus:comment-report:delete', 3, 2, 900906, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
+ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), parent_id = VALUES(parent_id), sort = VALUES(sort), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';

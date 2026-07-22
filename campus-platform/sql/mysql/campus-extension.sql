@@ -212,6 +212,8 @@ CREATE TABLE `campus_post_interaction` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='校园帖子点赞收藏关系';
 
 CREATE TABLE `campus_post_comment` (
+  `parent_id` bigint DEFAULT NULL,
+  `like_count` int NOT NULL DEFAULT 0,
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '评论编号',
   `post_id` bigint NOT NULL COMMENT '帖子编号',
   `user_id` bigint NOT NULL COMMENT '评论用户编号',
@@ -224,10 +226,46 @@ CREATE TABLE `campus_post_comment` (
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
   PRIMARY KEY (`id`),
+  KEY `idx_parent_status_time` (`parent_id`, `status`, `create_time`),
   KEY `idx_post_status_time` (`post_id`, `status`, `create_time`),
   KEY `idx_user_time` (`user_id`, `create_time`),
   KEY `idx_tenant_time` (`tenant_id`, `create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='校园帖子评论';
+
+CREATE TABLE `campus_post_comment_like` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `comment_id` bigint NOT NULL,
+  `user_id` bigint NOT NULL,
+  `tenant_id` bigint NOT NULL,
+  `creator` varchar(64) NOT NULL DEFAULT '',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updater` varchar(64) NOT NULL DEFAULT '',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted` bit(1) NOT NULL DEFAULT b'0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_comment_user` (`comment_id`, `user_id`),
+  KEY `idx_user_time` (`user_id`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='校园评论点赞';
+
+CREATE TABLE `campus_post_comment_report` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `post_id` bigint NOT NULL,
+  `comment_id` bigint NOT NULL,
+  `reporter_user_id` bigint NOT NULL,
+  `tenant_id` bigint NOT NULL,
+  `reason` varchar(32) NOT NULL,
+  `detail` varchar(300) NOT NULL DEFAULT '',
+  `status` tinyint NOT NULL DEFAULT 0,
+  `result_note` varchar(300) NOT NULL DEFAULT '',
+  `creator` varchar(64) NOT NULL DEFAULT '',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updater` varchar(64) NOT NULL DEFAULT '',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted` bit(1) NOT NULL DEFAULT b'0',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_comment_reporter` (`comment_id`, `reporter_user_id`),
+  KEY `idx_tenant_status_time` (`tenant_id`, `status`, `create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='校园评论举报';
 
 CREATE TABLE `campus_contact_request` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '联系申请编号',

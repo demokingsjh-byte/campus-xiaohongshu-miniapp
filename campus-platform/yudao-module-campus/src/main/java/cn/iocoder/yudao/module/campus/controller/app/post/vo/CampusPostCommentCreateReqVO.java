@@ -10,6 +10,9 @@ import javax.validation.constraints.Size;
 @Data
 public class CampusPostCommentCreateReqVO {
 
+    @Schema(description = "回复的评论 ID，为空表示发布一级评论")
+    private Long parentId;
+
     @NotBlank(message = "评论内容不能为空")
     @Size(max = 300, message = "评论内容不能超过 300 个字")
     @Schema(description = "评论内容", requiredMode = Schema.RequiredMode.REQUIRED)

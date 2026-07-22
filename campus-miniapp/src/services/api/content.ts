@@ -10,12 +10,16 @@ export interface CampusPostComment {
   id: number
   postId: number
   userId: number
+  parentId?: number
   author: string
   avatar?: string
   avatarText?: string
   content: string
   time: string
   owner?: boolean
+  likeCount: number
+  replyCount: number
+  liked?: boolean
   createTime?: string
 }
 
@@ -52,6 +56,11 @@ export interface CampusPostReportParams {
   detail?: string
 }
 
+export interface CampusPostCommentReportParams {
+  reason: string
+  detail?: string
+}
+
 const POST_BASE = '/campus/post';
 
 export function createCampusPost(params: CampusPostCreateParams) {
@@ -74,16 +83,32 @@ export function getCampusPost(id: number) {
   return request.Get<CampusPost>(`${POST_BASE}/get`, { params: { id }, cacheFor: 0, meta: { ignoreAuth: true } });
 }
 
-export function getCampusPostCommentPage(postId: number, params: { pageNo?: number, pageSize?: number } = {}) {
+export function getCampusPostCommentPage(postId: number, params: { pageNo?: number, pageSize?: number, sort?: 'latest' | 'likes' | 'seller' } = {}) {
   return request.Get<CampusPostCommentPage>(`${POST_BASE}/comment-page`, {
-    params: { postId, pageNo: 1, pageSize: 20, ...params },
+    params: { postId, pageNo: 1, pageSize: 20, sort: 'latest', ...params },
     cacheFor: 0,
     meta: { ignoreAuth: true },
   });
 }
 
-export function createCampusPostComment(postId: number, content: string) {
-  return request.Post<CampusPostComment>(`${POST_BASE}/comment`, { content }, { params: { postId } });
+export function createCampusPostComment(postId: number, content: string, parentId?: number) {
+  return request.Post<CampusPostComment>(`${POST_BASE}/comment`, { content, parentId }, { params: { postId } });
+}
+
+export function replyCampusPostComment(postId: number, parentId: number, content: string) {
+  return request.Post<CampusPostComment>(`${POST_BASE}/comment/reply`, { content, parentId }, { params: { postId } });
+}
+
+export function setCampusCommentLike(id: number, active: boolean) {
+  return request.Put<CampusPostComment>(`${POST_BASE}/comment/like`, { active }, { params: { id } });
+}
+
+export function deleteCampusComment(id: number) {
+  return request.Delete<boolean>(`${POST_BASE}/comment/delete`, undefined, { params: { id } });
+}
+
+export function reportCampusComment(id: number, params: CampusPostCommentReportParams) {
+  return request.Post<boolean>(`${POST_BASE}/comment/report`, params, { params: { id } });
 }
 
 export function createCampusContactRequest(postId: number) {

@@ -3,7 +3,7 @@ import type { CampusPostComment } from '@/services/api/content';
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
 import { campusPosts } from '@/mock/campus';
-import { createCampusContactRequest, createCampusPostComment, getCampusPostCommentPage, reportCampusPost } from '@/services/api/content';
+import { createCampusContactRequest, createCampusPostComment, deleteCampusComment, getCampusPostCommentPage, reportCampusComment, reportCampusPost, setCampusCommentLike } from '@/services/api/content';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { resolveCampusAvatar } from '@/utils/avatar';
@@ -21,6 +21,9 @@ const commentPageNo = ref(1);
 const commentState = ref<'loading' | 'content' | 'error'>('loading');
 const commentSubmitting = ref(false);
 const commentsLoadingMore = ref(false);
+let commentsRequestToken = 0;
+const commentSort = ref<'latest' | 'likes' | 'seller'>('latest');
+const replyTarget = ref<CampusPostComment | null>(null);
 const contactSubmitting = ref(false);
 const contentStore = useCampusContentStore();
 const userStore = useUserStore();
@@ -60,14 +63,25 @@ async function loadComments(append = false) {
     commentState.value = 'loading';
     commentPageNo.value = 1;
   }
+  const requestedPostId = postId.value;
+  const requestToken = ++commentsRequestToken;
   const targetPage = append ? commentPageNo.value + 1 : 1;
   try {
-    const page = await getCampusPostCommentPage(postId.value, { pageNo: targetPage, pageSize: 20 });
-    comments.value = append ? [...comments.value, ...(page.list || [])] : (page.list || []);
+    const page = await getCampusPostCommentPage(requestedPostId, { pageNo: targetPage, pageSize: 20, sort: commentSort.value });
+    // The detail page can be reused while a previous request is still pending.
+    // Ignore stale responses and defensively keep only this post's comments.
+    if (requestToken !== commentsRequestToken || requestedPostId !== postId.value)
+      return;
+    const postComments = (page.list || []).filter(item => Number(item.postId) === requestedPostId);
+    comments.value = append
+      ? [...comments.value, ...postComments.filter(item => !comments.value.some(existing => existing.id === item.id))]
+      : postComments;
     commentTotal.value = page.total || 0;
     commentPageNo.value = targetPage;
     commentState.value = 'content';
   } catch {
+    if (requestToken !== commentsRequestToken || requestedPostId !== postId.value)
+      return;
     if (!append)
       commentState.value = 'error';
     else
@@ -94,18 +108,100 @@ async function sendComment() {
   }
   commentSubmitting.value = true;
   try {
-    const created = await createCampusPostComment(postId.value, content);
+    const created = await createCampusPostComment(postId.value, content, replyTarget.value?.id);
+    if (Number(created.postId) !== postId.value)
+      throw new Error('评论所属帖子不一致');
     comments.value.unshift(created);
     commentTotal.value += 1;
     post.value.comments = commentTotal.value;
     comment.value = '';
+    replyTarget.value = null;
     commentState.value = 'content';
+    // Re-read the current post's comments so the list and total use server data.
+    await loadComments();
     uni.showToast({ title: '评论成功', icon: 'success' });
   } catch {
     uni.showToast({ title: '评论发布失败，请重试', icon: 'none' });
   } finally {
     commentSubmitting.value = false;
   }
+}
+
+function replyToComment(item: CampusPostComment) {
+  if (!ensureLogin())
+    return;
+  replyTarget.value = item;
+}
+
+async function toggleCommentLike(item: CampusPostComment) {
+  if (!ensureLogin())
+    return;
+  try {
+    const updated = await setCampusCommentLike(item.id, !item.liked);
+    Object.assign(item, updated);
+  } catch {
+    uni.showToast({ title: '评论点赞失败，请重试', icon: 'none' });
+  }
+}
+
+async function removeComment(item: CampusPostComment) {
+  if (!item.owner)
+    return;
+  const result = await new Promise<UniApp.ShowModalRes>(resolve => uni.showModal({
+    title: '删除评论',
+    content: '删除后无法恢复，确定继续吗？',
+    confirmColor: '#FF453A',
+    success: resolve,
+  }));
+  if (!result.confirm)
+    return;
+  try {
+    await deleteCampusComment(item.id);
+    const removedIds = new Set([item.id, ...comments.value.filter(commentItem => commentItem.parentId === item.id).map(commentItem => commentItem.id)]);
+    comments.value = comments.value.filter(commentItem => !removedIds.has(commentItem.id));
+    commentTotal.value = Math.max(0, commentTotal.value - removedIds.size);
+    post.value.comments = commentTotal.value;
+    uni.showToast({ title: '评论已删除', icon: 'success' });
+  } catch {
+    uni.showToast({ title: '评论删除失败，请重试', icon: 'none' });
+  }
+}
+
+function reportCommentItem(item: CampusPostComment) {
+  if (!ensureLogin())
+    return;
+  const reasons = ['广告信息', '虚假交易', '不文明言论', '违规联系方式', '其他'];
+  uni.showActionSheet({
+    itemList: reasons,
+    success: ({ tapIndex }) => {
+      const reason = reasons[tapIndex];
+      if (!reason)
+        return;
+      uni.showModal({
+        title: `举报：${reason}`,
+        editable: true,
+        placeholderText: '可补充说明，最多 300 字',
+        confirmText: '提交举报',
+        success: async (result) => {
+          if (!result.confirm)
+            return;
+          try {
+            await reportCampusComment(item.id, { reason, detail: result.content?.trim().slice(0, 300) });
+            uni.showToast({ title: '举报已提交', icon: 'success' });
+          } catch {
+            uni.showToast({ title: '举报提交失败，请重试', icon: 'none' });
+          }
+        },
+      });
+    },
+  });
+}
+
+async function changeCommentSort(sort: 'latest' | 'likes' | 'seller') {
+  if (commentSort.value === sort)
+    return;
+  commentSort.value = sort;
+  await loadComments();
 }
 async function contact() {
   if (!ensureLogin() || contactSubmitting.value)
@@ -289,6 +385,11 @@ function reportPost() {
         <view class="section-title">
           评论 {{ commentTotal }}
         </view>
+        <view class="comment-sort">
+          <text :class="{ active: commentSort === 'latest' }" @click="changeCommentSort('latest')">最新</text>
+          <text :class="{ active: commentSort === 'likes' }" @click="changeCommentSort('likes')">最热</text>
+          <text :class="{ active: commentSort === 'seller' }" @click="changeCommentSort('seller')">卖家回复</text>
+        </view>
         <view v-if="commentState === 'loading'" class="comment-status">
           评论加载中…
         </view>
@@ -298,14 +399,21 @@ function reportPost() {
         <view v-else-if="!comments.length" class="comment-status">
           还没有评论，来聊聊你的想法吧
         </view>
-        <view v-for="item in comments" :key="item.id" class="comment">
+        <view v-for="item in comments" :key="item.id" class="comment" :class="{ 'comment-reply': item.parentId }">
           <view class="comment-avatar">
             <image :src="resolveCampusAvatar(item.avatar)" mode="aspectFill" />
           </view><view class="comment-main">
             <view class="comment-name">
               {{ item.author }} <text>{{ item.time }}</text>
             </view><view class="comment-content">
+              <text v-if="item.parentId" class="reply-mark">回复评论：</text>
               {{ item.content }}
+            </view>
+            <view class="comment-actions">
+              <text @click="replyToComment(item)">回复</text>
+              <text :class="{ active: item.liked }" @click="toggleCommentLike(item)">赞 {{ item.likeCount || 0 }}</text>
+              <text v-if="!item.owner" @click="reportCommentItem(item)">举报</text>
+              <text v-if="item.owner" class="danger" @click="removeComment(item)">删除</text>
             </view>
           </view><view v-if="item.owner" class="comment-owner">
             我
@@ -323,6 +431,9 @@ function reportPost() {
         </view>
       </view>
 
+      <view v-if="replyTarget" class="replying-bar" @click="replyTarget = null">
+        正在回复 {{ replyTarget.author }}，点击取消
+      </view>
       <view class="bottom-bar">
         <view class="comment-input">
           <input v-model="comment" :disabled="commentSubmitting" maxlength="300" placeholder="友善评论一下…" confirm-type="send" @confirm="sendComment">
@@ -543,10 +654,24 @@ function reportPost() {
   font-size: 30rpx;
   font-weight: 900;
 }
+.comment-sort {
+  display: flex;
+  gap: 22rpx;
+  margin-top: 18rpx;
+  color: var(--yd-muted);
+  font-size: 21rpx;
+}
+.comment-sort text.active {
+  color: var(--yd-green-dark);
+  font-weight: 800;
+}
 .comment {
   display: flex;
   align-items: flex-start;
   margin-top: 28rpx;
+}
+.comment-reply {
+  margin-left: 48rpx;
 }
 .comment-avatar {
   overflow: hidden;
@@ -578,6 +703,25 @@ function reportPost() {
   font-size: 24rpx;
   line-height: 1.55;
 }
+.reply-mark {
+  color: var(--yd-green-dark);
+  font-size: 22rpx;
+  font-weight: 700;
+}
+.comment-actions {
+  display: flex;
+  gap: 22rpx;
+  margin-top: 14rpx;
+  color: var(--yd-muted);
+  font-size: 20rpx;
+}
+.comment-actions text.active {
+  color: var(--yd-green-dark);
+  font-weight: 800;
+}
+.comment-actions .danger {
+  color: #d95757;
+}
 .comment-owner {
   display: flex;
   flex: 0 0 auto;
@@ -604,6 +748,18 @@ function reportPost() {
   margin-top: 28rpx;
   color: var(--yd-green);
   font-size: 23rpx;
+  text-align: center;
+}
+.replying-bar {
+  position: fixed;
+  z-index: 11;
+  right: 0;
+  bottom: 142rpx;
+  left: 0;
+  padding: 12rpx 24rpx;
+  color: var(--yd-green-dark);
+  background: var(--yd-mint);
+  font-size: 21rpx;
   text-align: center;
 }
 .related {

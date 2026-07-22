@@ -345,6 +345,73 @@ const metas: Record<string, PageMeta> = {
       { label: '租户ID', prop: 'tenant_id', type: 'number' }
     ]
   },
+  comment: {
+    title: '评论管理',
+    searchKey: 'content',
+    searchLabel: '评论内容',
+    statusKey: 'status',
+    statusOptions: [
+      { label: '待审核', value: 0 },
+      { label: '已发布', value: 1 },
+      { label: '已隐藏', value: 2 }
+    ],
+    allowCreate: false,
+    filters: [
+      { label: '帖子ID', prop: 'post_id', type: 'number' },
+      { label: '用户ID', prop: 'user_id', type: 'number' },
+      { label: '租户ID', prop: 'tenant_id', type: 'number' }
+    ],
+    columns: [
+      { label: '帖子ID', prop: 'post_id' },
+      { label: '用户ID', prop: 'user_id' },
+      { label: '父评论ID', prop: 'parent_id' },
+      { label: '评论内容', prop: 'content' },
+      { label: '点赞数', prop: 'like_count' },
+      { label: '状态', prop: 'status' }
+    ],
+    fields: [
+      { label: '状态', prop: 'status', options: [
+        { label: '待审核', value: 0 },
+        { label: '已发布', value: 1 },
+        { label: '已隐藏', value: 2 }
+      ] }
+    ]
+  },
+  'comment-report': {
+    title: '评论举报处理',
+    searchKey: 'reason',
+    searchLabel: '举报原因',
+    statusKey: 'status',
+    statusOptions: [
+      { label: '待处理', value: 0 },
+      { label: '已处理', value: 1 },
+      { label: '已驳回', value: 2 }
+    ],
+    allowCreate: false,
+    filters: [
+      { label: '帖子ID', prop: 'post_id', type: 'number' },
+      { label: '评论ID', prop: 'comment_id', type: 'number' },
+      { label: '举报用户', prop: 'reporter_user_id', type: 'number' },
+      { label: '租户ID', prop: 'tenant_id', type: 'number' }
+    ],
+    columns: [
+      { label: '帖子ID', prop: 'post_id' },
+      { label: '评论ID', prop: 'comment_id' },
+      { label: '举报用户', prop: 'reporter_user_id' },
+      { label: '原因', prop: 'reason' },
+      { label: '补充说明', prop: 'detail' },
+      { label: '状态', prop: 'status' },
+      { label: '处理说明', prop: 'result_note' }
+    ],
+    fields: [
+      { label: '状态', prop: 'status', options: [
+        { label: '待处理', value: 0 },
+        { label: '已处理', value: 1 },
+        { label: '已驳回', value: 2 }
+      ] },
+      { label: '处理说明', prop: 'result_note', type: 'textarea' }
+    ]
+  },
   'post-report': {
     title: '举报处理',
     searchKey: 'reason',

@@ -12,11 +12,15 @@ public class CampusPostCommentRespVO {
     private Long id;
     private Long postId;
     private Long userId;
+    private Long parentId;
     private String author;
     private String avatar;
     private String avatarText;
     private String content;
     private String time;
     private Boolean owner;
+    private Integer likeCount;
+    private Integer replyCount;
+    private Boolean liked;
     private LocalDateTime createTime;
 }

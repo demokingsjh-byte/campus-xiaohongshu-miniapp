@@ -84,7 +84,7 @@ CURRENT_STEP="checking database connection"
 
 mkdir -p "$BACKUP_DIR"
 backup_tables=()
-for table in system_menu system_dict_data system_tenant system_social_client campus_region campus_school_catalog campus_tenant_profile campus_miniapp_user campus_post campus_post_interaction campus_post_comment campus_post_report campus_contact_request; do
+for table in system_menu system_dict_data system_tenant system_social_client campus_region campus_school_catalog campus_tenant_profile campus_miniapp_user campus_post campus_post_interaction campus_post_comment campus_post_comment_like campus_post_comment_report campus_post_report campus_contact_request; do
   exists="$("$mysql_bin" "${mysql_args[@]}" --batch --skip-column-names \
     -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '$table'")"
   if [ "$exists" = "1" ]; then
