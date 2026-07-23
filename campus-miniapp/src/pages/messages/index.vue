@@ -1,73 +1,154 @@
 <script lang="ts" setup>
+import type { CampusNotification } from '@/services/api/notification';
 import StatePanel from '@/components/StatePanel/index.vue';
+import { useCampusNotificationStore } from '@/stores/modules/notification';
 import { useUserStore } from '@/stores/modules/user';
 
 const userStore = useUserStore();
-const loggedIn = ref(false);
-const activeTab = ref('全部');
+const notificationStore = useCampusNotificationStore();
+const activeTab = ref<'全部' | '互动' | '系统'>('全部');
 const networkError = ref(false);
-const tabs = ['全部', '评论', '赞与收藏', '系统'];
-const messages = reactive([
-  { type: '评论', icon: '/static/icons/ui/comment.svg', color: '#DFF4EC', title: '小满同学 评论了你的发布', content: '请问桌子的尺寸大概是多少呀？', time: '8分钟前', unread: true },
-  { type: '赞与收藏', icon: '/static/icons/mine/heart.svg', color: '#FFF0ED', title: '3 位同学赞了你的内容', content: '毕业出九成新折叠桌和台灯', time: '32分钟前', unread: true },
-  { type: '系统', icon: '/static/icons/mine/cloud.svg', color: '#DFF4EC', title: '校园认证已通过', content: '你已获得当前学校的同校认证标识', time: '昨天', unread: false },
-  { type: '评论', icon: '/static/icons/ui/reply.svg', color: '#FFF6E5', title: '赶高铁 回复了你', content: '可以的，周五 18:20 东门见。', time: '周五', unread: false },
-]);
-const filtered = computed(() => activeTab.value === '全部' ? messages : messages.filter(item => item.type === activeTab.value));
-const unreadCount = computed(() => messages.filter(item => item.unread).length);
-const commentUnreadCount = computed(() => messages.filter(item => item.type === '评论' && item.unread).length);
-onShow(() => loggedIn.value = userStore.loggedIn);
-function markRead() {
-  if (!unreadCount.value)
+const tabs: Array<typeof activeTab.value> = ['全部', '互动', '系统'];
+
+const filtered = computed(() => {
+  if (activeTab.value === '全部')
+    return notificationStore.notifications;
+  const type = activeTab.value === '互动' ? 'INTERACTION' : 'SYSTEM';
+  return notificationStore.notifications.filter(item => item.type === type);
+});
+
+const interactionUnreadCount = computed(() => notificationStore.notifications.filter(item => item.type === 'INTERACTION' && !item.read).length);
+const systemUnreadCount = computed(() => notificationStore.notifications.filter(item => item.type === 'SYSTEM' && !item.read).length);
+
+function iconOf(item: CampusNotification) {
+  if (item.type === 'SYSTEM')
+    return '/static/icons/mine/cloud.svg';
+  if (item.eventType === 'LIKE' || item.eventType === 'COLLECT')
+    return '/static/icons/mine/heart.svg';
+  if (item.eventType === 'REPLY')
+    return '/static/icons/ui/reply.svg';
+  return '/static/icons/ui/comment.svg';
+}
+
+function colorOf(item: CampusNotification) {
+  if (item.type === 'SYSTEM')
+    return '#DFF4EC';
+  if (item.eventType === 'LIKE' || item.eventType === 'COLLECT')
+    return '#FFF0ED';
+  if (item.eventType === 'REPLY')
+    return '#FFF6E5';
+  return '#E9F2FF';
+}
+
+async function loadMessages() {
+  if (!userStore.loggedIn)
     return;
-  messages.forEach(item => item.unread = false);
-  uni.showToast({ title: '已全部标为已读', icon: 'none' });
+  networkError.value = false;
+  try {
+    await notificationStore.load();
+  } catch {
+    networkError.value = true;
+  }
 }
-function markSingle(item: typeof messages[number]) {
-  item.unread = false;
+
+async function markAllRead() {
+  if (!notificationStore.unreadCount)
+    return;
+  try {
+    await notificationStore.markAllRead();
+    uni.showToast({ title: '已全部标为已读', icon: 'none' });
+  } catch {
+    uni.showToast({ title: '操作失败，请重试', icon: 'none' });
+  }
 }
+
+async function openNotification(item: CampusNotification) {
+  try {
+    await notificationStore.markRead(item);
+  } catch {
+    uni.showToast({ title: '通知状态更新失败', icon: 'none' });
+    return;
+  }
+  if ((item.targetType === 'POST' || item.targetType === 'PRODUCT') && item.targetId) {
+    uni.navigateTo({ url: `/pages/detail/index?id=${item.targetId}` });
+    return;
+  }
+  if (item.type === 'SYSTEM')
+    uni.showToast({ title: '这是一条系统通知', icon: 'none' });
+}
+
+onShow(loadMessages);
 </script>
 
 <template>
   <view class="messages-page">
     <view class="message-actions">
-      <text>{{ unreadCount }} 条未读</text><text :class="{ disabled: !unreadCount }" @click="markRead">
-        全部已读
+      <view class="unread-summary">
+        <text class="unread-number">
+          {{ notificationStore.unreadCount }}
+        </text>
+        <text>条未读</text>
+      </view>
+      <text :class="{ disabled: !notificationStore.unreadCount }" @click="markAllRead">
+        全部标为已读
       </text>
     </view>
+
     <scroll-view scroll-x class="message-tabs">
       <view>
         <text v-for="tab in tabs" :key="tab" :class="{ active: activeTab === tab }" @click="activeTab = tab">
-          {{ tab }}<i v-if="tab === '评论' && commentUnreadCount">{{ commentUnreadCount }}</i>
+          {{ tab }}
+          <i v-if="tab === '互动' && interactionUnreadCount">{{ interactionUnreadCount > 99 ? '99+' : interactionUnreadCount }}</i>
+          <i v-if="tab === '系统' && systemUnreadCount">{{ systemUnreadCount > 99 ? '99+' : systemUnreadCount }}</i>
         </text>
       </view>
     </scroll-view>
 
     <StatePanel
-      v-if="!loggedIn" type="login" title="登录后查看消息"
+      v-if="!userStore.loggedIn" type="login" title="登录后查看消息"
       description="评论、点赞、交易回应和校园通知都会出现在这里。" action="去登录"
       @action="uni.navigateTo({ url: '/pages/login/index' })"
     />
-    <StatePanel v-else-if="networkError" type="offline" title="网络连接不可用" description="检查网络后重试，消息不会丢失。" action="重新连接" @action="networkError = false" />
-    <StatePanel v-else-if="!filtered.length" title="暂时没有新消息" description="参与评论或发布内容后，校园里的回应会出现在这里。" />
+    <StatePanel
+      v-else-if="networkError" type="offline" title="网络连接不可用"
+      description="检查网络后重试，消息不会丢失。" action="重新连接" @action="loadMessages"
+    />
+    <StatePanel
+      v-else-if="!filtered.length" title="暂时没有新消息"
+      description="参与评论或发布内容后，校园里的回应会出现在这里。"
+    />
     <view v-else class="message-list">
+      <view class="message-section-label">
+        {{ activeTab === '系统' ? '系统通知' : activeTab === '互动' ? '互动通知' : '全部通知' }}
+      </view>
       <view class="message-card">
-        <view v-for="item in filtered" :key="item.title" class="message-row" :class="{ unread: item.unread }" @click="markSingle(item)">
-          <view class="message-icon" :style="{ background: item.color }">
-            <image :src="item.icon" mode="aspectFit" />
-          </view><view class="message-main">
+        <view
+          v-for="item in filtered" :key="item.id" class="message-row" :class="{ unread: !item.read }"
+          @click="openNotification(item)"
+        >
+          <view class="message-icon" :style="{ background: colorOf(item) }">
+            <image :src="iconOf(item)" mode="aspectFit" />
+          </view>
+          <view class="message-main">
             <view class="message-title">
               {{ item.title }}
-            </view><view class="message-content">
+            </view>
+            <view class="message-content">
               {{ item.content }}
-            </view><view class="message-time">
+            </view>
+            <view class="message-time">
               {{ item.time }}
             </view>
-          </view><view v-if="item.unread" class="unread-dot" />
+          </view>
+          <view v-if="!item.read" class="unread-dot" />
+          <text v-if="item.targetType === 'POST'" class="message-arrow">
+            ›
+          </text>
         </view>
       </view>
       <view class="security-card">
-        <view><image src="/static/icons/ui/bell.svg" mode="aspectFit" /><text>开启微信服务通知</text></view><text>及时收到交易和重要校园消息 ›</text>
+        <view><image src="/static/icons/ui/bell.svg" mode="aspectFit" /><text>开启微信服务通知</text></view>
+        <text>及时收到交易和重要校园消息 ›</text>
       </view>
     </view>
   </view>
@@ -76,33 +157,56 @@ function markSingle(item: typeof messages[number]) {
 <style lang="scss" scoped>
 .messages-page {
   min-height: 100vh;
+  padding-bottom: env(safe-area-inset-bottom);
   background: var(--yd-paper);
 }
 .message-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 76rpx;
+  min-height: 84rpx;
+  margin: 14rpx 18rpx 0;
   padding: 12rpx 24rpx;
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
+  border-radius: 22rpx;
   color: #8a9490;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 16rpx 42rpx rgba(20, 91, 70, 0.1);
+  backdrop-filter: blur(28rpx) saturate(155%);
+  -webkit-backdrop-filter: blur(28rpx) saturate(155%);
   font-size: 21rpx;
 }
-.message-actions text:last-child {
+.unread-summary {
+  display: flex;
+  align-items: baseline;
+}
+.unread-number {
+  margin-right: 5rpx;
+  color: var(--yd-green-dark);
+  font-size: 34rpx;
+  font-weight: 800;
+}
+.message-actions > text:last-child {
   color: var(--yd-green-dark);
 }
 .message-actions .disabled {
   color: #aab2af;
 }
 .message-tabs {
-  border-top: 1rpx solid var(--yd-line);
-  border-bottom: 1rpx solid var(--yd-line);
-  background: var(--yd-card);
+  width: auto;
+  margin: 12rpx 18rpx 0;
+  border: 1rpx solid rgba(255, 255, 255, 0.7);
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: 0 16rpx 42rpx rgba(20, 91, 70, 0.1);
+  backdrop-filter: blur(28rpx) saturate(155%);
+  -webkit-backdrop-filter: blur(28rpx) saturate(155%);
   white-space: nowrap;
 }
 .message-tabs > view {
   display: flex;
-  gap: 42rpx;
-  padding: 0 24rpx;
+  gap: 60rpx;
+  padding: 0 28rpx;
 }
 .message-tabs text {
   position: relative;
@@ -132,14 +236,21 @@ function markSingle(item: typeof messages[number]) {
   min-width: 28rpx;
   height: 28rpx;
   margin-left: 6rpx;
+  padding: 0 5rpx;
   border-radius: 999rpx;
   color: #fff;
-  background: var(--yd-coral);
+  background: #ef5b57;
   font-size: 17rpx;
   font-style: normal;
 }
 .message-list {
-  padding: 16rpx 18rpx 40rpx;
+  padding: 20rpx 18rpx 40rpx;
+}
+.message-section-label {
+  margin: 0 6rpx 12rpx;
+  color: #65706c;
+  font-size: 22rpx;
+  font-weight: 700;
 }
 .message-card {
   overflow: hidden;
@@ -154,25 +265,23 @@ function markSingle(item: typeof messages[number]) {
   align-items: flex-start;
   min-height: 128rpx;
   padding: 24rpx;
-  border: 0;
-  border-bottom: 1rpx solid rgba(60, 60, 67, 0.08);
+  border-bottom: 1rpx solid rgba(60, 60, 67, 0.1);
   background: transparent;
 }
 .message-row:last-child {
   border-bottom: 0;
 }
 .message-row.unread {
-  border-color: #b8d9cc;
   background: var(--color-primary-soft);
 }
 .message-icon {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: var(--yd-icon-large);
-  height: var(--yd-icon-large);
+  width: 76rpx;
+  height: 76rpx;
   border-radius: 17rpx 17rpx 17rpx 5rpx;
-  color: var(--yd-green-dark);
 }
 .message-icon image {
   width: 38rpx;
@@ -181,15 +290,17 @@ function markSingle(item: typeof messages[number]) {
 .message-main {
   flex: 1;
   min-width: 0;
-  margin-left: var(--yd-icon-gap);
+  margin-left: 22rpx;
+  padding-right: 28rpx;
 }
 .message-title {
+  color: var(--yd-ink);
   font-size: 26rpx;
   font-weight: 800;
 }
 .message-content {
   overflow: hidden;
-  margin-top: var(--yd-copy-gap);
+  margin-top: 8rpx;
   color: #65706c;
   font-size: 23rpx;
   text-overflow: ellipsis;
@@ -201,18 +312,27 @@ function markSingle(item: typeof messages[number]) {
   font-size: 19rpx;
 }
 .unread-dot {
+  position: absolute;
+  top: 28rpx;
+  right: 26rpx;
   width: 14rpx;
   height: 14rpx;
-  margin-top: 8rpx;
   border-radius: 50%;
-  background: var(--yd-coral);
+  background: #ef5b57;
+}
+.message-arrow {
+  position: absolute;
+  right: 20rpx;
+  bottom: 22rpx;
+  color: #98a39e;
+  font-size: 30rpx;
 }
 .security-card {
   margin: 22rpx 0;
   min-height: 112rpx;
   padding: 24rpx 26rpx;
   border: 1rpx dashed #9fc8b9;
-  border-radius: 15rpx;
+  border-radius: 24rpx;
   color: var(--yd-green-dark);
   background: var(--yd-mint);
   font-size: 24rpx;
@@ -239,39 +359,5 @@ function markSingle(item: typeof messages[number]) {
   color: var(--yd-green-dark);
   font-size: 24rpx;
   font-weight: 800;
-}
-
-/* Emerald glass theme */
-.message-actions,
-.message-tabs,
-.security-card {
-  border-color: rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.62);
-  box-shadow: 0 16rpx 42rpx rgba(20, 91, 70, 0.1);
-  backdrop-filter: blur(28rpx) saturate(155%);
-  -webkit-backdrop-filter: blur(28rpx) saturate(155%);
-}
-.message-tabs,
-.security-card {
-  border-radius: 24rpx;
-}
-.message-actions {
-  margin: 14rpx 18rpx 0;
-  border-radius: 22rpx;
-}
-.message-tabs {
-  width: auto;
-  margin: 12rpx 18rpx 0;
-}
-.message-row {
-  border-color: rgba(60, 60, 67, 0.1);
-  box-shadow: none;
-}
-.message-tabs .active::after,
-.unread-dot {
-  background: var(--yd-green);
-}
-.security-card {
-  color: var(--yd-green-dark);
 }
 </style>

@@ -11,6 +11,7 @@ import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRe
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
+import cn.iocoder.yudao.module.campus.service.notification.CampusNotificationService;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -27,6 +28,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,10 +57,13 @@ public class CampusPostServiceImpl implements CampusPostService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final FileApi fileApi;
+    private final CampusNotificationService campusNotificationService;
 
-    public CampusPostServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi) {
+    public CampusPostServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi,
+                                 CampusNotificationService campusNotificationService) {
         this.jdbcTemplate = jdbcTemplate;
         this.fileApi = fileApi;
+        this.campusNotificationService = campusNotificationService;
     }
 
     @Override
@@ -256,6 +261,22 @@ public class CampusPostServiceImpl implements CampusPostService {
         if (rows.isEmpty()) {
             throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "璇勮淇℃伅鍥炶澶辫触锛岃绋嶅悗閲嶈瘯");
         }
+        Long recipientUserId = parentId == null ? toLongObject(post.get("user_id")) : replyToUserId;
+        String actorNickname = userNickname(user);
+        String eventType = parentId == null ? "COMMENT" : "REPLY";
+        String title = parentId == null ? actorNickname + "评论了你的发布" : actorNickname + "回复了你";
+        Set<Long> notifiedUserIds = new HashSet<>();
+        if (recipientUserId != null)
+            notifiedUserIds.add(recipientUserId);
+        campusNotificationService.createInteraction(recipientUserId, postTenantId, userId, actorNickname,
+                eventType, title, content, "POST", postId);
+        for (Long mentionUserId : reqVO.getMentionUserIds()) {
+            if (mentionUserId == null || notifiedUserIds.contains(mentionUserId))
+                continue;
+            campusNotificationService.createInteraction(mentionUserId, postTenantId, userId, actorNickname,
+                    "MENTION", actorNickname + "@了你", content, "POST", postId);
+            notifiedUserIds.add(mentionUserId);
+        }
         return toCommentResp(rows.get(0), userId);
     }
 
@@ -420,6 +441,12 @@ public class CampusPostServiceImpl implements CampusPostService {
                         + " FROM campus_post_interaction i WHERE i.post_id = :postId AND i.type = :type"
                         + " AND i.deleted = b'0'), update_time = NOW() WHERE id = :postId AND deleted = b'0'",
                 new MapSqlParameterSource().addValue("postId", postId).addValue("type", type));
+        if (active && "LIKE".equals(type)) {
+            Map<String, Object> actor = getUser(userId);
+            campusNotificationService.createInteraction(toLongObject(post.get("user_id")), tenantId, userId,
+                    userNickname(actor), "LIKE", userNickname(actor) + "赞了你的内容", value(post, "title"),
+                    "POST", postId);
+        }
         return getPostInternal(postId, userId, false);
     }
 
@@ -483,13 +510,19 @@ public class CampusPostServiceImpl implements CampusPostService {
 
     private String commentSelectSql() {
         return "SELECT c.*, u.nickname AS user_nickname, u.avatar AS user_avatar, reply_user.nickname AS reply_to_author,"
-                + " p.user_id AS post_owner_user_id, root.create_time AS root_create_time, root.like_count AS root_like_count,"
-                + " (SELECT COUNT(*) FROM campus_post_comment r WHERE r.parent_id = c.id"
+                + " p.user_id AS post_owner_user_id,"
+                + " CASE WHEN c.parent_id IS NULL THEN NULL ELSE root.id END AS normalized_parent_id,"
+                + " root.create_time AS root_create_time, root.like_count AS root_like_count,"
+                + " (SELECT COUNT(*) FROM campus_post_comment r"
+                + " LEFT JOIN campus_post_comment r_parent ON r_parent.id = r.parent_id"
+                + " AND r_parent.deleted = b'0' WHERE COALESCE(r_parent.parent_id, r.parent_id) = c.id"
                 + " AND r.status = 1 AND r.deleted = b'0') AS reply_count,"
                 + " EXISTS (SELECT 1 FROM campus_post_comment_like cl WHERE cl.comment_id = c.id"
                 + " AND cl.user_id = :loginUserId AND cl.deleted = b'0') AS login_liked"
-                + " FROM campus_post_comment c LEFT JOIN campus_post_comment root"
-                + " ON root.id = COALESCE(c.parent_id, c.id) AND root.deleted = b'0'"
+                + " FROM campus_post_comment c LEFT JOIN campus_post_comment parent_comment"
+                + " ON parent_comment.id = c.parent_id AND parent_comment.deleted = b'0'"
+                + " LEFT JOIN campus_post_comment root"
+                + " ON root.id = COALESCE(parent_comment.parent_id, c.parent_id, c.id) AND root.deleted = b'0'"
                 + " LEFT JOIN campus_miniapp_user u ON u.id = c.user_id AND u.deleted = b'0'"
                 + " LEFT JOIN campus_miniapp_user reply_user ON reply_user.id = c.reply_to_user_id"
                 + " AND reply_user.deleted = b'0' LEFT JOIN campus_post p ON p.id = c.post_id";
@@ -542,7 +575,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         vo.setId(toLongObject(row.get("id")));
         vo.setPostId(toLongObject(row.get("post_id")));
         vo.setUserId(toLongObject(row.get("user_id")));
-        vo.setParentId(toLongObject(row.get("parent_id")));
+        vo.setParentId(toLongObject(row.get("normalized_parent_id")));
         vo.setReplyToUserId(toLongObject(row.get("reply_to_user_id")));
         vo.setReplyToAuthor(value(row, "reply_to_author"));
         vo.setAuthor(author);
@@ -644,6 +677,10 @@ public class CampusPostServiceImpl implements CampusPostService {
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "内容不存在或已下架");
         }
         return rows.get(0);
+    }
+
+    private static String userNickname(Map<String, Object> user) {
+        return StrUtil.blankToDefault(value(user, "nickname"), "校园同学");
     }
 
     private boolean isInteractionActive(Long postId, Long userId, String type) {

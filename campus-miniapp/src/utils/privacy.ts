@@ -45,6 +45,7 @@ export function clearCampusLocalData(options: { keepConsent?: boolean } = {}) {
     'campus-mock-profile',
     'campus-mock-server-likes',
     'campus-mock-server-favorites',
+    'campus-mock-server-notifications',
   ];
   keys.forEach(key => uni.removeStorageSync(key));
   if (!options.keepConsent)

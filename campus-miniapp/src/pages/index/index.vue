@@ -2,6 +2,7 @@
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
 import { campusChannels, campusTenants, getDefaultTenant } from '@/mock/campus';
+import { useCampusNotificationStore } from '@/stores/modules/notification';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 
@@ -12,7 +13,9 @@ const showCampusPicker = ref(false);
 const campusSwitching = ref(false);
 const tenantStore = useTenantStore();
 const contentStore = useCampusContentStore();
+const notificationStore = useCampusNotificationStore();
 const userStore = useUserStore();
+const unreadCount = computed(() => notificationStore.unreadCount);
 if (!tenantStore.currentTenant || !campusTenants.some(item => item.id === tenantStore.tenantId))
   tenantStore.selectTenant(getDefaultTenant());
 const visiblePosts = computed(() => contentStore.allPosts.filter((item) => {
@@ -104,7 +107,10 @@ onShow(async () => {
     chooseChannel(channel);
   uni.removeStorageSync('campus-home-channel');
   await loadFeed(!contentStore.allPosts.length);
+  if (userStore.loggedIn)
+    await notificationStore.loadUnreadCount();
 });
+watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUnreadCount());
 watch(activeChannel, () => {
   state.value = visiblePosts.value.length ? 'content' : 'empty';
 });
@@ -123,14 +129,16 @@ watch(() => tenantStore.tenantId, () => loadFeed());
       </button>
       <button class="message-entry" aria-label="消息通知" @click="goMessages">
         <image class="topbar-icon" src="/static/icons/ui/bell.svg" mode="aspectFit" />
-        <view class="message-dot" />
+        <text v-if="unreadCount" class="message-badge">
+          {{ unreadCount > 99 ? '99+' : unreadCount }}
+        </text>
       </button>
     </view>
 
     <button class="search-entry" aria-label="搜索校园内容" @click="goSearch">
       <image class="search-icon" src="/static/icons/ui/search.svg" mode="aspectFit" />
       <text class="search-placeholder">
-        搜二手、拼车、活动或同学
+        搜索校内信息、二手、拼车、活动
       </text>
     </button>
 
@@ -260,12 +268,6 @@ watch(() => tenantStore.tenantId, () => loadFeed());
   padding: 0 184rpx 0 var(--page-gutter);
 }
 
-/* #ifdef H5 */
-.topbar {
-  padding-right: var(--page-gutter);
-}
-/* #endif */
-
 .school-trigger {
   display: flex;
   overflow: hidden;
@@ -292,18 +294,14 @@ watch(() => tenantStore.tenantId, () => loadFeed());
 
 .message-entry {
   position: relative;
+  z-index: 2;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   width: var(--touch-regular);
   height: var(--touch-regular);
-  border: 1rpx solid var(--color-border);
-  border-radius: 50%;
-  background: var(--color-glass-strong);
-  box-shadow: 0 8rpx 24rpx rgba(45, 83, 126, 0.08);
-  backdrop-filter: blur(20rpx) saturate(150%);
-  -webkit-backdrop-filter: blur(20rpx) saturate(150%);
+  margin-left: auto;
 }
 
 .topbar-icon {
@@ -311,15 +309,21 @@ watch(() => tenantStore.tenantId, () => loadFeed());
   height: 36rpx;
 }
 
-.message-dot {
+.message-badge {
   position: absolute;
-  top: 10rpx;
-  right: 10rpx;
-  width: 12rpx;
-  height: 12rpx;
-  border: 3rpx solid var(--color-surface);
-  border-radius: 50%;
-  background: var(--color-accent);
+  top: 2rpx;
+  right: -2rpx;
+  min-width: 28rpx;
+  height: 28rpx;
+  padding: 0 5rpx;
+  border: 2rpx solid var(--color-page);
+  border-radius: var(--radius-pill);
+  color: #fff;
+  background: #ef5b57;
+  font-size: 17rpx;
+  font-weight: 700;
+  line-height: 24rpx;
+  text-align: center;
 }
 
 .search-entry {

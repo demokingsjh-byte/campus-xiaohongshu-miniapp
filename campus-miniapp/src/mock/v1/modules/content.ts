@@ -3,6 +3,7 @@ import { defineMock } from '@alova/mock';
 import { ResultEnum } from '@/enums/httpEnum';
 import { campusPosts } from '@/mock/campus';
 import { createMock } from '@/mock/utils';
+import { pushMockNotification } from '@/mock/v1/modules/notification';
 
 const POSTS_KEY = 'campus-mock-server-posts';
 const LIKES_KEY = 'campus-mock-server-likes';
@@ -127,6 +128,7 @@ function decorateComments(postId: number, userId = 10001) {
 function createMockComment(params: any) {
   const postId = Number(queryOf(params).postId);
   const parentId = params.data?.parentId == null ? undefined : Number(params.data.parentId);
+  const parentComment = parentId === undefined ? undefined : getMockComment(postId, parentId);
   const content = String(params.data?.content || '').trim();
   if (!Number.isFinite(postId) || !findPost(postId))
     return createMock({ data: null, code: ResultEnum.FAIL, message: '帖子不存在' });
@@ -161,6 +163,20 @@ function createMockComment(params: any) {
     storedPosts[index] = { ...storedPosts[index]!, comments: (storedPosts[index]!.comments || 0) + 1 };
     setStoredPosts(storedPosts);
   }
+  const targetUserId = parentComment?.userId || findPost(postId)?.userId;
+  if (targetUserId && targetUserId !== 10001) {
+    const eventType = parentId === undefined ? 'COMMENT' : 'REPLY';
+    pushMockNotification({
+      userId: targetUserId,
+      type: 'INTERACTION',
+      eventType,
+      actorNickname: author,
+      title: parentId === undefined ? `${author}评论了你的发布` : `${author}回复了你`,
+      content,
+      targetType: 'POST',
+      targetId: postId,
+    });
+  }
   return createMock({ data: created });
 }
 
@@ -180,6 +196,19 @@ function setInteraction(id: number, active: boolean, key: string, countKey: 'lik
   const post = findPost(id);
   if (!post)
     return createMock({ data: null, code: ResultEnum.FAIL, message: '内容不存在或已下架' });
+  if (active && countKey === 'likes' && post.userId && post.userId !== 10001) {
+    const profile = uni.getStorageSync(PROFILE_KEY) || {};
+    pushMockNotification({
+      userId: post.userId,
+      type: 'INTERACTION',
+      eventType: 'LIKE',
+      actorNickname: profile.nickname || '校园同学',
+      title: `${profile.nickname || '校园同学'}赞了你的内容`,
+      content: post.title,
+      targetType: 'POST',
+      targetId: id,
+    });
+  }
   return createMock({ data: { ...post, [countKey === 'likes' ? 'liked' : 'collected']: active } });
 }
 
