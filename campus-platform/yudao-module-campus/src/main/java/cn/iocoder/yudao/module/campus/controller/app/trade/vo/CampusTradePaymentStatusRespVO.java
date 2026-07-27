@@ -10,6 +10,8 @@ public class CampusTradePaymentStatusRespVO {
     private String orderNo;
     private Integer status;
     private boolean paid;
+    private boolean retryable;
+    private String wechatTradeState;
     private LocalDateTime expiresAt;
     private LocalDateTime paidAt;
 }

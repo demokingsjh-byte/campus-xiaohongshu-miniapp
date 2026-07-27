@@ -239,8 +239,9 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         if (order == null) {
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "订单不存在或无权查看");
         }
+        String wechatTradeState = null;
         if (intValue(order.get("status")) == STATUS_WAITING) {
-            syncOrderFromWechat(order);
+            wechatTradeState = syncOrderFromWechat(order);
             order = findOrderForPayment(orderId, buyerId);
             if (order == null) {
                 throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "订单不存在或无权查看");
@@ -251,6 +252,11 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         response.setOrderNo(stringValue(order.get("order_no")));
         response.setStatus(intValue(order.get("status")));
         response.setPaid(response.getStatus() == STATUS_PAID);
+        response.setWechatTradeState(wechatTradeState);
+        response.setRetryable("NOTPAY".equals(wechatTradeState)
+                || "CLOSED".equals(wechatTradeState)
+                || "REVOKED".equals(wechatTradeState)
+                || response.getStatus() == 3);
         response.setExpiresAt(toLocalDateTime(order.get("expires_at")));
         response.setPaidAt(toLocalDateTime(order.get("paid_at")));
         return response;
@@ -373,7 +379,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    private void syncOrderFromWechat(Map<String, Object> order) {
+    private String syncOrderFromWechat(Map<String, Object> order) {
         try {
             WxPayOrderQueryV3Result result = createClient().queryOrderV3(
                     stringValue(order.get("order_no")), properties.getMchId());
@@ -390,8 +396,10 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                                 + " WHERE id = :id AND status = 0 AND deleted = b'0'",
                         new MapSqlParameterSource("id", order.get("id")));
             }
+            return result.getTradeState();
         } catch (WxPayException | IOException ex) {
             // A temporary WeChat query failure keeps the local order pending.
+            return null;
         }
     }
 

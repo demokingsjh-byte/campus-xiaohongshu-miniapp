@@ -135,6 +135,10 @@ async function syncPaymentStatus(maxAttempts = 5) {
         paymentPending.value = false;
         return false;
       }
+      if (result.retryable) {
+        paymentPending.value = false;
+        return false;
+      }
     } catch {
       // Payment callbacks and WeChat order queries are asynchronous. Keep the
       // page in a recoverable confirmation state instead of starting payment again.
@@ -181,7 +185,10 @@ async function pay() {
     paymentPending.value = true;
     const paid = await syncPaymentStatus();
     if (!paid) {
-      uni.showToast({ title: '支付已提交，正在确认订单状态', icon: 'none' });
+      uni.showToast({
+        title: paymentPending.value ? '支付已提交，正在确认订单状态' : '微信支付未完成，请重新支付',
+        icon: 'none',
+      });
       return;
     }
     uni.showToast({ title: '支付成功', icon: 'success' });
@@ -206,8 +213,10 @@ async function refreshPaymentStatus() {
     const paid = await syncPaymentStatus(4);
     if (paid) {
       uni.showToast({ title: '支付成功', icon: 'success' });
-    } else if (order.value?.status === 0) {
+    } else if (order.value?.status === 0 && paymentPending.value) {
       uni.showToast({ title: '支付状态仍在确认，请稍后刷新', icon: 'none' });
+    } else if (order.value?.status === 0) {
+      uni.showToast({ title: '微信支付未完成，请重新支付', icon: 'none' });
     }
   } finally {
     busy.value = false;

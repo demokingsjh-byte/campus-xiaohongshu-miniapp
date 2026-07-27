@@ -110,6 +110,8 @@ export interface CampusTradePaymentStatus {
   orderNo: string
   status: number
   paid: boolean
+  retryable?: boolean
+  wechatTradeState?: string
   expiresAt?: string
   paidAt?: string
 }
