@@ -4,6 +4,7 @@ import type { CampusTradeContact, CampusTradeOrder } from '@/services/api/conten
 import {
   createCampusTradeOrder,
   createCampusTradePayment,
+  cancelCampusTradeOrder,
   getCampusPost,
   getCampusTradeContact,
   getCampusTradePaymentStatus,
@@ -149,6 +150,9 @@ async function syncPaymentStatus(maxAttempts = 5) {
       await new Promise(resolve => setTimeout(resolve, 800));
   }
   paymentTimedOut.value = true;
+  // A timed-out status query must not permanently lock the order.
+  // The backend reconciles the existing WeChat order before retrying.
+  paymentPending.value = false;
   return false;
 }
 
@@ -256,6 +260,34 @@ async function recreateOrder() {
   }
 }
 
+async function cancelCurrentOrder() {
+  if (!order.value || order.value.status !== 0 || busy.value || paymentPending.value)
+    return;
+  const confirmed = await new Promise<boolean>(resolve => {
+    uni.showModal({
+      title: '取消订单',
+      content: '确定取消当前订单吗？取消后可以重新下单。',
+      success: result => resolve(!!result.confirm),
+      fail: () => resolve(false),
+    });
+  });
+  if (!confirmed)
+    return;
+  busy.value = true;
+  try {
+    await cancelCampusTradeOrder(order.value.id);
+    order.value = await getCampusTradeOrder(order.value.id);
+    paymentPending.value = false;
+    paymentTimedOut.value = false;
+    stopCountdown();
+    uni.showToast({ title: '订单已取消', icon: 'success' });
+  } catch {
+    uni.showToast({ title: '取消订单失败，请稍后重试', icon: 'none' });
+  } finally {
+    busy.value = false;
+  }
+}
+
 function copyContact() {
   if (contact.value?.contact)
     uni.setClipboardData({ data: contact.value.contact });
@@ -300,15 +332,20 @@ function copyContact() {
         </view>
       </view>
 
-      <button v-if="isWaitingPayment && !isPaymentPending" class="pay-button" :disabled="busy" @click="pay">
-        {{ busy ? '正在发起支付…' : `微信支付 ¥${displayAmount}` }}
-      </button>
-      <button v-else-if="isPaymentPending" class="pay-button pending" :disabled="busy" @click="refreshPaymentStatus">
-        {{ busy ? '正在确认支付…' : '刷新支付状态' }}
-      </button>
-      <button v-else-if="order.status === 3" class="pay-button secondary" :disabled="busy" @click="recreateOrder">
-        {{ busy ? '正在重新下单…' : '订单已过期，重新下单' }}
-      </button>
+      <view class="action-bar">
+        <button v-if="isWaitingPayment && !isPaymentPending" class="pay-button" :disabled="busy" @click="pay">
+          {{ busy ? '正在发起支付…' : `微信支付 ¥${displayAmount}` }}
+        </button>
+        <button v-if="isWaitingPayment && !isPaymentPending" class="cancel-button" :disabled="busy" @click="cancelCurrentOrder">
+          取消订单
+        </button>
+        <button v-else-if="isPaymentPending" class="pay-button pending" :disabled="busy" @click="refreshPaymentStatus">
+          {{ busy ? '正在确认支付…' : '刷新支付状态' }}
+        </button>
+        <button v-else-if="order.status === 3" class="pay-button secondary" :disabled="busy" @click="recreateOrder">
+          {{ busy ? '正在重新下单…' : '订单已过期，重新下单' }}
+        </button>
+      </view>
     </template>
   </view>
 </template>
@@ -431,16 +468,31 @@ function copyContact() {
   font-size: 24rpx;
 }
 .pay-button {
-  position: fixed;
-  right: 28rpx;
-  bottom: calc(30rpx + env(safe-area-inset-bottom));
-  left: 28rpx;
+  flex: 1;
   height: 94rpx;
   border-radius: 24rpx;
   background: #10a779;
   color: #fff;
   font-size: 31rpx;
   font-weight: 700;
+  line-height: 94rpx;
+}
+.action-bar {
+  position: fixed;
+  right: 28rpx;
+  bottom: calc(30rpx + env(safe-area-inset-bottom));
+  left: 28rpx;
+  display: flex;
+  gap: 18rpx;
+}
+.cancel-button {
+  width: 190rpx;
+  height: 94rpx;
+  flex: 0 0 auto;
+  border-radius: 24rpx;
+  background: #fff;
+  color: #65706c;
+  font-size: 28rpx;
   line-height: 94rpx;
 }
 .pay-button.secondary {
