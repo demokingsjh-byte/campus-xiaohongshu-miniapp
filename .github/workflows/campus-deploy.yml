@@ -82,6 +82,7 @@ jobs:
           cp campus-platform/sql/mysql/campus-student-user-upgrade.sql release/migrations/
           cp campus-platform/sql/mysql/campus-community-upgrade.sql release/migrations/
           cp campus-platform/sql/mysql/campus-comment-upgrade.sql release/migrations/
+          cp campus-platform/sql/mysql/campus-notification-upgrade.sql release/migrations/
           cp campus-platform/sql/mysql/campus-menu-prune.sql release/migrations/
           cp campus-platform/sql/mysql/campus-menu-encoding-repair.sql release/migrations/
           cp campus-platform/sql/mysql/campus-menu.sql release/migrations/
