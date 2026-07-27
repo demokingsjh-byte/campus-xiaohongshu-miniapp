@@ -6,7 +6,7 @@ import { createCampusContactRequest, createCampusPostComment, deleteCampusCommen
 import { uploadCampusCommentImage } from '@/services/api/file';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
-import { resolveCampusAvatar } from '@/utils/avatar';
+import { DEFAULT_CAMPUS_AVATAR, resolveCampusAvatar } from '@/utils/avatar';
 
 const postId = ref(2001);
 const liked = ref(false);
@@ -34,6 +34,7 @@ const expandedReplyCounts = ref<Record<number, number>>({});
 const contactSubmitting = ref(false);
 const contentStore = useCampusContentStore();
 const userStore = useUserStore();
+const currentUserAvatar = ref(DEFAULT_CAMPUS_AVATAR);
 const post = computed(() => contentStore.getPost(postId.value) || campusPosts[0]);
 const channelIcons: Record<string, string> = {
   二手: '/static/icons/login/trade.svg',
@@ -46,6 +47,16 @@ const channelIcons: Record<string, string> = {
 const channelIcon = computed(() => channelIcons[post.value.channel] || '/static/icons/mine/cloud.svg');
 const hasMoreComments = computed(() => comments.value.length < commentTotal.value);
 const topLevelComments = computed(() => comments.value.filter(item => !item.parentId));
+const replyAuthor = computed(() => {
+  const author = replyTarget.value?.author;
+  return typeof author === 'string' ? author.trim() : '';
+});
+const postAuthor = computed(() => {
+  const author = post.value?.author;
+  return typeof author === 'string' ? author.trim() : '';
+});
+const composerTitle = computed(() => replyAuthor.value ? `回复 ${replyAuthor.value}` : (postAuthor.value ? `评论 ${postAuthor.value}` : '评论内容'));
+const composerPlaceholder = computed(() => replyAuthor.value ? `回复 ${replyAuthor.value}…` : '写下你的评论…');
 const mentionCandidates = computed(() => {
   const candidates = new Map<number, { id: number, name: string, avatar?: string }>();
   if (post.value.userId && post.value.author) {
@@ -58,10 +69,23 @@ const mentionCandidates = computed(() => {
   return [...candidates.values()];
 });
 
+function syncCurrentUserAvatar() {
+  currentUserAvatar.value = resolveCampusAvatar(userStore.userInfo?.avatar);
+}
+
+function handleCurrentUserAvatarError() {
+  currentUserAvatar.value = DEFAULT_CAMPUS_AVATAR;
+}
+
+watch(() => userStore.userInfo?.avatar, syncCurrentUserAvatar, { immediate: true });
+
 onLoad(async (query) => {
+  resetCommentComposer();
   postId.value = Number(query?.id || 2001);
   pageState.value = 'loading';
   try {
+    await userStore.initUserInfo();
+    syncCurrentUserAvatar();
     const loaded = await contentStore.loadPost(postId.value);
     liked.value = Boolean(loaded.liked);
     collected.value = Boolean(loaded.collected);
@@ -71,6 +95,24 @@ onLoad(async (query) => {
     pageState.value = 'error';
   }
 });
+
+onHide(() => resetCommentComposer());
+
+onShareAppMessage(() => ({
+  title: postAuthor.value ? `${postAuthor.value}发布的校园内容` : '校园内容分享',
+  path: `/pages/detail/index?id=${postId.value}`,
+  imageUrl: post.value.coverImage || undefined,
+}));
+
+function resetCommentComposer() {
+  comment.value = '';
+  replyTarget.value = null;
+  commentImages.value = [];
+  mentionUserIds.value = [];
+  showEmojiPanel.value = false;
+  showMentionPanel.value = false;
+  showCommentComposer.value = false;
+}
 
 async function loadComments(append = false) {
   if (append) {
@@ -165,10 +207,12 @@ function replyToComment(item: CampusPostComment) {
 }
 
 function openCommentComposer() {
+  replyTarget.value = null;
   showCommentComposer.value = true;
 }
 
 function closeCommentComposer() {
+  replyTarget.value = null;
   showEmojiPanel.value = false;
   showMentionPanel.value = false;
   showCommentComposer.value = false;
@@ -593,26 +637,25 @@ function reportPost() {
       </view>
 
       <view class="bottom-bar">
-        <view class="comment-trigger" @click="openCommentComposer">
-          <text>{{ replyTarget ? `回复 ${replyTarget.author}…` : '写下你的评论…' }}</text>
+        <view class="current-user-avatar">
+          <image :src="currentUserAvatar" mode="aspectFill" @error="handleCurrentUserAvatarError" />
         </view>
-        <view class="action" :class="{ active: liked }" @click="toggleLike">
-          <image src="/static/icons/mine/heart.svg" mode="aspectFit" /><text>{{ post.likes }}</text>
-        </view><view class="action" :class="{ active: collected }" @click="toggleCollect">
-          <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>收藏</text>
-        </view><button class="contact-btn" :disabled="contactSubmitting" @click="contact">
-          {{ contactSubmitting ? '提交中…' : (post.type === 'idle' && Number(post.price || 0) > 0 ? '立即购买' : '联系TA') }}
+        <view class="comment-trigger" @click="openCommentComposer">
+          <text>写下你的评论…</text>
+        </view>
+        <button class="wechat-share" open-type="share" aria-label="转发给微信好友">
+          <image src="/static/icons/ui/wechat.svg" mode="aspectFit" />
         </button>
       </view>
       <view v-if="showCommentComposer" class="comment-overlay" @click="closeCommentComposer">
         <view class="comment-composer" @click.stop>
           <view class="composer-header">
-            <text>{{ replyTarget ? `回复 ${replyTarget.author}` : `评论 ${post.author}` }}</text>
+            <text>{{ composerTitle }}</text>
             <text class="composer-close" @click="closeCommentComposer">×</text>
           </view>
           <textarea
             class="composer-textarea" :value="comment" :disabled="commentSubmitting" maxlength="300"
-            :placeholder="replyTarget ? `回复 ${replyTarget.author}…` : '写下你的评论…'"
+            :placeholder="composerPlaceholder"
             auto-height @input="handleCommentInput" @confirm="sendComment"
           />
           <view v-if="commentImages.length" class="comment-upload-preview">
@@ -1077,7 +1120,8 @@ function reportPost() {
 }
 .comment-trigger {
   display: flex;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   height: 76rpx;
   align-items: center;
   padding: 0 26rpx;
@@ -1085,6 +1129,42 @@ function reportPost() {
   color: #8c9691;
   background: rgba(118, 118, 128, 0.1);
   font-size: 28rpx;
+}
+.current-user-avatar {
+  display: flex;
+  flex: 0 0 auto;
+  width: 64rpx;
+  height: 64rpx;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--yd-mint);
+}
+.current-user-avatar image {
+  width: 100%;
+  height: 100%;
+}
+.wechat-share {
+  display: flex;
+  flex: 0 0 auto;
+  width: 76rpx;
+  height: 76rpx;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 0 16rpx;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #1aad19;
+  box-shadow: 0 8rpx 22rpx rgba(26, 173, 25, 0.24);
+}
+.wechat-share::after {
+  border: 0;
+}
+.wechat-share image {
+  width: 48rpx;
+  height: 48rpx;
 }
 .comment-tools {
   display: flex;

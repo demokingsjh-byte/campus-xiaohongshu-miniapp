@@ -12,6 +12,7 @@ import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusPhoneBindReqV
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusUserProfileUpdateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusUserRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusWechatLoginReqVO;
+import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import cn.iocoder.yudao.module.system.api.social.SocialClientApi;
 import cn.iocoder.yudao.module.system.api.social.SocialUserApi;
 import cn.iocoder.yudao.module.system.api.social.dto.SocialUserRespDTO;
@@ -53,6 +54,8 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
     private SocialUserApi socialUserApi;
     @Resource
     private SocialClientApi socialClientApi;
+    @Resource
+    private FileApi fileApi;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -248,7 +251,7 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
         respVO.setOpenid(toStr(row.get("openid")));
         respVO.setUnionid(toStr(row.get("unionid")));
         respVO.setNickname(toStr(row.get("nickname")));
-        respVO.setAvatar(toStr(row.get("avatar")));
+        respVO.setAvatar(refreshAvatarUrl(toStr(row.get("avatar"))));
         respVO.setMobile(toStr(row.get("mobile")));
         respVO.setSchoolName(toStr(row.get("school_name")));
         respVO.setCampusName(toStr(row.get("campus_name")));
@@ -267,6 +270,18 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
 
     private static String trim(String value) {
         return StrUtil.isBlank(value) ? null : value.trim();
+    }
+
+    private String refreshAvatarUrl(String avatar) {
+        if (StrUtil.isBlank(avatar)) {
+            return "";
+        }
+        try {
+            return fileApi.presignGetUrl(avatar, null);
+        } catch (RuntimeException ex) {
+            // Keep the profile response usable for external or legacy avatar URLs.
+            return avatar;
+        }
     }
 
     private static String toStr(Object value) {

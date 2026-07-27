@@ -2,12 +2,13 @@
 import { getDefaultTenant } from '@/mock/campus';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
-import { resolveCampusAvatar } from '@/utils/avatar';
+import { DEFAULT_CAMPUS_AVATAR, resolveCampusAvatar } from '@/utils/avatar';
 
 const userStore = useUserStore();
 const tenantStore = useTenantStore();
 const contentStore = useCampusContentStore();
 const avatarUpdating = ref(false);
+const profileAvatar = ref(DEFAULT_CAMPUS_AVATAR);
 const loggedIn = computed(() => userStore.loggedIn);
 const profile = computed(() => userStore.userInfo);
 const currentSchool = computed(() => profile.value?.schoolName || tenantStore.tenantName || getDefaultTenant().name);
@@ -35,6 +36,7 @@ onShow(async () => {
     } catch {}
   }
   if (userStore.loggedIn) {
+    syncProfileAvatar();
     try {
       await Promise.all([contentStore.loadMyPosts(), contentStore.loadFavorites()]);
     } catch {
@@ -42,6 +44,16 @@ onShow(async () => {
     }
   }
 });
+
+function syncProfileAvatar() {
+  profileAvatar.value = resolveCampusAvatar(userStore.userInfo?.avatar);
+}
+
+function handleProfileAvatarError() {
+  profileAvatar.value = DEFAULT_CAMPUS_AVATAR;
+}
+
+watch(() => userStore.userInfo?.avatar, syncProfileAvatar, { immediate: true });
 
 function goLogin(mode: 'login' | 'edit' = 'login') {
   uni.navigateTo({ url: `/pages/login/index${mode === 'edit' ? '?mode=edit' : ''}` });
@@ -121,7 +133,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
         <button
           class="profile-avatar" open-type="chooseAvatar" @chooseavatar="handleAvatarChoose"
         >
-          <image :src="resolveCampusAvatar(profile?.avatar)" mode="aspectFill" />
+          <image :src="profileAvatar" mode="aspectFill" @error="handleProfileAvatarError" />
           <view class="avatar-edit-hint">
             <image src="/static/icons/ui/camera.svg" mode="aspectFit" />
           </view>

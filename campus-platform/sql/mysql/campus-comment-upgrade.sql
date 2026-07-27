@@ -132,3 +132,12 @@ SET c.`like_count` = (
   SELECT COUNT(*) FROM `campus_post_comment_like` l
   WHERE l.`comment_id` = c.`id` AND l.`deleted` = b'0'
 );
+
+-- 将历史上可能指向“回复的回复”的评论归并到根主评论，避免前端无法挂载展示
+UPDATE `campus_post_comment` c
+JOIN `campus_post_comment` parent_comment ON parent_comment.`id` = c.`parent_id`
+SET c.`parent_id` = parent_comment.`parent_id`
+WHERE c.`parent_id` IS NOT NULL
+  AND parent_comment.`parent_id` IS NOT NULL
+  AND c.`deleted` = b'0'
+  AND parent_comment.`deleted` = b'0';
