@@ -399,6 +399,9 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             return result.getTradeState();
         } catch (WxPayException | IOException ex) {
             // A temporary WeChat query failure keeps the local order pending.
+            if (ex instanceof WxPayException && isWechatOrderNotFound((WxPayException) ex)) {
+                return "NOTPAY";
+            }
             return null;
         }
     }

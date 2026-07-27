@@ -17,6 +17,7 @@ const contact = ref<CampusTradeContact>();
 const loading = ref(true);
 const busy = ref(false);
 const paymentPending = ref(false);
+const paymentTimedOut = ref(false);
 const remainingSeconds = ref(0);
 const loadError = ref(false);
 const userStore = useUserStore();
@@ -123,6 +124,7 @@ function requestWechatPayment(params: Awaited<ReturnType<typeof createCampusTrad
 async function syncPaymentStatus(maxAttempts = 5) {
   if (!order.value)
     return false;
+  paymentTimedOut.value = false;
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const result = await getCampusTradePaymentStatus(order.value.id);
@@ -146,6 +148,7 @@ async function syncPaymentStatus(maxAttempts = 5) {
     if (attempt < maxAttempts - 1)
       await new Promise(resolve => setTimeout(resolve, 800));
   }
+  paymentTimedOut.value = true;
   return false;
 }
 
@@ -163,6 +166,7 @@ async function applyPaidOrder(paidAt?: string) {
     };
   }
   paymentPending.value = false;
+  paymentTimedOut.value = false;
   try {
     await loadContact();
   } catch {
@@ -179,6 +183,7 @@ async function pay() {
     return;
   busy.value = true;
   try {
+    paymentTimedOut.value = false;
     const params = await createCampusTradePayment(order.value.id);
     if (params.status !== 1 && params.packageValue)
       await requestWechatPayment(params);
@@ -225,7 +230,7 @@ async function refreshPaymentStatus() {
     if (paid) {
       uni.showToast({ title: '支付成功', icon: 'success' });
     } else if (order.value?.status === 0 && paymentPending.value) {
-      uni.showToast({ title: '支付状态仍在确认，请稍后刷新', icon: 'none' });
+      uni.showToast({ title: paymentTimedOut.value ? '支付状态暂未确认，请稍后刷新' : '支付状态仍在确认，请稍后刷新', icon: 'none' });
     } else if (order.value?.status === 0) {
       uni.showToast({ title: '微信支付未完成，请重新支付', icon: 'none' });
     }
@@ -241,6 +246,7 @@ async function recreateOrder() {
   try {
     order.value = await createCampusTradeOrder(postId.value);
     paymentPending.value = false;
+    paymentTimedOut.value = false;
     startCountdown();
     uni.showToast({ title: '已重新生成订单', icon: 'success' });
   } catch {
@@ -271,7 +277,7 @@ function copyContact() {
       </view>
 
       <view class="card order-card">
-        <view class="order-row"><text>订单状态</text><text class="order-status">{{ isPaymentPending ? '支付确认中' : order.statusText }}</text></view>
+        <view class="order-row"><text>订单状态</text><text class="order-status">{{ isPaymentPending ? (paymentTimedOut ? '支付状态待确认' : '支付确认中') : order.statusText }}</text></view>
         <view v-if="order.status === 0" class="order-row">
           <text>支付倒计时</text>
           <text :class="['countdown', { danger: !isWaitingPayment }]">{{ isWaitingPayment ? countdownText : '已过期' }}</text>
