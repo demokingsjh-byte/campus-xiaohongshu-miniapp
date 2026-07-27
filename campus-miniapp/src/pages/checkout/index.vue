@@ -197,7 +197,18 @@ async function pay() {
     if (message.includes('cancel')) {
       uni.showToast({ title: '已取消支付', icon: 'none' });
     } else {
-      uni.showToast({ title: '支付未完成，请稍后重试', icon: 'none' });
+      // requestPayment may fail after WeChat has accepted the payment. Always
+      // query the server once more before deciding that the payment failed.
+      paymentPending.value = true;
+      const paid = await syncPaymentStatus(4);
+      if (paid) {
+        uni.showToast({ title: '支付成功', icon: 'success' });
+      } else if (!paymentPending.value) {
+        uni.showToast({ title: '微信支付未完成，请重新支付', icon: 'none' });
+      } else {
+        const detail = String(error?.errMsg || error?.message || '微信支付调用失败，请稍后刷新支付状态').slice(0, 120);
+        uni.showModal({ title: '微信支付调用失败', content: detail, showCancel: false });
+      }
     }
   } finally {
     busy.value = false;
