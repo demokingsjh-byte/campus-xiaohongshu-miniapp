@@ -65,6 +65,25 @@ export interface CampusPostCommentReportParams {
   detail?: string
 }
 
+export interface CampusTradePayParams {
+  orderId: number
+  orderNo: string
+  status: number
+  timeStamp?: string
+  nonceStr?: string
+  packageValue?: string
+  signType?: string
+  paySign?: string
+}
+
+export interface CampusTradeContact {
+  orderId?: number
+  status: number
+  paid: boolean
+  sellerName?: string
+  contact?: string
+}
+
 const POST_BASE = '/campus/post';
 
 export function createCampusPost(params: CampusPostCreateParams) {
@@ -125,6 +144,14 @@ export function reportCampusComment(id: number, params: CampusPostCommentReportP
 
 export function createCampusContactRequest(postId: number) {
   return request.Post<boolean>(`${POST_BASE}/contact-request`, {}, { params: { postId } });
+}
+
+export function createCampusTradePayment(postId: number) {
+  return request.Post<CampusTradePayParams>('/campus/trade/pay', {}, { params: { postId } });
+}
+
+export function getCampusTradeContact(postId: number) {
+  return request.Get<CampusTradeContact>('/campus/trade/contact', { params: { postId }, cacheFor: 0 });
 }
 
 export function setCampusPostLike(id: number, active: boolean) {

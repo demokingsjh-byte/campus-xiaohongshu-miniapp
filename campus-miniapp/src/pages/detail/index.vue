@@ -312,6 +312,10 @@ async function changeCommentSort(sort: 'latest' | 'likes') {
 async function contact() {
   if (!ensureLogin() || contactSubmitting.value)
     return;
+  if (post.value.type === 'idle' && Number(post.value.price || 0) > 0) {
+    uni.navigateTo({ url: `/pages/checkout/index?postId=${postId.value}` });
+    return;
+  }
   if (!userStore.userInfo) {
     try {
       await userStore.getUserInfo();
@@ -592,6 +596,13 @@ function reportPost() {
         <view class="comment-trigger" @click="openCommentComposer">
           <text>{{ replyTarget ? `回复 ${replyTarget.author}…` : '写下你的评论…' }}</text>
         </view>
+        <view class="action" :class="{ active: liked }" @click="toggleLike">
+          <image src="/static/icons/mine/heart.svg" mode="aspectFit" /><text>{{ post.likes }}</text>
+        </view><view class="action" :class="{ active: collected }" @click="toggleCollect">
+          <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>收藏</text>
+        </view><button class="contact-btn" :disabled="contactSubmitting" @click="contact">
+          {{ contactSubmitting ? '提交中…' : (post.type === 'idle' && Number(post.price || 0) > 0 ? '立即购买' : '联系TA') }}
+        </button>
       </view>
       <view v-if="showCommentComposer" class="comment-overlay" @click="closeCommentComposer">
         <view class="comment-composer" @click.stop>

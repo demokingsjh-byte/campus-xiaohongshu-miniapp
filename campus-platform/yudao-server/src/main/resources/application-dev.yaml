@@ -278,3 +278,17 @@ com:
     address:
       map:
         key: YNQBZ-TFA34-JLEUL-DWDYN-FWPOK-2ABYX
+
+# 校园二手微信支付。服务器通过环境变量挂载密钥和 PEM 文件。
+campus:
+  wechat-pay:
+    enabled: ${CAMPUS_WECHAT_PAY_ENABLED:true}
+    app-id: ${WX_MINIAPP_APPID:wx3141ca27b55b0b9c}
+    mch-id: ${WECHAT_PAY_MCH_ID:1746680459}
+    api-v3-key: ${WECHAT_PAY_API_V3_KEY:}
+    api-v3-key-path: ${WECHAT_PAY_API_V3_KEY_PATH:}
+    cert-serial-no: ${WECHAT_PAY_CERT_SERIAL_NO:1120AE6773AC52507FD8C59398AFB1DA08E775DD}
+    private-key-path: ${WECHAT_PAY_PRIVATE_KEY_PATH:}
+    public-key-id: ${WECHAT_PAY_PUBLIC_KEY_ID:PUB_KEY_ID_0117466804592026072200181595002607}
+    public-key-path: ${WECHAT_PAY_PUBLIC_KEY_PATH:}
+    notify-url: ${WECHAT_PAY_NOTIFY_URL:https://huanwoshidai.com.cn/app-api/campus/trade/wechat/notify}
