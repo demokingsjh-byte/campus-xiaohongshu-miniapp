@@ -16,6 +16,7 @@ const order = ref<CampusTradeOrder>();
 const contact = ref<CampusTradeContact>();
 const loading = ref(true);
 const busy = ref(false);
+const paymentPending = ref(false);
 const remainingSeconds = ref(0);
 const loadError = ref(false);
 const userStore = useUserStore();
@@ -23,6 +24,8 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null;
 
 const isPaid = computed(() => order.value?.status === 1);
 const isWaitingPayment = computed(() => order.value?.status === 0 && remainingSeconds.value > 0);
+const isPaymentPending = computed(() => paymentPending.value && order.value?.status === 0);
+const productImage = computed(() => order.value?.coverImage || post.value?.coverImage || post.value?.images?.[0] || '');
 const countdownText = computed(() => {
   const minutes = Math.floor(remainingSeconds.value / 60).toString().padStart(2, '0');
   const seconds = (remainingSeconds.value % 60).toString().padStart(2, '0');
@@ -117,16 +120,50 @@ function requestWechatPayment(params: Awaited<ReturnType<typeof createCampusTrad
   });
 }
 
-async function waitForPaid() {
+async function syncPaymentStatus(maxAttempts = 5) {
   if (!order.value)
     return false;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const result = await getCampusTradePaymentStatus(order.value.id);
-    if (result.paid)
-      return true;
-    await new Promise(resolve => setTimeout(resolve, 1500));
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      const result = await getCampusTradePaymentStatus(order.value.id);
+      if (result.paid) {
+        await applyPaidOrder(result.paidAt);
+        return true;
+      }
+      if (result.status === 3) {
+        order.value = await getCampusTradeOrder(order.value.id);
+        paymentPending.value = false;
+        return false;
+      }
+    } catch {
+      // Payment callbacks and WeChat order queries are asynchronous. Keep the
+      // page in a recoverable confirmation state instead of starting payment again.
+    }
+    if (attempt < maxAttempts - 1)
+      await new Promise(resolve => setTimeout(resolve, 800));
   }
   return false;
+}
+
+async function applyPaidOrder(paidAt?: string) {
+  if (!order.value)
+    return;
+  try {
+    order.value = await getCampusTradeOrder(order.value.id);
+  } catch {
+    order.value = {
+      ...order.value,
+      status: 1,
+      statusText: '已付款',
+      paidAt: paidAt || order.value.paidAt,
+    };
+  }
+  paymentPending.value = false;
+  try {
+    await loadContact();
+  } catch {
+    contact.value = undefined;
+  }
 }
 
 async function loadContact() {
@@ -134,25 +171,19 @@ async function loadContact() {
 }
 
 async function pay() {
-  if (!order.value || !isWaitingPayment.value || busy.value)
+  if (!order.value || !isWaitingPayment.value || paymentPending.value || busy.value)
     return;
   busy.value = true;
   try {
     const params = await createCampusTradePayment(order.value.id);
-    if (params.status !== 1)
+    if (params.status !== 1 && params.packageValue)
       await requestWechatPayment(params);
-    const paid = await waitForPaid();
+    paymentPending.value = true;
+    const paid = await syncPaymentStatus();
     if (!paid) {
-      uni.showModal({
-        title: '支付结果确认中',
-        content: '微信可能已经受理支付，请稍后重新进入订单查看结果。',
-        showCancel: false,
-      });
+      uni.showToast({ title: '支付已提交，正在确认订单状态', icon: 'none' });
       return;
     }
-    order.value.status = 1;
-    order.value.statusText = '已付款';
-    await loadContact();
     uni.showToast({ title: '支付成功', icon: 'success' });
   } catch (error: any) {
     const message = String(error?.errMsg || error?.message || '').toLowerCase();
@@ -166,12 +197,30 @@ async function pay() {
   }
 }
 
+async function refreshPaymentStatus() {
+  if (!order.value || busy.value)
+    return;
+  busy.value = true;
+  try {
+    paymentPending.value = true;
+    const paid = await syncPaymentStatus(4);
+    if (paid) {
+      uni.showToast({ title: '支付成功', icon: 'success' });
+    } else if (order.value?.status === 0) {
+      uni.showToast({ title: '支付状态仍在确认，请稍后刷新', icon: 'none' });
+    }
+  } finally {
+    busy.value = false;
+  }
+}
+
 async function recreateOrder() {
   if (busy.value)
     return;
   busy.value = true;
   try {
     order.value = await createCampusTradeOrder(postId.value);
+    paymentPending.value = false;
     startCountdown();
     uni.showToast({ title: '已重新生成订单', icon: 'success' });
   } catch {
@@ -193,7 +242,7 @@ function copyContact() {
     <view v-else-if="loadError" class="state">订单信息暂时无法加载</view>
     <template v-else-if="post && order">
       <view class="card product-card">
-        <image v-if="order.coverImage || post.coverImage" class="cover" :src="order.coverImage || post.coverImage" mode="aspectFill" />
+        <image v-if="productImage" class="cover" :src="productImage" mode="aspectFill" />
         <view class="product-main">
           <text class="title">{{ order.title || post.title }}</text>
           <text class="meta">{{ post.tradeMode || '校内当面交易' }} · {{ post.location || post.school }}</text>
@@ -202,7 +251,7 @@ function copyContact() {
       </view>
 
       <view class="card order-card">
-        <view class="order-row"><text>订单状态</text><text class="order-status">{{ order.statusText }}</text></view>
+        <view class="order-row"><text>订单状态</text><text class="order-status">{{ isPaymentPending ? '支付确认中' : order.statusText }}</text></view>
         <view v-if="order.status === 0" class="order-row">
           <text>支付倒计时</text>
           <text :class="['countdown', { danger: !isWaitingPayment }]">{{ isWaitingPayment ? countdownText : '已过期' }}</text>
@@ -225,8 +274,11 @@ function copyContact() {
         </view>
       </view>
 
-      <button v-if="isWaitingPayment" class="pay-button" :disabled="busy" @click="pay">
+      <button v-if="isWaitingPayment && !isPaymentPending" class="pay-button" :disabled="busy" @click="pay">
         {{ busy ? '正在发起支付…' : `微信支付 ¥${displayAmount}` }}
+      </button>
+      <button v-else-if="isPaymentPending" class="pay-button pending" :disabled="busy" @click="refreshPaymentStatus">
+        {{ busy ? '正在确认支付…' : '刷新支付状态' }}
       </button>
       <button v-else-if="order.status === 3" class="pay-button secondary" :disabled="busy" @click="recreateOrder">
         {{ busy ? '正在重新下单…' : '订单已过期，重新下单' }}
@@ -366,6 +418,9 @@ function copyContact() {
   line-height: 94rpx;
 }
 .pay-button.secondary {
+  background: #6f8e83;
+}
+.pay-button.pending {
   background: #6f8e83;
 }
 .pay-button[disabled] {

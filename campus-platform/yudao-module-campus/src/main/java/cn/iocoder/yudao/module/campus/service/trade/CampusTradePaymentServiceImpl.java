@@ -47,6 +47,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
 
     private static final int STATUS_WAITING = 0;
     private static final int STATUS_PAID = 1;
+    private enum ExistingWechatOrderState { NOT_FOUND, PAYING, PAID, CLOSED }
     private static final DateTimeFormatter WECHAT_RFC3339_SECONDS =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
@@ -149,6 +150,14 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             throw badRequest("当前用户未完成微信登录，暂时无法支付");
         }
         try {
+            ExistingWechatOrderState existingState = reconcileExistingWechatOrder(order);
+            if (existingState == ExistingWechatOrderState.PAID) {
+                return baseResponse(findOrderForPayment(orderId, buyerId));
+            }
+            if (existingState == ExistingWechatOrderState.PAYING) {
+                // Do not submit the same out_trade_no again while WeChat is processing it.
+                return baseResponse(order);
+            }
             BigDecimal amount = decimalValue(order.get("amount"));
             int totalFen = amount.movePointRight(2).setScale(0, RoundingMode.UNNECESSARY).intValueExact();
             WxPayUnifiedOrderV3Request request = new WxPayUnifiedOrderV3Request()
@@ -171,6 +180,55 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(),
                     "微信支付下单失败，请稍后重试");
         }
+    }
+
+    private ExistingWechatOrderState reconcileExistingWechatOrder(Map<String, Object> order)
+            throws IOException, WxPayException {
+        String orderNo = stringValue(order.get("order_no"));
+        if (StrUtil.isBlank(orderNo)) {
+            return ExistingWechatOrderState.NOT_FOUND;
+        }
+        try {
+            WxPayOrderQueryV3Result result = createClient().queryOrderV3(orderNo, properties.getMchId());
+            if ("SUCCESS".equals(result.getTradeState())) {
+                markOrderPaid(order, result.getTransactionId(), result.getAmount() == null
+                        ? null : result.getAmount().getTotal());
+                return ExistingWechatOrderState.PAID;
+            }
+            if ("USERPAYING".equals(result.getTradeState())) {
+                return ExistingWechatOrderState.PAYING;
+            }
+            if (!"CLOSED".equals(result.getTradeState()) && !"REVOKED".equals(result.getTradeState())) {
+                createClient().closeOrderV3(orderNo);
+            }
+            rotateOrderNumber(order);
+            return ExistingWechatOrderState.CLOSED;
+        } catch (WxPayException ex) {
+            if (isWechatOrderNotFound(ex)) {
+                return ExistingWechatOrderState.NOT_FOUND;
+            }
+            throw ex;
+        }
+    }
+
+    private void rotateOrderNumber(Map<String, Object> order) {
+        String orderNo = "CS" + System.currentTimeMillis() + UUID.randomUUID().toString().substring(0, 8);
+        jdbcTemplate.update("UPDATE campus_trade_order SET order_no = :orderNo,"
+                        + " updater = 'wechat-pay', update_time = NOW()"
+                        + " WHERE id = :id AND status = :status AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("orderNo", orderNo)
+                        .addValue("id", order.get("id")).addValue("status", STATUS_WAITING));
+        order.put("order_no", orderNo);
+    }
+
+    private boolean isWechatOrderNotFound(WxPayException ex) {
+        String code = ex.getErrCode();
+        String message = ex.getMessage();
+        String details = (String.valueOf(code) + " " + String.valueOf(message)).toUpperCase();
+        return details.contains("RESOURCE_NOT_FOUND")
+                || details.contains("ORDER_NOT_EXIST")
+                || details.contains("ORDERNOTEXIST")
+                || details.contains("NOT FOUND");
     }
 
     @Override

@@ -6,6 +6,7 @@ import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradeOrderCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradeOrderRespVO;
+import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -39,9 +40,11 @@ public class CampusTradeOrderServiceImpl implements CampusTradeOrderService {
     private static final int PAYMENT_TIMEOUT_MINUTES = 15;
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final FileApi fileApi;
 
-    public CampusTradeOrderServiceImpl(NamedParameterJdbcTemplate jdbcTemplate) {
+    public CampusTradeOrderServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi) {
         this.jdbcTemplate = jdbcTemplate;
+        this.fileApi = fileApi;
     }
 
     @Override
@@ -222,9 +225,11 @@ public class CampusTradeOrderServiceImpl implements CampusTradeOrderService {
         return "SELECT o.id, o.order_no, o.product_id, o.buyer_id, o.seller_id,"
                 + " b.nickname AS buyer_name, s.nickname AS seller_name, o.amount, o.status,"
                 + " o.expires_at, o.paid_at, o.completed_at, o.closed_at, o.close_reason,"
-                + " o.item_title_snapshot, o.item_cover_snapshot FROM campus_trade_order o"
+                + " o.item_title_snapshot, o.item_cover_snapshot, p.images_json AS post_images_json"
+                + " FROM campus_trade_order o"
                 + " LEFT JOIN campus_miniapp_user b ON b.id = o.buyer_id AND b.deleted = b'0'"
-                + " LEFT JOIN campus_miniapp_user s ON s.id = o.seller_id AND s.deleted = b'0'";
+                + " LEFT JOIN campus_miniapp_user s ON s.id = o.seller_id AND s.deleted = b'0'"
+                + " LEFT JOIN campus_post p ON p.id = o.product_id AND p.deleted = b'0'";
     }
 
     private CampusTradeOrderRespVO toResp(Map<String, Object> row) {
@@ -237,7 +242,11 @@ public class CampusTradeOrderServiceImpl implements CampusTradeOrderService {
         vo.setBuyerName(value(row, "buyer_name"));
         vo.setSellerName(value(row, "seller_name"));
         vo.setTitle(value(row, "item_title_snapshot"));
-        vo.setCoverImage(value(row, "item_cover_snapshot"));
+        String coverImage = value(row, "item_cover_snapshot");
+        if (StrUtil.isBlank(coverImage)) {
+            coverImage = firstImage(value(row, "post_images_json"));
+        }
+        vo.setCoverImage(refreshFileUrl(coverImage));
         vo.setAmount(decimal(row.get("amount")));
         int status = toInt(row.get("status"));
         vo.setStatus(status);
@@ -276,6 +285,17 @@ public class CampusTradeOrderServiceImpl implements CampusTradeOrderService {
         if (StrUtil.isBlank(imagesJson)) return "";
         List<String> images = JsonUtils.parseObjectQuietly(imagesJson, new TypeReference<List<String>>() { });
         return images == null || images.isEmpty() ? "" : StrUtil.blankToDefault(images.get(0), "");
+    }
+
+    private String refreshFileUrl(String url) {
+        if (StrUtil.isBlank(url)) {
+            return "";
+        }
+        try {
+            return fileApi.presignGetUrl(url, null);
+        } catch (RuntimeException ex) {
+            return url;
+        }
     }
 
     private String createOrderNo() {
