@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.util.servlet.ServletUtils;
 import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradeContactRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradePayRespVO;
+import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradePaymentStatusRespVO;
 import cn.iocoder.yudao.module.campus.service.trade.CampusTradePaymentService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -31,6 +32,18 @@ public class CampusAppTradePaymentController {
     public CommonResult<CampusTradePayRespVO> pay(@RequestParam("postId") Long postId,
                                                   HttpServletRequest request) {
         return success(paymentService.createPayment(postId, getLoginUserId(), ServletUtils.getClientIP(request)));
+    }
+
+    @PostMapping("/order/pay")
+    public CommonResult<CampusTradePayRespVO> payOrder(@RequestParam("orderId") Long orderId,
+                                                       HttpServletRequest request) {
+        return success(paymentService.createPaymentByOrder(orderId, getLoginUserId(),
+                ServletUtils.getClientIP(request)));
+    }
+
+    @GetMapping("/order/payment-status")
+    public CommonResult<CampusTradePaymentStatusRespVO> paymentStatus(@RequestParam("orderId") Long orderId) {
+        return success(paymentService.getPaymentStatus(orderId, getLoginUserId()));
     }
 
     @GetMapping("/contact")

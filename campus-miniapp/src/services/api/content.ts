@@ -84,6 +84,36 @@ export interface CampusTradeContact {
   contact?: string
 }
 
+export interface CampusTradeOrder {
+  id: number
+  orderNo: string
+  postId: number
+  buyerId: number
+  sellerId: number
+  buyerName?: string
+  sellerName?: string
+  title: string
+  coverImage?: string
+  amount: string | number
+  status: number
+  statusText: string
+  expiresAt?: string
+  paidAt?: string
+  completedAt?: string
+  closedAt?: string
+  closeReason?: string
+  expired?: boolean
+}
+
+export interface CampusTradePaymentStatus {
+  orderId: number
+  orderNo: string
+  status: number
+  paid: boolean
+  expiresAt?: string
+  paidAt?: string
+}
+
 const POST_BASE = '/campus/post';
 
 export function createCampusPost(params: CampusPostCreateParams) {
@@ -146,8 +176,27 @@ export function createCampusContactRequest(postId: number) {
   return request.Post<boolean>(`${POST_BASE}/contact-request`, {}, { params: { postId } });
 }
 
-export function createCampusTradePayment(postId: number) {
-  return request.Post<CampusTradePayParams>('/campus/trade/pay', {}, { params: { postId } });
+export function createCampusTradeOrder(postId: number) {
+  return request.Post<CampusTradeOrder>('/campus/trade/order/create', { postId });
+}
+
+export function getCampusTradeOrder(orderId: number) {
+  return request.Get<CampusTradeOrder>('/campus/trade/order/get', { params: { id: orderId }, cacheFor: 0 });
+}
+
+export function createCampusTradePayment(orderId: number) {
+  return request.Post<CampusTradePayParams>('/campus/trade/order/pay', {}, { params: { orderId } });
+}
+
+export function getCampusTradePaymentStatus(orderId: number) {
+  return request.Get<CampusTradePaymentStatus>('/campus/trade/order/payment-status', {
+    params: { orderId },
+    cacheFor: 0,
+  });
+}
+
+export function cancelCampusTradeOrder(orderId: number) {
+  return request.Post<boolean>('/campus/trade/order/cancel', {}, { params: { id: orderId } });
 }
 
 export function getCampusTradeContact(postId: number) {

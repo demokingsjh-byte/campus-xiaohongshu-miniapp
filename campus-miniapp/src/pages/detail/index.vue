@@ -55,6 +55,7 @@ const postAuthor = computed(() => {
   const author = post.value?.author;
   return typeof author === 'string' ? author.trim() : '';
 });
+const contactButtonText = computed(() => post.value?.type === 'idle' && Number(post.value?.price || 0) > 0 ? '立即购买' : '联系TA');
 const composerTitle = computed(() => replyAuthor.value ? `回复 ${replyAuthor.value}` : (postAuthor.value ? `评论 ${postAuthor.value}` : '评论内容'));
 const composerPlaceholder = computed(() => replyAuthor.value ? `回复 ${replyAuthor.value}…` : '写下你的评论…');
 const mentionCandidates = computed(() => {
@@ -541,7 +542,7 @@ function reportPost() {
             <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>{{ collected ? '已收藏' : '收藏' }}</text>
           </view>
           <button class="detail-contact" :disabled="contactSubmitting" @click="contact">
-            {{ contactSubmitting ? '提交中…' : '联系TA' }}
+            {{ contactSubmitting ? '提交中…' : contactButtonText }}
           </button>
         </view>
       </view>

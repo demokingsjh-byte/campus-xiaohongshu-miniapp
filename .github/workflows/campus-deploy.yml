@@ -91,6 +91,7 @@ jobs:
           cp campus-platform/sql/mysql/campus-school-data-upgrade.sql release/migrations/
           cp campus-platform/sql/mysql/campus-wechat-miniapp-config.sql release/migrations/
           cp campus-platform/sql/mysql/campus-wechat-pay-upgrade.sql release/migrations/
+          cp campus-platform/sql/mysql/campus-trade-order-upgrade.sql release/migrations/
 
       - name: Deploy over SSH
         shell: bash

@@ -4,9 +4,11 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradeContactRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradePayRespVO;
+import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradePaymentStatusRespVO;
 import cn.iocoder.yudao.module.campus.framework.payment.CampusWechatPayProperties;
 import com.github.binarywang.wxpay.bean.notify.SignatureHeader;
 import com.github.binarywang.wxpay.bean.notify.WxPayNotifyV3Result;
+import com.github.binarywang.wxpay.bean.result.WxPayOrderQueryV3Result;
 import com.github.binarywang.wxpay.bean.request.WxPayUnifiedOrderV3Request;
 import com.github.binarywang.wxpay.bean.result.WxPayUnifiedOrderV3Result;
 import com.github.binarywang.wxpay.bean.result.enums.TradeTypeEnum;
@@ -28,7 +30,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.sql.Timestamp;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
@@ -116,6 +120,85 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CampusTradePayRespVO createPaymentByOrder(Long orderId, Long buyerId, String userIp) {
+        requireEnabled();
+        Map<String, Object> order = findOrderForPayment(orderId, buyerId);
+        if (order == null) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "订单不存在或无权支付");
+        }
+        CampusTradePayRespVO response = baseResponse(order);
+        int status = intValue(order.get("status"));
+        if (status == STATUS_PAID) {
+            return response;
+        }
+        if (status != STATUS_WAITING) {
+            throw badRequest("当前订单状态不能支付");
+        }
+        LocalDateTime expiresAt = toLocalDateTime(order.get("expires_at"));
+        if (expiresAt != null && !expiresAt.isAfter(LocalDateTime.now())) {
+            jdbcTemplate.update("UPDATE campus_trade_order SET status = 3, closed_at = NOW(),"
+                            + " close_reason = 'TIMEOUT', updater = 'wechat-pay', update_time = NOW()"
+                            + " WHERE id = :id AND status = 0 AND deleted = b'0'",
+                    new MapSqlParameterSource("id", order.get("id")));
+            throw badRequest("订单已过期，请重新下单");
+        }
+
+        Map<String, Object> buyer = getUser(buyerId);
+        if (StrUtil.isBlank(stringValue(buyer.get("openid")))) {
+            throw badRequest("当前用户未完成微信登录，暂时无法支付");
+        }
+        try {
+            BigDecimal amount = decimalValue(order.get("amount"));
+            int totalFen = amount.movePointRight(2).setScale(0, RoundingMode.UNNECESSARY).intValueExact();
+            WxPayUnifiedOrderV3Request request = new WxPayUnifiedOrderV3Request()
+                    .setOutTradeNo(stringValue(order.get("order_no")))
+                    .setDescription(crop("校园二手-" + stringValue(order.get("item_title_snapshot")), 127))
+                    .setNotifyUrl(properties.getNotifyUrl())
+                    .setTimeExpire(formatWechatExpiry(expiresAt))
+                    .setAmount(new WxPayUnifiedOrderV3Request.Amount().setTotal(totalFen))
+                    .setPayer(new WxPayUnifiedOrderV3Request.Payer().setOpenid(stringValue(buyer.get("openid"))))
+                    .setSceneInfo(new WxPayUnifiedOrderV3Request.SceneInfo()
+                            .setPayerClientIp(StrUtil.blankToDefault(userIp, "127.0.0.1")));
+            WxPayUnifiedOrderV3Result.JsapiResult result = createClient().createOrderV3(TradeTypeEnum.JSAPI, request);
+            response.setTimeStamp(result.getTimeStamp());
+            response.setNonceStr(result.getNonceStr());
+            response.setPackageValue(result.getPackageValue());
+            response.setSignType(result.getSignType());
+            response.setPaySign(result.getPaySign());
+            return response;
+        } catch (Exception ex) {
+            throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(),
+                    "微信支付下单失败，请稍后重试");
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CampusTradePaymentStatusRespVO getPaymentStatus(Long orderId, Long buyerId) {
+        requireEnabled();
+        Map<String, Object> order = findOrderForPayment(orderId, buyerId);
+        if (order == null) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "订单不存在或无权查看");
+        }
+        if (intValue(order.get("status")) == STATUS_WAITING) {
+            syncOrderFromWechat(order);
+            order = findOrderForPayment(orderId, buyerId);
+            if (order == null) {
+                throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "订单不存在或无权查看");
+            }
+        }
+        CampusTradePaymentStatusRespVO response = new CampusTradePaymentStatusRespVO();
+        response.setOrderId(longValue(order.get("id")));
+        response.setOrderNo(stringValue(order.get("order_no")));
+        response.setStatus(intValue(order.get("status")));
+        response.setPaid(response.getStatus() == STATUS_PAID);
+        response.setExpiresAt(toLocalDateTime(order.get("expires_at")));
+        response.setPaidAt(toLocalDateTime(order.get("paid_at")));
+        return response;
+    }
+
+    @Override
     public CampusTradeContactRespVO getContact(Long postId, Long buyerId) {
         Map<String, Object> order = findOrder(postId, buyerId);
         CampusTradeContactRespVO response = new CampusTradeContactRespVO();
@@ -164,17 +247,18 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             }
             Map<String, Object> order = rows.get(0);
             if (intValue(order.get("status")) == STATUS_PAID) {
+                markOrderPaid(order, result.getTransactionId(), result.getAmount() == null
+                        ? null : result.getAmount().getTotal());
+                return;
+            }
+            if (intValue(order.get("status")) == STATUS_PAID) {
                 return;
             }
             int expectedFen = decimalValue(order.get("amount")).movePointRight(2).intValueExact();
             if (result.getAmount() == null || !Objects.equals(result.getAmount().getTotal(), expectedFen)) {
                 throw badRequest("支付金额不匹配");
             }
-            jdbcTemplate.update("UPDATE campus_trade_order SET status = 1, paid_at = NOW(),"
-                            + " wx_transaction_id = :transactionId, updater = 'wechat-pay', update_time = NOW()"
-                            + " WHERE id = :id AND status = 0 AND deleted = b'0'",
-                    new MapSqlParameterSource().addValue("id", order.get("id"))
-                            .addValue("transactionId", result.getTransactionId()));
+            markOrderPaid(order, result.getTransactionId(), result.getAmount().getTotal());
         } catch (WxPayException ex) {
             throw badRequest("微信支付回调验签失败");
         } catch (IOException ex) {
@@ -207,8 +291,9 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                 .addValue("tenantId", post.get("tenant_id")).addValue("operator", String.valueOf(buyerId));
         KeyHolder key = new GeneratedKeyHolder();
         jdbcTemplate.update("INSERT INTO campus_trade_order (order_no, buyer_id, seller_id, product_id, amount,"
-                        + " status, creator, updater, create_time, update_time, deleted, tenant_id) VALUES (:orderNo,"
-                        + " :buyerId, :sellerId, :postId, :amount, 0, :operator, :operator, NOW(), NOW(), b'0', :tenantId)",
+                        + " status, expires_at, creator, updater, create_time, update_time, deleted, tenant_id)"
+                        + " VALUES (:orderNo, :buyerId, :sellerId, :postId, :amount, 0,"
+                        + " DATE_ADD(NOW(), INTERVAL 15 MINUTE), :operator, :operator, NOW(), NOW(), b'0', :tenantId)",
                 params, key);
         return findOrder(post.get("id") instanceof Number ? ((Number) post.get("id")).longValue() : null, buyerId);
     }
@@ -220,6 +305,79 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                         + " AND deleted = b'0' ORDER BY id DESC LIMIT 1",
                 new MapSqlParameterSource().addValue("postId", postId).addValue("buyerId", buyerId));
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private Map<String, Object> findOrderForPayment(Long orderId, Long buyerId) {
+        if (orderId == null || buyerId == null) return null;
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT * FROM campus_trade_order"
+                        + " WHERE id = :orderId AND buyer_id = :buyerId AND deleted = b'0' LIMIT 1 FOR UPDATE",
+                new MapSqlParameterSource().addValue("orderId", orderId).addValue("buyerId", buyerId));
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private void syncOrderFromWechat(Map<String, Object> order) {
+        try {
+            WxPayOrderQueryV3Result result = createClient().queryOrderV3(
+                    stringValue(order.get("order_no")), properties.getMchId());
+            if (!Objects.equals(properties.getAppId(), result.getAppid())
+                    || !Objects.equals(properties.getMchId(), result.getMchid())) {
+                throw badRequest("微信支付查询商户信息不匹配");
+            }
+            if ("SUCCESS".equals(result.getTradeState())) {
+                markOrderPaid(order, result.getTransactionId(), result.getAmount() == null
+                        ? null : result.getAmount().getTotal());
+            } else if ("CLOSED".equals(result.getTradeState()) || "REVOKED".equals(result.getTradeState())) {
+                jdbcTemplate.update("UPDATE campus_trade_order SET status = 3, closed_at = NOW(),"
+                                + " close_reason = 'WECHAT_CLOSED', updater = 'wechat-query', update_time = NOW()"
+                                + " WHERE id = :id AND status = 0 AND deleted = b'0'",
+                        new MapSqlParameterSource("id", order.get("id")));
+            }
+        } catch (WxPayException | IOException ex) {
+            // A temporary WeChat query failure keeps the local order pending.
+        }
+    }
+
+    private void markOrderPaid(Map<String, Object> order, String transactionId, Integer actualTotalFen) {
+        if (StrUtil.isBlank(transactionId)) {
+            throw badRequest("微信支付交易号为空");
+        }
+        BigDecimal amount = decimalValue(order.get("amount"));
+        int expectedFen = amount.movePointRight(2).intValueExact();
+        if (actualTotalFen == null || !Objects.equals(actualTotalFen, expectedFen)) {
+            throw badRequest("支付金额不匹配");
+        }
+        List<Map<String, Object>> duplicateRows = jdbcTemplate.queryForList(
+                "SELECT id FROM campus_trade_order WHERE wx_transaction_id = :transactionId"
+                        + " AND id <> :id AND deleted = b'0' LIMIT 1",
+                new MapSqlParameterSource().addValue("transactionId", transactionId)
+                        .addValue("id", order.get("id")));
+        if (!duplicateRows.isEmpty()) {
+            throw badRequest("微信交易号已绑定其他订单");
+        }
+        int status = intValue(order.get("status"));
+        String existingTransactionId = stringValue(order.get("wx_transaction_id"));
+        if (status == STATUS_PAID) {
+            if (StrUtil.isNotBlank(existingTransactionId)
+                    && !Objects.equals(existingTransactionId, transactionId)) {
+                throw badRequest("订单已绑定其他微信交易");
+            }
+            if (StrUtil.isBlank(existingTransactionId)) {
+                jdbcTemplate.update("UPDATE campus_trade_order SET wx_transaction_id = :transactionId,"
+                                + " updater = 'wechat-pay', update_time = NOW() WHERE id = :id AND deleted = b'0'",
+                        new MapSqlParameterSource().addValue("id", order.get("id"))
+                                .addValue("transactionId", transactionId));
+            }
+            return;
+        }
+        if (status != STATUS_WAITING && status != 3) {
+            throw badRequest("订单状态不允许确认支付");
+        }
+        jdbcTemplate.update("UPDATE campus_trade_order SET status = 1, paid_at = COALESCE(paid_at, NOW()),"
+                        + " closed_at = NULL, close_reason = '', wx_transaction_id = :transactionId,"
+                        + " updater = 'wechat-pay', update_time = NOW(), version = version + 1"
+                        + " WHERE id = :id AND status IN (0, 3) AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("id", order.get("id"))
+                        .addValue("transactionId", transactionId));
     }
 
     private Map<String, Object> getPost(Long postId) {
@@ -276,5 +434,13 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
     private Long longValue(Object value) { return value instanceof Number ? ((Number) value).longValue() : Long.valueOf(String.valueOf(value)); }
     private int intValue(Object value) { return value instanceof Number ? ((Number) value).intValue() : Integer.parseInt(String.valueOf(value)); }
     private BigDecimal decimalValue(Object value) { return value == null ? null : new BigDecimal(String.valueOf(value)); }
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value instanceof Timestamp) return ((Timestamp) value).toLocalDateTime();
+        return value instanceof LocalDateTime ? (LocalDateTime) value : null;
+    }
+    private String formatWechatExpiry(LocalDateTime expiresAt) {
+        LocalDateTime target = expiresAt == null ? LocalDateTime.now().plusMinutes(15) : expiresAt;
+        return target.atOffset(ZoneOffset.ofHours(8)).format(WECHAT_RFC3339_SECONDS);
+    }
     private String crop(String value, int length) { return value.length() <= length ? value : value.substring(0, length); }
 }
