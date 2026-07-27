@@ -43,6 +43,8 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
 
     private static final int STATUS_WAITING = 0;
     private static final int STATUS_PAID = 1;
+    private static final DateTimeFormatter WECHAT_RFC3339_SECONDS =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final CampusWechatPayProperties properties;
@@ -95,7 +97,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                     .setDescription(crop("校园二手-" + stringValue(post.get("title")), 127))
                     .setNotifyUrl(properties.getNotifyUrl())
                     .setTimeExpire(OffsetDateTime.now(ZoneOffset.ofHours(8)).plusMinutes(30)
-                            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME))
+                            .format(WECHAT_RFC3339_SECONDS))
                     .setAmount(new WxPayUnifiedOrderV3Request.Amount().setTotal(totalFen))
                     .setPayer(new WxPayUnifiedOrderV3Request.Payer().setOpenid(stringValue(buyer.get("openid"))))
                     .setSceneInfo(new WxPayUnifiedOrderV3Request.SceneInfo()
