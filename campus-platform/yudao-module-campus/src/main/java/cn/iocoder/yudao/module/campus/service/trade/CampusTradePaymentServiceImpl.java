@@ -2,14 +2,19 @@ package cn.iocoder.yudao.module.campus.service.trade;
 
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
+import cn.iocoder.yudao.module.campus.controller.admin.trade.vo.CampusTradeRefundRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradeContactRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradePayRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradePaymentStatusRespVO;
 import cn.iocoder.yudao.module.campus.framework.payment.CampusWechatPayProperties;
 import com.github.binarywang.wxpay.bean.notify.SignatureHeader;
 import com.github.binarywang.wxpay.bean.notify.WxPayNotifyV3Result;
+import com.github.binarywang.wxpay.bean.notify.WxPayRefundNotifyV3Result;
 import com.github.binarywang.wxpay.bean.request.WxPayOrderQueryV3Request;
+import com.github.binarywang.wxpay.bean.request.WxPayRefundV3Request;
 import com.github.binarywang.wxpay.bean.result.WxPayOrderQueryV3Result;
+import com.github.binarywang.wxpay.bean.result.WxPayRefundQueryV3Result;
+import com.github.binarywang.wxpay.bean.result.WxPayRefundV3Result;
 import com.github.binarywang.wxpay.bean.request.WxPayUnifiedOrderV3Request;
 import com.github.binarywang.wxpay.bean.result.WxPayUnifiedOrderV3Result;
 import com.github.binarywang.wxpay.bean.result.enums.TradeTypeEnum;
@@ -52,6 +57,12 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
     private static final Logger log = LoggerFactory.getLogger(CampusTradePaymentServiceImpl.class);
     private static final int STATUS_WAITING = 0;
     private static final int STATUS_PAID = 1;
+    private static final int STATUS_COMPLETED = 2;
+    private static final int STATUS_REFUNDED = 4;
+    private static final int REFUND_NONE = 0;
+    private static final int REFUND_PROCESSING = 1;
+    private static final int REFUND_SUCCESS = 2;
+    private static final int REFUND_FAILED = 3;
     private enum ExistingWechatOrderState { NOT_FOUND, PAYING, PAID, CLOSED, UNKNOWN }
     private static final DateTimeFormatter WECHAT_RFC3339_SECONDS =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
@@ -315,6 +326,30 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         }
     }
 
+    /**
+     * Refund callbacks can be delayed as well. Query the same merchant refund
+     * number until WeChat reaches a terminal state.
+     */
+    @Scheduled(initialDelay = 45_000L, fixedDelay = 60_000L)
+    public void reconcileProcessingRefunds() {
+        List<Long> orderIds = jdbcTemplate.queryForList(
+                "SELECT id FROM campus_trade_order WHERE refund_status = 1"
+                        + " AND refund_no IS NOT NULL AND deleted = b'0'"
+                        + " AND refund_requested_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
+                        + " ORDER BY id DESC LIMIT 20",
+                new MapSqlParameterSource(), Long.class);
+        for (Long orderId : orderIds) {
+            try {
+                CampusTradeRefundRespVO result = syncRefund(orderId);
+                log.info("Campus refund reconciliation completed, orderId={}, refundNo={}, status={}",
+                        orderId, result.getRefundNo(), result.getRefundStatusText());
+            } catch (RuntimeException ex) {
+                log.warn("Campus refund reconciliation failed, orderId={}, message={}",
+                        orderId, ex.getMessage());
+            }
+        }
+    }
+
     @Override
     public CampusTradeContactRespVO getContact(Long postId, Long buyerId) {
         Map<String, Object> order = findOrder(postId, buyerId);
@@ -397,6 +432,274 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         } catch (IOException ex) {
             throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "微信支付配置读取失败");
         }
+    }
+
+    @Override
+    public CampusTradeRefundRespVO refundOrder(Long orderId, String reason, String operator) {
+        requireEnabled();
+        Map<String, Object> order = findAdminOrder(orderId);
+        int orderStatus = intValue(order.get("status"));
+        int refundStatus = intValue(order.get("refund_status"));
+        if (orderStatus == STATUS_REFUNDED || refundStatus == REFUND_SUCCESS) {
+            return refundResponse(order);
+        }
+        if (orderStatus != STATUS_PAID && orderStatus != STATUS_COMPLETED) {
+            throw badRequest("只有已付款或已完成订单可以退款");
+        }
+        if (refundStatus == REFUND_PROCESSING) {
+            return syncRefund(orderId);
+        }
+
+        String refundNo = stringValue(order.get("refund_no"));
+        if (StrUtil.isBlank(refundNo)) {
+            refundNo = crop("RF" + stringValue(order.get("order_no")), 64);
+        }
+        String safeReason = crop(StrUtil.blankToDefault(reason, "后台协商退款").trim(), 80);
+        String safeOperator = crop(StrUtil.blankToDefault(operator, "admin"), 64);
+        int claimed = jdbcTemplate.update("UPDATE campus_trade_order SET refund_no = :refundNo,"
+                        + " refund_status = :processing, refund_amount = amount, refund_reason = :reason,"
+                        + " refund_requested_at = COALESCE(refund_requested_at, NOW()), refund_error = NULL,"
+                        + " refund_operator = :operator, updater = :operator, update_time = NOW(), version = version + 1"
+                        + " WHERE id = :id AND status IN (1, 2) AND refund_status IN (0, 3) AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("id", orderId)
+                        .addValue("refundNo", refundNo)
+                        .addValue("processing", REFUND_PROCESSING)
+                        .addValue("reason", safeReason)
+                        .addValue("operator", safeOperator));
+        if (claimed == 0) {
+            Map<String, Object> current = findAdminOrder(orderId);
+            return intValue(current.get("refund_status")) == REFUND_PROCESSING
+                    ? syncRefund(orderId) : refundResponse(current);
+        }
+
+        order = findAdminOrder(orderId);
+        int amountFen = decimalValue(order.get("amount")).movePointRight(2)
+                .setScale(0, RoundingMode.UNNECESSARY).intValueExact();
+        WxPayRefundV3Request request = new WxPayRefundV3Request()
+                .setOutRefundNo(refundNo)
+                .setReason(safeReason)
+                .setNotifyUrl(refundNotifyUrl())
+                .setAmount(new WxPayRefundV3Request.Amount()
+                        .setRefund(amountFen).setTotal(amountFen).setCurrency("CNY"));
+        String transactionId = stringValue(order.get("wx_transaction_id"));
+        if (StrUtil.isNotBlank(transactionId)) {
+            request.setTransactionId(transactionId);
+        } else {
+            request.setOutTradeNo(stringValue(order.get("order_no")));
+        }
+        try {
+            log.info("Submitting WeChat refund, orderNo={}, refundNo={}, transactionId={}, amountFen={}, operator={}",
+                    order.get("order_no"), refundNo, transactionId, amountFen, safeOperator);
+            WxPayRefundV3Result result = createClient().refundV3(request);
+            applyRefundResult(order, result.getOutTradeNo(), result.getOutRefundNo(), result.getRefundId(),
+                    result.getStatus(), result.getSuccessTime(),
+                    result.getAmount() == null ? null : result.getAmount().getRefund(), false);
+            log.info("WeChat refund accepted, orderNo={}, refundNo={}, wxRefundId={}, status={}",
+                    order.get("order_no"), refundNo, result.getRefundId(), result.getStatus());
+            return refundResponse(findAdminOrder(orderId));
+        } catch (WxPayException | IOException ex) {
+            String error = summarizeWechatError(ex);
+            markRefundFailed(orderId, error);
+            log.error("WeChat refund submission failed, orderNo={}, refundNo={}, message={}",
+                    order.get("order_no"), refundNo, error, ex);
+            throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(),
+                    "微信退款申请失败：" + crop(error, 120));
+        }
+    }
+
+    @Override
+    public CampusTradeRefundRespVO syncRefund(Long orderId) {
+        requireEnabled();
+        Map<String, Object> order = findAdminOrder(orderId);
+        String refundNo = stringValue(order.get("refund_no"));
+        if (StrUtil.isBlank(refundNo)) {
+            return refundResponse(order);
+        }
+        if (intValue(order.get("refund_status")) == REFUND_SUCCESS
+                || intValue(order.get("status")) == STATUS_REFUNDED) {
+            return refundResponse(order);
+        }
+        try {
+            WxPayRefundQueryV3Result result = createClient().refundQueryV3(refundNo);
+            applyRefundResult(order, result.getOutTradeNo(), result.getOutRefundNo(), result.getRefundId(),
+                    result.getStatus(), result.getSuccessTime(),
+                    result.getAmount() == null ? null : result.getAmount().getRefund(), false);
+            log.info("WeChat refund query completed, orderNo={}, refundNo={}, status={}",
+                    order.get("order_no"), refundNo, result.getStatus());
+        } catch (WxPayException | IOException ex) {
+            String error = summarizeWechatError(ex);
+            jdbcTemplate.update("UPDATE campus_trade_order SET refund_error = :error,"
+                            + " updater = 'wechat-refund-query', update_time = NOW()"
+                            + " WHERE id = :id AND refund_status <> :success AND deleted = b'0'",
+                    new MapSqlParameterSource().addValue("id", orderId).addValue("error", error)
+                            .addValue("success", REFUND_SUCCESS));
+            log.error("WeChat refund query failed, orderNo={}, refundNo={}, message={}",
+                    order.get("order_no"), refundNo, error, ex);
+        }
+        return refundResponse(findAdminOrder(orderId));
+    }
+
+    @Override
+    public void handleWechatRefundNotify(String body, Map<String, String> headers) {
+        requireEnabled();
+        try {
+            SignatureHeader signature = SignatureHeader.builder()
+                    .signature(header(headers, "wechatpay-signature"))
+                    .nonce(header(headers, "wechatpay-nonce"))
+                    .serial(header(headers, "wechatpay-serial"))
+                    .timeStamp(header(headers, "wechatpay-timestamp"))
+                    .build();
+            WxPayRefundNotifyV3Result notify = createClient().parseRefundNotifyV3Result(body, signature);
+            WxPayRefundNotifyV3Result.DecryptNotifyResult result = notify.getResult();
+            if (result == null || StrUtil.isBlank(result.getOutRefundNo())) {
+                throw badRequest("退款回调内容为空");
+            }
+            log.info("WeChat refund notify decrypted, orderNo={}, refundNo={}, wxRefundId={}, status={}",
+                    result.getOutTradeNo(), result.getOutRefundNo(), result.getRefundId(),
+                    result.getRefundStatus());
+            if (!Objects.equals(properties.getMchId(), result.getMchid())) {
+                throw badRequest("退款回调商户信息不匹配");
+            }
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT * FROM campus_trade_order WHERE refund_no = :refundNo"
+                            + " AND deleted = b'0' LIMIT 1 FOR UPDATE",
+                    new MapSqlParameterSource("refundNo", result.getOutRefundNo()));
+            if (rows.isEmpty()) {
+                throw badRequest("退款订单不存在");
+            }
+            Map<String, Object> order = rows.get(0);
+            applyRefundResult(order, result.getOutTradeNo(), result.getOutRefundNo(), result.getRefundId(),
+                    result.getRefundStatus(), result.getSuccessTime(),
+                    result.getAmount() == null ? null : result.getAmount().getRefund(), true);
+        } catch (WxPayException ex) {
+            log.error("WeChat refund notify verify/decrypt failed, errCode={}, message={}",
+                    ex.getErrCode(), ex.getMessage(), ex);
+            throw badRequest("微信退款回调验签失败");
+        } catch (IOException ex) {
+            throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "微信支付配置读取失败");
+        }
+    }
+
+    private void applyRefundResult(Map<String, Object> order, String outTradeNo, String outRefundNo,
+                                   String wxRefundId, String wechatStatus, String successTime,
+                                   Integer refundFen, boolean fromNotify) {
+        String orderNo = stringValue(order.get("order_no"));
+        String refundNo = stringValue(order.get("refund_no"));
+        int expectedFen = decimalValue(order.get("amount")).movePointRight(2).intValueExact();
+        if (StrUtil.isNotBlank(outTradeNo) && !Objects.equals(orderNo, outTradeNo)) {
+            throw badRequest("微信退款对应的订单号不匹配");
+        }
+        if (!Objects.equals(refundNo, outRefundNo)) {
+            throw badRequest("微信退款单号不匹配");
+        }
+        if (refundFen == null || !Objects.equals(expectedFen, refundFen)) {
+            throw badRequest("微信退款金额不匹配");
+        }
+
+        int localRefundStatus = refundLocalStatus(wechatStatus);
+        boolean success = localRefundStatus == REFUND_SUCCESS;
+        String error = localRefundStatus == REFUND_FAILED
+                ? crop("WECHAT_REFUND_" + StrUtil.blankToDefault(wechatStatus, "UNKNOWN"), 255) : null;
+        jdbcTemplate.update("UPDATE campus_trade_order SET"
+                        + " status = CASE WHEN :success = 1 THEN :refundedStatus ELSE status END,"
+                        + " refund_status = :refundStatus, wx_refund_id = COALESCE(:wxRefundId, wx_refund_id),"
+                        + " refund_amount = amount, refunded_at = CASE WHEN :success = 1"
+                        + " THEN COALESCE(:refundedAt, NOW()) ELSE refunded_at END,"
+                        + " refund_error = :error,"
+                        + " refund_notify_at = CASE WHEN :fromNotify = 1 THEN NOW() ELSE refund_notify_at END,"
+                        + " updater = :updater, update_time = NOW(), version = version + 1"
+                        + " WHERE id = :id AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("id", order.get("id"))
+                        .addValue("success", success ? 1 : 0)
+                        .addValue("refundedStatus", STATUS_REFUNDED)
+                        .addValue("refundStatus", localRefundStatus)
+                        .addValue("wxRefundId", nullIfBlank(wxRefundId))
+                        .addValue("refundedAt", parseWechatTime(successTime))
+                        .addValue("error", error)
+                        .addValue("fromNotify", fromNotify ? 1 : 0)
+                        .addValue("updater", fromNotify ? "wechat-refund-notify" : "wechat-refund-query"));
+    }
+
+    private void markRefundFailed(Long orderId, String error) {
+        jdbcTemplate.update("UPDATE campus_trade_order SET refund_status = :failed, refund_error = :error,"
+                        + " updater = 'wechat-refund', update_time = NOW(), version = version + 1"
+                        + " WHERE id = :id AND refund_status = :processing AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("id", orderId).addValue("failed", REFUND_FAILED)
+                        .addValue("processing", REFUND_PROCESSING).addValue("error", crop(error, 255)));
+    }
+
+    private Map<String, Object> findAdminOrder(Long orderId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT * FROM campus_trade_order WHERE id = :id AND deleted = b'0' LIMIT 1",
+                new MapSqlParameterSource("id", orderId));
+        if (rows.isEmpty()) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "订单不存在");
+        }
+        return rows.get(0);
+    }
+
+    private CampusTradeRefundRespVO refundResponse(Map<String, Object> order) {
+        CampusTradeRefundRespVO response = new CampusTradeRefundRespVO();
+        response.setOrderId(longValue(order.get("id")));
+        response.setOrderNo(stringValue(order.get("order_no")));
+        response.setOrderStatus(intValue(order.get("status")));
+        response.setRefundNo(stringValue(order.get("refund_no")));
+        response.setWxRefundId(stringValue(order.get("wx_refund_id")));
+        int refundStatus = intValue(order.get("refund_status"));
+        response.setRefundStatus(refundStatus);
+        response.setRefundStatusText(refundStatusText(refundStatus));
+        response.setRefundAmount(decimalValue(order.get("refund_amount")));
+        response.setRefundReason(stringValue(order.get("refund_reason")));
+        response.setRefundError(stringValue(order.get("refund_error")));
+        response.setRefundedAt(toLocalDateTime(order.get("refunded_at")));
+        return response;
+    }
+
+    private int refundLocalStatus(String wechatStatus) {
+        if ("SUCCESS".equalsIgnoreCase(wechatStatus)) {
+            return REFUND_SUCCESS;
+        }
+        if ("CLOSED".equalsIgnoreCase(wechatStatus)
+                || "ABNORMAL".equalsIgnoreCase(wechatStatus)) {
+            return REFUND_FAILED;
+        }
+        return REFUND_PROCESSING;
+    }
+
+    private String refundStatusText(int status) {
+        switch (status) {
+            case REFUND_PROCESSING: return "退款处理中";
+            case REFUND_SUCCESS: return "退款成功";
+            case REFUND_FAILED: return "退款失败";
+            default: return "未退款";
+        }
+    }
+
+    private LocalDateTime parseWechatTime(String value) {
+        if (StrUtil.isBlank(value)) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(value).toLocalDateTime();
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private String refundNotifyUrl() {
+        if (StrUtil.isNotBlank(properties.getRefundNotifyUrl())) {
+            return properties.getRefundNotifyUrl().trim();
+        }
+        String paymentNotifyUrl = properties.getNotifyUrl();
+        if (StrUtil.isBlank(paymentNotifyUrl)) {
+            throw badRequest("微信支付退款回调地址未配置");
+        }
+        String suffix = "/wechat/notify";
+        if (paymentNotifyUrl.endsWith(suffix)) {
+            return paymentNotifyUrl.substring(0, paymentNotifyUrl.length() - suffix.length())
+                    + "/wechat/refund-notify";
+        }
+        return paymentNotifyUrl + "/refund";
     }
 
     private WxPayService createClient() throws IOException {

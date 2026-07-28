@@ -123,6 +123,7 @@ migrations=(
   campus-wechat-miniapp-config.sql
   campus-wechat-pay-upgrade.sql
   campus-trade-order-upgrade.sql
+  campus-trade-refund-upgrade.sql
 )
 
 for migration in "${migrations[@]}"; do

@@ -59,12 +59,7 @@ public class CampusAppTradePaymentController {
     @PermitAll
     @TenantIgnore
     public ResponseEntity<Map<String, String>> notify(@RequestBody String body, HttpServletRequest request) {
-        Map<String, String> headers = new LinkedHashMap<>();
-        Enumeration<String> names = request.getHeaderNames();
-        while (names != null && names.hasMoreElements()) {
-            String name = names.nextElement();
-            headers.put(name, request.getHeader(name));
-        }
+        Map<String, String> headers = readHeaders(request);
         String requestId = request.getHeader("Wechatpay-Request-Id");
         log.info("WeChat payment notify received, requestId={}, remoteIp={}, bodyLength={},"
                         + " signaturePresent={}, serialPresent={}, noncePresent={}, timestampPresent={}",
@@ -80,6 +75,36 @@ public class CampusAppTradePaymentController {
                     requestId, ServletUtils.getClientIP(request), ex);
             throw ex;
         }
+    }
+
+    @PostMapping("/wechat/refund-notify")
+    @PermitAll
+    @TenantIgnore
+    public ResponseEntity<Map<String, String>> refundNotify(@RequestBody String body,
+                                                            HttpServletRequest request) {
+        Map<String, String> headers = readHeaders(request);
+        String requestId = request.getHeader("Wechatpay-Request-Id");
+        log.info("WeChat refund notify received, requestId={}, remoteIp={}, bodyLength={}",
+                requestId, ServletUtils.getClientIP(request), body == null ? 0 : body.length());
+        try {
+            paymentService.handleWechatRefundNotify(body, headers);
+            log.info("WeChat refund notify processed successfully, requestId={}", requestId);
+            return ResponseEntity.ok(Collections.singletonMap("code", "SUCCESS"));
+        } catch (RuntimeException ex) {
+            log.error("WeChat refund notify processing failed, requestId={}, remoteIp={}",
+                    requestId, ServletUtils.getClientIP(request), ex);
+            throw ex;
+        }
+    }
+
+    private Map<String, String> readHeaders(HttpServletRequest request) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        Enumeration<String> names = request.getHeaderNames();
+        while (names != null && names.hasMoreElements()) {
+            String name = names.nextElement();
+            headers.put(name, request.getHeader(name));
+        }
+        return headers;
     }
 
     private boolean hasText(Map<String, String> headers, String name) {

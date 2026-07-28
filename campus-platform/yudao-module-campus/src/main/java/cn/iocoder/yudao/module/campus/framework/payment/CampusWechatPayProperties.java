@@ -19,4 +19,5 @@ public class CampusWechatPayProperties {
     private String publicKeyId;
     private String publicKeyPath;
     private String notifyUrl;
+    private String refundNotifyUrl;
 }
