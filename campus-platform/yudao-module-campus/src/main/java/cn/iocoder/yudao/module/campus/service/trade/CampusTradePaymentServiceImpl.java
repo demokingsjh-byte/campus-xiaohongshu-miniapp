@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradePayment
 import cn.iocoder.yudao.module.campus.framework.payment.CampusWechatPayProperties;
 import com.github.binarywang.wxpay.bean.notify.SignatureHeader;
 import com.github.binarywang.wxpay.bean.notify.WxPayNotifyV3Result;
+import com.github.binarywang.wxpay.bean.request.WxPayOrderQueryV3Request;
 import com.github.binarywang.wxpay.bean.result.WxPayOrderQueryV3Result;
 import com.github.binarywang.wxpay.bean.request.WxPayUnifiedOrderV3Request;
 import com.github.binarywang.wxpay.bean.result.WxPayUnifiedOrderV3Result;
@@ -196,7 +197,9 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             return ExistingWechatOrderState.NOT_FOUND;
         }
         try {
-            WxPayOrderQueryV3Result result = createClient().queryOrderV3(orderNo, properties.getMchId());
+            WxPayOrderQueryV3Result result = queryWechatOrderByOutTradeNo(orderNo);
+            log.info("WeChat payment state query before create completed, orderNo={}, tradeState={}, transactionId={}",
+                    orderNo, result.getTradeState(), result.getTransactionId());
             if ("SUCCESS".equals(result.getTradeState())) {
                 markOrderPaid(order, result.getTransactionId(), result.getAmount() == null
                         ? null : result.getAmount().getTotal());
@@ -448,8 +451,9 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
     private String syncOrderFromWechat(Map<String, Object> order) {
         String orderNo = stringValue(order.get("order_no"));
         try {
-            WxPayOrderQueryV3Result result = createClient().queryOrderV3(
-                    orderNo, properties.getMchId());
+            WxPayOrderQueryV3Result result = queryWechatOrderByOutTradeNo(orderNo);
+            log.info("WeChat payment state query completed, orderNo={}, tradeState={}, transactionId={}",
+                    orderNo, result.getTradeState(), result.getTransactionId());
             if (!Objects.equals(properties.getAppId(), result.getAppid())
                     || !Objects.equals(properties.getMchId(), result.getMchid())) {
                 throw badRequest("微信支付查询商户信息不匹配");
@@ -478,6 +482,22 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             log.error("WeChat payment state query failed, orderNo={}, message={}", orderNo, error, ex);
             return "QUERY_ERROR";
         }
+    }
+
+    /**
+     * Query by the merchant order number explicitly.
+     *
+     * <p>The SDK's two-String overload is {@code queryOrderV3(transactionId, outTradeNo)}.
+     * Passing {@code (orderNo, mchId)} makes the merchant id the out-trade-no and causes
+     * every real order to be reported as missing. Building the request explicitly avoids
+     * this easy-to-miss parameter-order ambiguity.</p>
+     */
+    private WxPayOrderQueryV3Result queryWechatOrderByOutTradeNo(String orderNo)
+            throws IOException, WxPayException {
+        WxPayOrderQueryV3Request request = new WxPayOrderQueryV3Request()
+                .setOutTradeNo(orderNo)
+                .setMchid(properties.getMchId());
+        return createClient().queryOrderV3(request);
     }
 
     private void auditWechatQuery(Map<String, Object> order, String state, String error) {

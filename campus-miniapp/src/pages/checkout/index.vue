@@ -26,6 +26,8 @@ const userStore = useUserStore();
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
 let paymentPollingTimer: ReturnType<typeof setInterval> | null = null;
 let paymentPollingBusy = false;
+let paymentSubmittedAt = 0;
+const PAYMENT_CONFIRMATION_GRACE_MS = 30_000;
 
 const isPaid = computed(() => order.value?.status === 1);
 const isWaitingPayment = computed(() => order.value?.status === 0 && remainingSeconds.value > 0);
@@ -44,7 +46,7 @@ onLoad(async (query) => {
 });
 
 onShow(() => {
-  if (order.value?.status === 0)
+  if (paymentPending.value && order.value?.status === 0)
     startPaymentPolling();
 });
 
@@ -77,12 +79,14 @@ async function loadCheckout() {
     if (order.value.status === 1) {
       await loadContact();
     } else if (order.value.status === 0) {
-      // A previous payment may have succeeded after the user left this page.
-      // Reconcile it immediately when the checkout page is opened again.
-      paymentPending.value = true;
-      const paid = await syncPaymentStatus(2);
-      if (!paid && order.value?.status === 0)
-        startPaymentPolling();
+      // Reconcile once when reopening the page. If WeChat still says NOTPAY,
+      // keep the payment button available; the backend rechecks the existing
+      // WeChat order before creating another prepay order.
+      const result = await getCampusTradePaymentStatus(order.value.id);
+      if (result.paid)
+        await applyPaidOrder(result.paidAt);
+      else if (result.status === 3)
+        order.value = await getCampusTradeOrder(order.value.id);
     }
   } catch (error: any) {
     loadError.value = true;
@@ -138,8 +142,9 @@ function startPaymentPolling() {
       if (result.paid) {
         await applyPaidOrder(result.paidAt);
         stopPaymentPolling();
-      } else if (result.status === 3 || result.retryable) {
+      } else if (result.status === 3 || (result.retryable && !shouldKeepConfirming(result))) {
         paymentPending.value = false;
+        paymentSubmittedAt = 0;
         stopPaymentPolling();
       }
     } catch {
@@ -150,6 +155,12 @@ function startPaymentPolling() {
   };
   void poll();
   paymentPollingTimer = setInterval(() => void poll(), 2000);
+}
+
+function shouldKeepConfirming(result: Awaited<ReturnType<typeof getCampusTradePaymentStatus>>) {
+  return result.wechatTradeState === 'NOTPAY'
+    && paymentSubmittedAt > 0
+    && Date.now() - paymentSubmittedAt < PAYMENT_CONFIRMATION_GRACE_MS;
 }
 
 function updateCountdown() {
@@ -195,11 +206,13 @@ async function syncPaymentStatus(maxAttempts = 5) {
       if (result.status === 3) {
         order.value = await getCampusTradeOrder(order.value.id);
         paymentPending.value = false;
+        paymentSubmittedAt = 0;
         stopPaymentPolling();
         return false;
       }
-      if (result.retryable) {
+      if (result.retryable && !shouldKeepConfirming(result)) {
         paymentPending.value = false;
+        paymentSubmittedAt = 0;
         stopPaymentPolling();
         return false;
       }
@@ -233,6 +246,7 @@ async function applyPaidOrder(paidAt?: string) {
   }
   paymentPending.value = false;
   paymentTimedOut.value = false;
+  paymentSubmittedAt = 0;
   stopPaymentPolling();
   try {
     await loadContact();
@@ -249,13 +263,23 @@ async function pay() {
   if (!order.value || !isWaitingPayment.value || paymentPending.value || busy.value)
     return;
   busy.value = true;
+  let paymentWasInvoked = false;
   try {
     paymentTimedOut.value = false;
     const params = await createCampusTradePayment(order.value.id);
-    startPaymentPolling();
-    if (params.status !== 1 && params.packageValue)
+    if (params.status === 1) {
+      await applyPaidOrder();
+      uni.showToast({ title: '支付成功', icon: 'success' });
+      return;
+    }
+    if (!params.packageValue)
+      throw new Error('后端未返回微信支付参数');
+    paymentWasInvoked = true;
+    if (params.packageValue)
       await requestWechatPayment(params);
+    paymentSubmittedAt = Date.now();
     paymentPending.value = true;
+    startPaymentPolling();
     const paid = await syncPaymentStatus();
     if (!paid) {
       uni.showToast({
@@ -268,10 +292,14 @@ async function pay() {
   } catch (error: any) {
     const message = String(error?.errMsg || error?.message || '').toLowerCase();
     if (message.includes('cancel')) {
+      paymentSubmittedAt = 0;
+      paymentPending.value = false;
+      stopPaymentPolling();
       uni.showToast({ title: '已取消支付', icon: 'none' });
-    } else {
+    } else if (paymentWasInvoked) {
       // requestPayment may fail after WeChat has accepted the payment. Always
       // query the server once more before deciding that the payment failed.
+      paymentSubmittedAt = Date.now();
       paymentPending.value = true;
       startPaymentPolling();
       const paid = await syncPaymentStatus(4);
@@ -283,6 +311,9 @@ async function pay() {
         const detail = String(error?.errMsg || error?.message || '微信支付调用失败，请稍后刷新支付状态').slice(0, 120);
         uni.showModal({ title: '微信支付调用失败', content: detail, showCancel: false });
       }
+    } else {
+      const detail = String(error?.errMsg || error?.message || '发起微信支付失败，请稍后重试').slice(0, 120);
+      uni.showModal({ title: '发起支付失败', content: detail, showCancel: false });
     }
   } finally {
     busy.value = false;
@@ -317,6 +348,7 @@ async function recreateOrder() {
     order.value = await createCampusTradeOrder(postId.value);
     paymentPending.value = false;
     paymentTimedOut.value = false;
+    paymentSubmittedAt = 0;
     startCountdown();
     uni.showToast({ title: '已重新生成订单', icon: 'success' });
   } catch {
@@ -357,6 +389,7 @@ async function cancelCurrentOrder() {
     }
     paymentPending.value = false;
     paymentTimedOut.value = false;
+    paymentSubmittedAt = 0;
     stopCountdown();
     stopPaymentPolling();
     uni.showToast({ title: '订单已取消', icon: 'success' });
