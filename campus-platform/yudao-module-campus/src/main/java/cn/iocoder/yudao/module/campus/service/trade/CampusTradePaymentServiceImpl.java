@@ -240,7 +240,10 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "订单不存在或无权查看");
         }
         String wechatTradeState = null;
-        if (intValue(order.get("status")) == STATUS_WAITING) {
+        // Also reconcile locally closed orders. WeChat may confirm a payment
+        // after the local timeout/cancel action, and a verified SUCCESS must
+        // still be allowed to recover the order to PAID.
+        if (intValue(order.get("status")) == STATUS_WAITING || intValue(order.get("status")) == 3) {
             wechatTradeState = syncOrderFromWechat(order);
             order = findOrderForPayment(orderId, buyerId);
             if (order == null) {
