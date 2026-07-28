@@ -23,6 +23,8 @@ const remainingSeconds = ref(0);
 const loadError = ref(false);
 const userStore = useUserStore();
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
+let paymentPollingTimer: ReturnType<typeof setInterval> | null = null;
+let paymentPollingBusy = false;
 
 const isPaid = computed(() => order.value?.status === 1);
 const isWaitingPayment = computed(() => order.value?.status === 0 && remainingSeconds.value > 0);
@@ -40,7 +42,15 @@ onLoad(async (query) => {
   await loadCheckout();
 });
 
-onUnload(() => stopCountdown());
+onShow(() => {
+  if (order.value?.status === 0)
+    startPaymentPolling();
+});
+
+onUnload(() => {
+  stopCountdown();
+  stopPaymentPolling();
+});
 
 async function loadCheckout() {
   if (!postId.value) {
@@ -63,8 +73,15 @@ async function loadCheckout() {
     post.value = await getCampusPost(postId.value);
     order.value = await createCampusTradeOrder(postId.value);
     startCountdown();
-    if (order.value.status === 1)
+    if (order.value.status === 1) {
       await loadContact();
+    } else if (order.value.status === 0) {
+      // A previous payment may have succeeded after the user left this page.
+      // Reconcile it immediately when the checkout page is opened again.
+      const paid = await syncPaymentStatus(2);
+      if (!paid && order.value?.status === 0)
+        startPaymentPolling();
+    }
   } catch (error: any) {
     loadError.value = true;
     const message = getReadableError(error);
@@ -91,6 +108,46 @@ function stopCountdown() {
     clearInterval(countdownTimer);
     countdownTimer = null;
   }
+}
+
+function stopPaymentPolling() {
+  if (paymentPollingTimer) {
+    clearInterval(paymentPollingTimer);
+    paymentPollingTimer = null;
+  }
+  paymentPollingBusy = false;
+}
+
+function startPaymentPolling() {
+  if (paymentPollingTimer || !order.value || order.value.status !== 0)
+    return;
+  let attempts = 0;
+  const poll = async () => {
+    if (!order.value || order.value.status !== 0 || attempts >= 30) {
+      stopPaymentPolling();
+      return;
+    }
+    if (paymentPollingBusy)
+      return;
+    paymentPollingBusy = true;
+    attempts += 1;
+    try {
+      const result = await getCampusTradePaymentStatus(order.value.id);
+      if (result.paid) {
+        await applyPaidOrder(result.paidAt);
+        stopPaymentPolling();
+      } else if (result.status === 3 || result.retryable) {
+        paymentPending.value = false;
+        stopPaymentPolling();
+      }
+    } catch {
+      // Keep polling briefly: the WeChat callback/query can arrive later.
+    } finally {
+      paymentPollingBusy = false;
+    }
+  };
+  void poll();
+  paymentPollingTimer = setInterval(() => void poll(), 2000);
 }
 
 function updateCountdown() {
@@ -136,10 +193,12 @@ async function syncPaymentStatus(maxAttempts = 5) {
       if (result.status === 3) {
         order.value = await getCampusTradeOrder(order.value.id);
         paymentPending.value = false;
+        stopPaymentPolling();
         return false;
       }
       if (result.retryable) {
         paymentPending.value = false;
+        stopPaymentPolling();
         return false;
       }
     } catch {
@@ -171,6 +230,7 @@ async function applyPaidOrder(paidAt?: string) {
   }
   paymentPending.value = false;
   paymentTimedOut.value = false;
+  stopPaymentPolling();
   try {
     await loadContact();
   } catch {
@@ -189,6 +249,7 @@ async function pay() {
   try {
     paymentTimedOut.value = false;
     const params = await createCampusTradePayment(order.value.id);
+    startPaymentPolling();
     if (params.status !== 1 && params.packageValue)
       await requestWechatPayment(params);
     paymentPending.value = true;
@@ -209,6 +270,7 @@ async function pay() {
       // requestPayment may fail after WeChat has accepted the payment. Always
       // query the server once more before deciding that the payment failed.
       paymentPending.value = true;
+      startPaymentPolling();
       const paid = await syncPaymentStatus(4);
       if (paid) {
         uni.showToast({ title: '支付成功', icon: 'success' });
@@ -248,6 +310,7 @@ async function recreateOrder() {
     return;
   busy.value = true;
   try {
+    stopPaymentPolling();
     order.value = await createCampusTradeOrder(postId.value);
     paymentPending.value = false;
     paymentTimedOut.value = false;
@@ -280,6 +343,7 @@ async function cancelCurrentOrder() {
     paymentPending.value = false;
     paymentTimedOut.value = false;
     stopCountdown();
+    stopPaymentPolling();
     uni.showToast({ title: '订单已取消', icon: 'success' });
   } catch {
     uni.showToast({ title: '取消订单失败，请稍后重试', icon: 'none' });
