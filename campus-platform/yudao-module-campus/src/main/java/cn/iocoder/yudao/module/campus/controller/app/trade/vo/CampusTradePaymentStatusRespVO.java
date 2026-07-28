@@ -12,6 +12,8 @@ public class CampusTradePaymentStatusRespVO {
     private boolean paid;
     private boolean retryable;
     private String wechatTradeState;
+    private String wechatQueryError;
+    private LocalDateTime wechatQueriedAt;
     private LocalDateTime expiresAt;
     private LocalDateTime paidAt;
 }

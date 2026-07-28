@@ -6,6 +6,33 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campus_trade_order'
+      AND COLUMN_NAME = 'wechat_trade_state'
+  ) THEN
+    ALTER TABLE `campus_trade_order`
+      ADD COLUMN `wechat_trade_state` varchar(32) DEFAULT NULL COMMENT 'WeChat last trade state' AFTER `paid_at`;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campus_trade_order'
+      AND COLUMN_NAME = 'wechat_query_at'
+  ) THEN
+    ALTER TABLE `campus_trade_order`
+      ADD COLUMN `wechat_query_at` datetime DEFAULT NULL COMMENT 'WeChat query time' AFTER `wechat_trade_state`;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campus_trade_order'
+      AND COLUMN_NAME = 'wechat_query_error'
+  ) THEN
+    ALTER TABLE `campus_trade_order`
+      ADD COLUMN `wechat_query_error` varchar(255) DEFAULT NULL COMMENT 'WeChat query error' AFTER `wechat_query_at`;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campus_trade_order'
       AND COLUMN_NAME = 'expires_at'
   ) THEN
     ALTER TABLE `campus_trade_order`

@@ -112,6 +112,8 @@ export interface CampusTradePaymentStatus {
   paid: boolean
   retryable?: boolean
   wechatTradeState?: string
+  wechatQueryError?: string
+  wechatQueriedAt?: string
   expiresAt?: string
   paidAt?: string
 }

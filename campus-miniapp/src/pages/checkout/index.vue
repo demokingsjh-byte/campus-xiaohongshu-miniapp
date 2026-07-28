@@ -6,6 +6,7 @@ import {
   createCampusTradePayment,
   cancelCampusTradeOrder,
   getCampusPost,
+  getCampusTradeOrder,
   getCampusTradeContact,
   getCampusTradePaymentStatus,
 } from '@/services/api/content';
@@ -78,6 +79,7 @@ async function loadCheckout() {
     } else if (order.value.status === 0) {
       // A previous payment may have succeeded after the user left this page.
       // Reconcile it immediately when the checkout page is opened again.
+      paymentPending.value = true;
       const paid = await syncPaymentStatus(2);
       if (!paid && order.value?.status === 0)
         startPaymentPolling();
@@ -123,7 +125,7 @@ function startPaymentPolling() {
     return;
   let attempts = 0;
   const poll = async () => {
-    if (!order.value || order.value.status !== 0 || attempts >= 30) {
+    if (!order.value || order.value.status !== 0 || attempts >= 90) {
       stopPaymentPolling();
       return;
     }
@@ -209,9 +211,10 @@ async function syncPaymentStatus(maxAttempts = 5) {
       await new Promise(resolve => setTimeout(resolve, 800));
   }
   paymentTimedOut.value = true;
-  // A timed-out status query must not permanently lock the order.
-  // The backend reconciles the existing WeChat order before retrying.
-  paymentPending.value = false;
+  // A delayed callback/query is not a payment failure. Keep the order locked
+  // in confirmation mode and continue the background reconciliation.
+  paymentPending.value = true;
+  startPaymentPolling();
   return false;
 }
 

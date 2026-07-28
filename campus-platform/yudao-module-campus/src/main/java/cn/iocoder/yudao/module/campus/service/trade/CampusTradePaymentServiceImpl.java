@@ -51,7 +51,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
     private static final Logger log = LoggerFactory.getLogger(CampusTradePaymentServiceImpl.class);
     private static final int STATUS_WAITING = 0;
     private static final int STATUS_PAID = 1;
-    private enum ExistingWechatOrderState { NOT_FOUND, PAYING, PAID, CLOSED }
+    private enum ExistingWechatOrderState { NOT_FOUND, PAYING, PAID, CLOSED, UNKNOWN }
     private static final DateTimeFormatter WECHAT_RFC3339_SECONDS =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
@@ -118,7 +118,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             response.setSignType(result.getSignType());
             response.setPaySign(result.getPaySign());
             return response;
-        } catch (Exception ex) {
+        } catch (WxPayException | IOException ex) {
             throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(),
                     "微信支付下单失败，请稍后重试");
         }
@@ -162,6 +162,9 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                 // Do not submit the same out_trade_no again while WeChat is processing it.
                 return baseResponse(order);
             }
+            if (existingState == ExistingWechatOrderState.UNKNOWN) {
+                throw badRequest("WeChat payment status is temporarily unavailable; refresh the order and try again");
+            }
             BigDecimal amount = decimalValue(order.get("amount"));
             int totalFen = amount.movePointRight(2).setScale(0, RoundingMode.UNNECESSARY).intValueExact();
             WxPayUnifiedOrderV3Request request = new WxPayUnifiedOrderV3Request()
@@ -180,7 +183,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             response.setSignType(result.getSignType());
             response.setPaySign(result.getPaySign());
             return response;
-        } catch (Exception ex) {
+        } catch (WxPayException | IOException ex) {
             throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(),
                     "微信支付下单失败，请稍后重试");
         }
@@ -211,7 +214,14 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             if (isWechatOrderNotFound(ex)) {
                 return ExistingWechatOrderState.NOT_FOUND;
             }
-            throw ex;
+            log.error("WeChat payment state query failed before create, orderNo={}, errCode={}, message={}",
+                    orderNo, ex.getErrCode(), ex.getMessage(), ex);
+            auditWechatQuery(order, "QUERY_ERROR", summarizeWechatError(ex));
+            return ExistingWechatOrderState.UNKNOWN;
+        } catch (IOException ex) {
+            log.error("WeChat payment client configuration failed before create, orderNo={}", orderNo, ex);
+            auditWechatQuery(order, "QUERY_ERROR", summarizeWechatError(ex));
+            return ExistingWechatOrderState.UNKNOWN;
         }
     }
 
@@ -244,12 +254,16 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "订单不存在或无权查看");
         }
         String wechatTradeState = null;
+        String wechatQueryError = stringValue(order.get("wechat_query_error"));
+        LocalDateTime wechatQueriedAt = toLocalDateTime(order.get("wechat_query_at"));
         // Also reconcile locally closed orders. WeChat may confirm a payment
         // after the local timeout/cancel action, and a verified SUCCESS must
         // still be allowed to recover the order to PAID.
         if (intValue(order.get("status")) == STATUS_WAITING || intValue(order.get("status")) == 3) {
             wechatTradeState = syncOrderFromWechat(order);
             order = findOrderForPayment(orderId, buyerId);
+            wechatQueryError = order == null ? "" : stringValue(order.get("wechat_query_error"));
+            wechatQueriedAt = order == null ? null : toLocalDateTime(order.get("wechat_query_at"));
             if (order == null) {
                 throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "订单不存在或无权查看");
             }
@@ -260,6 +274,8 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         response.setStatus(intValue(order.get("status")));
         response.setPaid(response.getStatus() == STATUS_PAID);
         response.setWechatTradeState(wechatTradeState);
+        response.setWechatQueryError(nullIfBlank(wechatQueryError));
+        response.setWechatQueriedAt(wechatQueriedAt);
         response.setRetryable("NOTPAY".equals(wechatTradeState)
                 || "CLOSED".equals(wechatTradeState)
                 || "REVOKED".equals(wechatTradeState)
@@ -348,9 +364,6 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                         ? null : result.getAmount().getTotal());
                 return;
             }
-            if (intValue(order.get("status")) == STATUS_PAID) {
-                return;
-            }
             int expectedFen = decimalValue(order.get("amount")).movePointRight(2).intValueExact();
             if (result.getAmount() == null || !Objects.equals(result.getAmount().getTotal(), expectedFen)) {
                 throw badRequest("支付金额不匹配");
@@ -413,9 +426,10 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
     }
 
     private String syncOrderFromWechat(Map<String, Object> order) {
+        String orderNo = stringValue(order.get("order_no"));
         try {
             WxPayOrderQueryV3Result result = createClient().queryOrderV3(
-                    stringValue(order.get("order_no")), properties.getMchId());
+                    orderNo, properties.getMchId());
             if (!Objects.equals(properties.getAppId(), result.getAppid())
                     || !Objects.equals(properties.getMchId(), result.getMchid())) {
                 throw badRequest("微信支付查询商户信息不匹配");
@@ -423,20 +437,57 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             if ("SUCCESS".equals(result.getTradeState())) {
                 markOrderPaid(order, result.getTransactionId(), result.getAmount() == null
                         ? null : result.getAmount().getTotal());
+                auditWechatQuery(order, "SUCCESS", null);
             } else if ("CLOSED".equals(result.getTradeState()) || "REVOKED".equals(result.getTradeState())) {
+                auditWechatQuery(order, result.getTradeState(), null);
                 jdbcTemplate.update("UPDATE campus_trade_order SET status = 3, closed_at = NOW(),"
                                 + " close_reason = 'WECHAT_CLOSED', updater = 'wechat-query', update_time = NOW()"
                                 + " WHERE id = :id AND status = 0 AND deleted = b'0'",
                         new MapSqlParameterSource("id", order.get("id")));
+            } else {
+                auditWechatQuery(order, result.getTradeState(), null);
             }
             return result.getTradeState();
         } catch (WxPayException | IOException ex) {
-            // A temporary WeChat query failure keeps the local order pending.
             if (ex instanceof WxPayException && isWechatOrderNotFound((WxPayException) ex)) {
+                auditWechatQuery(order, "NOTPAY", null);
                 return "NOTPAY";
             }
-            return null;
+            String error = summarizeWechatError(ex);
+            auditWechatQuery(order, "QUERY_ERROR", error);
+            log.error("WeChat payment state query failed, orderNo={}, message={}", orderNo, error, ex);
+            return "QUERY_ERROR";
         }
+    }
+
+    private void auditWechatQuery(Map<String, Object> order, String state, String error) {
+        try {
+            jdbcTemplate.update("UPDATE campus_trade_order SET wechat_trade_state = :state,"
+                            + " wechat_query_at = NOW(), wechat_query_error = :error,"
+                            + " updater = 'wechat-query', update_time = NOW()"
+                            + " WHERE id = :id AND deleted = b'0'",
+                    new MapSqlParameterSource().addValue("id", order.get("id"))
+                            .addValue("state", nullIfBlank(state))
+                            .addValue("error", nullIfBlank(error)));
+        } catch (RuntimeException auditError) {
+            log.warn("Unable to persist WeChat query audit, orderNo={}: {}", order.get("order_no"),
+                    auditError.getMessage());
+        }
+    }
+
+    private String summarizeWechatError(Exception ex) {
+        String message = ex instanceof WxPayException
+                ? ((WxPayException) ex).getErrCode() + ":" + ex.getMessage()
+                : ex.getClass().getSimpleName() + ":" + ex.getMessage();
+        if (message == null) {
+            return "UNKNOWN";
+        }
+        message = message.replaceAll("[\\r\\n]+", " ");
+        return message.substring(0, Math.min(message.length(), 255));
+    }
+
+    private String nullIfBlank(String value) {
+        return StrUtil.isBlank(value) ? null : value;
     }
 
     private void markOrderPaid(Map<String, Object> order, String transactionId, Integer actualTotalFen) {
