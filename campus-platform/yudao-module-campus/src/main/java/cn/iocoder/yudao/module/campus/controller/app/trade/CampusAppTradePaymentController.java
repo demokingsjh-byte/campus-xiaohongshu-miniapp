@@ -7,6 +7,8 @@ import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradeContact
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradePayRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradePaymentStatusRespVO;
 import cn.iocoder.yudao.module.campus.service.trade.CampusTradePaymentService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +26,8 @@ import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUti
 @RestController
 @RequestMapping("/campus/trade")
 public class CampusAppTradePaymentController {
+
+    private static final Logger log = LoggerFactory.getLogger(CampusAppTradePaymentController.class);
 
     @Resource
     private CampusTradePaymentService paymentService;
@@ -61,7 +65,29 @@ public class CampusAppTradePaymentController {
             String name = names.nextElement();
             headers.put(name, request.getHeader(name));
         }
-        paymentService.handleWechatNotify(body, headers);
-        return ResponseEntity.ok(Collections.singletonMap("code", "SUCCESS"));
+        String requestId = request.getHeader("Wechatpay-Request-Id");
+        log.info("WeChat payment notify received, requestId={}, remoteIp={}, bodyLength={},"
+                        + " signaturePresent={}, serialPresent={}, noncePresent={}, timestampPresent={}",
+                requestId, ServletUtils.getClientIP(request), body == null ? 0 : body.length(),
+                hasText(headers, "Wechatpay-Signature"), hasText(headers, "Wechatpay-Serial"),
+                hasText(headers, "Wechatpay-Nonce"), hasText(headers, "Wechatpay-Timestamp"));
+        try {
+            paymentService.handleWechatNotify(body, headers);
+            log.info("WeChat payment notify processed successfully, requestId={}", requestId);
+            return ResponseEntity.ok(Collections.singletonMap("code", "SUCCESS"));
+        } catch (RuntimeException ex) {
+            log.error("WeChat payment notify processing failed, requestId={}, remoteIp={}",
+                    requestId, ServletUtils.getClientIP(request), ex);
+            throw ex;
+        }
+    }
+
+    private boolean hasText(Map<String, String> headers, String name) {
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            if (entry.getKey().equalsIgnoreCase(name)) {
+                return entry.getValue() != null && !entry.getValue().trim().isEmpty();
+            }
+        }
+        return false;
     }
 }

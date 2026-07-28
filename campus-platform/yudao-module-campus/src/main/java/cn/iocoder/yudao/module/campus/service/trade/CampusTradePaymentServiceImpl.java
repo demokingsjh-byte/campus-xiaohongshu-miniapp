@@ -219,6 +219,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             auditWechatQuery(order, "QUERY_ERROR", summarizeWechatError(ex));
             return ExistingWechatOrderState.UNKNOWN;
         } catch (IOException ex) {
+            log.error("WeChat payment notify client configuration failed", ex);
             log.error("WeChat payment client configuration failed before create, orderNo={}", orderNo, ex);
             auditWechatQuery(order, "QUERY_ERROR", summarizeWechatError(ex));
             return ExistingWechatOrderState.UNKNOWN;
@@ -345,7 +346,15 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                     .build();
             WxPayNotifyV3Result notify = createClient().parseOrderNotifyV3Result(body, signature);
             WxPayNotifyV3Result.DecryptNotifyResult result = notify.getResult();
-            if (!"SUCCESS".equals(result.getTradeState())) {
+            String orderNo = result == null ? null : result.getOutTradeNo();
+            String transactionId = result == null ? null : result.getTransactionId();
+            String tradeState = result == null ? null : result.getTradeState();
+            log.info("WeChat payment notify decrypted, orderNo={}, transactionId={}, tradeState={}, appId={}, mchId={}",
+                    orderNo, transactionId, tradeState,
+                    result == null ? null : result.getAppid(), result == null ? null : result.getMchid());
+            if (!"SUCCESS".equals(tradeState)) {
+                log.warn("WeChat payment notify is not successful, orderNo={}, transactionId={}, tradeState={}",
+                        orderNo, transactionId, tradeState);
                 return;
             }
             if (!Objects.equals(properties.getAppId(), result.getAppid())
@@ -356,20 +365,31 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                     "SELECT * FROM campus_trade_order WHERE order_no = :orderNo AND deleted = b'0' LIMIT 1 FOR UPDATE",
                     new MapSqlParameterSource("orderNo", result.getOutTradeNo()));
             if (rows.isEmpty()) {
+                log.error("WeChat payment notify order not found, orderNo={}, transactionId={}",
+                        orderNo, transactionId);
                 throw badRequest("支付订单不存在");
             }
             Map<String, Object> order = rows.get(0);
             if (intValue(order.get("status")) == STATUS_PAID) {
                 markOrderPaid(order, result.getTransactionId(), result.getAmount() == null
                         ? null : result.getAmount().getTotal());
+                log.info("WeChat payment notify was already processed, orderNo={}, transactionId={}",
+                        orderNo, transactionId);
                 return;
             }
             int expectedFen = decimalValue(order.get("amount")).movePointRight(2).intValueExact();
             if (result.getAmount() == null || !Objects.equals(result.getAmount().getTotal(), expectedFen)) {
+                log.error("WeChat payment notify amount mismatch, orderNo={}, transactionId={}, expectedFen={}, actualFen={}",
+                        orderNo, transactionId, expectedFen,
+                        result.getAmount() == null ? null : result.getAmount().getTotal());
                 throw badRequest("支付金额不匹配");
             }
             markOrderPaid(order, result.getTransactionId(), result.getAmount().getTotal());
+            log.info("WeChat payment notify marked order paid, orderNo={}, transactionId={}, amountFen={}",
+                    orderNo, transactionId, result.getAmount().getTotal());
         } catch (WxPayException ex) {
+            log.error("WeChat payment notify verify/decrypt failed, errCode={}, message={}",
+                    ex.getErrCode(), ex.getMessage(), ex);
             throw badRequest("微信支付回调验签失败");
         } catch (IOException ex) {
             throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "微信支付配置读取失败");
