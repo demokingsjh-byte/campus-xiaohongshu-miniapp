@@ -339,7 +339,19 @@ async function cancelCurrentOrder() {
   busy.value = true;
   try {
     await cancelCampusTradeOrder(order.value.id);
-    order.value = await getCampusTradeOrder(order.value.id);
+    try {
+      order.value = await getCampusTradeOrder(order.value.id);
+    } catch {
+      // The cancel request may have succeeded while the follow-up read is
+      // briefly unavailable. Reflect the successful local action immediately.
+      order.value = {
+        ...order.value,
+        status: 3,
+        statusText: '订单已关闭',
+        expired: true,
+        closeReason: 'USER_CANCEL',
+      };
+    }
     paymentPending.value = false;
     paymentTimedOut.value = false;
     stopCountdown();
