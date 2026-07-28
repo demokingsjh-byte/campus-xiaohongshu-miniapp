@@ -20,8 +20,11 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -45,6 +48,7 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 @Service
 public class CampusTradePaymentServiceImpl implements CampusTradePaymentService {
 
+    private static final Logger log = LoggerFactory.getLogger(CampusTradePaymentServiceImpl.class);
     private static final int STATUS_WAITING = 0;
     private static final int STATUS_PAID = 1;
     private enum ExistingWechatOrderState { NOT_FOUND, PAYING, PAID, CLOSED }
@@ -263,6 +267,32 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         response.setExpiresAt(toLocalDateTime(order.get("expires_at")));
         response.setPaidAt(toLocalDateTime(order.get("paid_at")));
         return response;
+    }
+
+    /**
+     * WeChat callbacks can be delayed or retried after a local timeout/cancel.
+     * Reconcile recent unsettled orders server-side so payment confirmation
+     * does not depend on the miniapp remaining open.
+     */
+    @Scheduled(initialDelay = 30_000L, fixedDelay = 30_000L)
+    @Transactional(rollbackFor = Exception.class)
+    public void reconcileRecentOrders() {
+        List<Map<String, Object>> orders = jdbcTemplate.queryForList(
+                "SELECT * FROM campus_trade_order WHERE status IN (0, 3)"
+                        + " AND wx_transaction_id IS NULL AND deleted = b'0'"
+                        + " AND create_time >= DATE_SUB(NOW(), INTERVAL 2 HOUR)"
+                        + " ORDER BY id DESC LIMIT 20", new MapSqlParameterSource());
+        for (Map<String, Object> order : orders) {
+            try {
+                String tradeState = syncOrderFromWechat(order);
+                if ("SUCCESS".equals(tradeState)) {
+                    log.info("Reconciled WeChat payment for campus order {}", order.get("order_no"));
+                }
+            } catch (RuntimeException ex) {
+                log.warn("Failed to reconcile WeChat payment for campus order {}: {}",
+                        order.get("order_no"), ex.getMessage());
+            }
+        }
     }
 
     @Override
