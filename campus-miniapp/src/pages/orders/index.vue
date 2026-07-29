@@ -1,12 +1,12 @@
 <script lang="ts" setup>
-import type { CampusTradeOrder, CampusTradeOrderPage } from '@/services/api/content';
-import { getCampusTradeOrderPage } from '@/services/api/content';
+import type { CampusTradeOrder } from '@/services/api/content';
+import { getAllCampusTradeOrders } from '@/services/api/content';
 import { useUserStore } from '@/stores/modules/user';
 
 type OrderRole = 'buyer' | 'seller';
-type CampusTradeOrderPageLike = Partial<CampusTradeOrderPage> & { records?: CampusTradeOrder[] };
 
 const userStore = useUserStore();
+const allOrders = ref<CampusTradeOrder[]>([]);
 const orders = ref<CampusTradeOrder[]>([]);
 const total = ref(0);
 const loading = ref(false);
@@ -15,14 +15,18 @@ const errorMessage = ref('订单记录暂时无法加载');
 const authError = ref(false);
 const activeRole = ref<OrderRole>('buyer');
 const activeStatus = ref<number | undefined>();
-const statusTabs: Array<{ label: string, value?: number }> = [
-  { label: '全部' },
-  { label: '待付款', value: 0 },
-  { label: '已付款', value: 1 },
-  { label: '已完成', value: 2 },
-  { label: '已关闭', value: 3 },
-  { label: '已退款', value: 4 },
-];
+const statusCounts = computed(() => allOrders.value.reduce<Record<number, number>>((counts, order) => {
+  counts[order.status] = (counts[order.status] || 0) + 1;
+  return counts;
+}, {}));
+const statusTabs = computed(() => [
+  { label: `全部 ${allOrders.value.length}`, value: undefined },
+  { label: `待付款 ${statusCounts.value[0] || 0}`, value: 0 },
+  { label: `已付款 ${statusCounts.value[1] || 0}`, value: 1 },
+  { label: `已完成 ${statusCounts.value[2] || 0}`, value: 2 },
+  { label: `已关闭 ${statusCounts.value[3] || 0}`, value: 3 },
+  { label: `已退款 ${statusCounts.value[4] || 0}`, value: 4 },
+]);
 
 onShow(() => {
   void loadOrders();
@@ -47,18 +51,9 @@ async function loadOrders() {
       });
       return;
     }
-    const result = await withTimeout(getCampusTradeOrderPage({
-      role: activeRole.value,
-      status: activeStatus.value,
-      pageNo: 1,
-      pageSize: 100,
-    }), 10000);
-    const payload = result as CampusTradeOrderPageLike | null | undefined;
-    const list = Array.isArray(payload?.list)
-      ? payload.list
-      : Array.isArray(payload?.records) ? payload.records : [];
-    orders.value = list;
-    total.value = Number(payload?.total ?? list.length);
+    const result = await withTimeout(getAllCampusTradeOrders(activeRole.value), 10000);
+    allOrders.value = result.list;
+    applyStatusFilter();
   } catch (error: any) {
     loadError.value = true;
     const detail = String(error?.message || error?.errMsg || '');
@@ -89,7 +84,14 @@ function changeRole(role: OrderRole) {
 
 function changeStatus(status?: number) {
   activeStatus.value = status;
-  void loadOrders();
+  applyStatusFilter();
+}
+
+function applyStatusFilter() {
+  orders.value = activeStatus.value === undefined
+    ? allOrders.value
+    : allOrders.value.filter(order => order.status === activeStatus.value);
+  total.value = orders.value.length;
 }
 
 function goLogin() {
@@ -126,7 +128,7 @@ function statusTone(status: number) {
     return 'paid';
   if (status === 2)
     return 'completed';
-  return 'closed';
+  return status === 4 ? 'refunded' : 'closed';
 }
 </script>
 
@@ -362,6 +364,7 @@ function statusTone(status: number) {
 .order-status.pending { color: #ff9500; }
 .order-status.paid { color: var(--color-primary); }
 .order-status.completed { color: #5856d6; }
+.order-status.refunded { color: #ff9500; }
 .order-status.closed { color: var(--color-text-tertiary); }
 .order-cover {
   flex: 0 0 auto;

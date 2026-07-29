@@ -1,4 +1,6 @@
 <script lang="ts" setup>
+import type { CampusTradeOrder } from '@/services/api/content';
+import { getAllCampusTradeOrders } from '@/services/api/content';
 import { getDefaultTenant } from '@/mock/campus';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
@@ -17,6 +19,11 @@ const myPublishCount = computed(() => contentStore.publishedPosts.length);
 const myFavoriteCount = computed(() => contentStore.favoritePosts.length);
 const receivedLikeCount = computed(() => contentStore.publishedPosts.reduce((total, post) => total + post.likes, 0));
 const certificationNote = computed(() => loggedIn.value ? (userStore.profileCompleted ? '已认证' : '待完善') : '登录后认证');
+const myOrders = ref<CampusTradeOrder[]>([]);
+const orderStatusCounts = computed(() => myOrders.value.reduce<Record<number, number>>((counts, order) => {
+  counts[order.status] = (counts[order.status] || 0) + 1;
+  return counts;
+}, {}));
 const statusBarHeight = ref(0);
 const navigationStyle = computed(() => ({
   '--status-bar-height': `${statusBarHeight.value}px`,
@@ -39,12 +46,12 @@ const menuGroups = [
   [{ label: '校园认证', note: '', action: 'profile', icon: '/static/icons/mine/badge.svg' }, { label: '设置与隐私', note: '', action: 'settings', icon: '/static/icons/mine/settings.svg' }, { label: '帮助与反馈', note: '', action: 'help', icon: '/static/icons/mine/help.svg' }],
 ];
 const menuGroupTitles = ['内容与交易', '服务与设置'];
-const tradeStates = [
-  { mark: '回', label: '待回应', note: '2 个新回复', value: 2, tone: 'reply' },
-  { mark: '确', label: '待确认', note: '等待双方确认', value: 1, tone: 'confirm' },
-  { mark: '进', label: '进行中', note: '正在沟通交易', value: 3, tone: 'active' },
-  { mark: '完', label: '已完成', note: '历史完成记录', value: 18, tone: 'done' },
-];
+const tradeStates = computed(() => [
+  { mark: '付', label: '待付款', note: '订单待支付', value: orderStatusCounts.value[0] || 0, tone: 'reply' },
+  { mark: '款', label: '已付款', note: '等待交易完成', value: orderStatusCounts.value[1] || 0, tone: 'confirm' },
+  { mark: '完', label: '已完成', note: '历史完成记录', value: orderStatusCounts.value[2] || 0, tone: 'active' },
+  { mark: '关', label: '已关闭/退款', note: '关闭或退款订单', value: (orderStatusCounts.value[3] || 0) + (orderStatusCounts.value[4] || 0), tone: 'done' },
+]);
 
 onLoad(() => updateNavigationLayout());
 
@@ -57,12 +64,21 @@ onShow(async () => {
   if (userStore.loggedIn) {
     syncProfileAvatar();
     try {
-      await Promise.all([contentStore.loadMyPosts(), contentStore.loadFavorites()]);
+      await Promise.all([
+        contentStore.loadMyPosts(),
+        contentStore.loadFavorites(),
+        loadMyOrders(),
+      ]);
     } catch {
       uni.showToast({ title: '个人数据加载失败，请稍后重试', icon: 'none' });
     }
   }
 });
+
+async function loadMyOrders() {
+  const result = await getAllCampusTradeOrders('buyer');
+  myOrders.value = result.list;
+}
 
 function syncProfileAvatar() {
   profileAvatar.value = resolveCampusAvatar(userStore.userInfo?.avatar);
@@ -242,7 +258,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
       <text class="order-entry-arrow">›</text>
     </view>
 
-    <view v-if="loggedIn" class="trade-card glass-card" @click="handleMenu('messages', true)">
+    <view v-if="loggedIn" class="trade-card glass-card" @click="handleMenu('orders', true)">
       <view class="section-head">
         <text>交易动态</text>
         <text>查看全部 ›</text>

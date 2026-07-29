@@ -200,6 +200,27 @@ export function getCampusTradeOrderPage(params: { role?: 'buyer' | 'seller', sta
   });
 }
 
+/**
+ * 查询当前账号全部订单。接口单页最多返回 100 条，这里继续翻页，
+ * 保证状态统计和订单记录不会只显示最近一页。
+ */
+export async function getAllCampusTradeOrders(role: 'buyer' | 'seller' = 'buyer') {
+  const orders: CampusTradeOrder[] = [];
+  const pageSize = 100;
+  let pageNo = 1;
+  let total = 0;
+  do {
+    const page = await getCampusTradeOrderPage({ role, pageNo, pageSize });
+    const list = Array.isArray(page?.list) ? page.list : [];
+    orders.push(...list);
+    total = Number(page?.total || orders.length);
+    if (!list.length)
+      break;
+    pageNo += 1;
+  } while (orders.length < total && pageNo <= 100);
+  return { list: orders, total: orders.length };
+}
+
 export function createCampusTradePayment(orderId: number) {
   return request.Post<CampusTradePayParams>('/campus/trade/order/pay', {}, { params: { orderId } });
 }
