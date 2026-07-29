@@ -17,6 +17,23 @@ const myPublishCount = computed(() => contentStore.publishedPosts.length);
 const myFavoriteCount = computed(() => contentStore.favoritePosts.length);
 const receivedLikeCount = computed(() => contentStore.publishedPosts.reduce((total, post) => total + post.likes, 0));
 const certificationNote = computed(() => loggedIn.value ? (userStore.profileCompleted ? '已认证' : '待完善') : '登录后认证');
+const statusBarHeight = ref(0);
+const navigationStyle = computed(() => ({
+  '--status-bar-height': `${statusBarHeight.value}px`,
+}));
+
+type MenuButtonRect = {
+  top: number;
+};
+
+function updateNavigationLayout() {
+  const systemInfo = uni.getSystemInfoSync();
+  const runtime = uni as typeof uni & {
+    getMenuButtonBoundingClientRect?: () => MenuButtonRect;
+  };
+  const menuButton = runtime.getMenuButtonBoundingClientRect?.();
+  statusBarHeight.value = Math.max(systemInfo.statusBarHeight || 0, menuButton?.top || 0);
+}
 const menuGroups = [
   [{ label: '我的交易', note: '查看回应', action: 'messages', icon: '/static/icons/mine/wallet.svg' }, { label: '我的发布', note: '', action: 'published', icon: '/static/icons/mine/post.svg' }, { label: '收藏与足迹', note: '最近浏览', action: 'favorites', icon: '/static/icons/mine/heart.svg' }],
   [{ label: '校园认证', note: '', action: 'profile', icon: '/static/icons/mine/badge.svg' }, { label: '设置与隐私', note: '', action: 'settings', icon: '/static/icons/mine/settings.svg' }, { label: '帮助与反馈', note: '', action: 'help', icon: '/static/icons/mine/help.svg' }],
@@ -28,6 +45,8 @@ const tradeStates = [
   { mark: '进', label: '进行中', note: '正在沟通交易', value: 3, tone: 'active' },
   { mark: '完', label: '已完成', note: '历史完成记录', value: 18, tone: 'done' },
 ];
+
+onLoad(() => updateNavigationLayout());
 
 onShow(async () => {
   if (!userStore.userInfo) {
@@ -103,7 +122,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 </script>
 
 <template>
-  <view class="mine-page safe-bottom">
+  <view class="mine-page safe-bottom" :style="navigationStyle">
     <view class="ambient-layer">
       <view class="ambient ambient-blue" />
       <view class="ambient ambient-indigo" />
@@ -329,7 +348,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
   z-index: 1;
 }
 .mine-status {
-  height: calc(30rpx + env(safe-area-inset-top));
+  height: var(--status-bar-height, env(safe-area-inset-top));
 }
 .glass-card {
   border: 1rpx solid rgba(255, 255, 255, 0.78);
