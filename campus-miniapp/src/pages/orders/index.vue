@@ -15,6 +15,7 @@ const errorMessage = ref('订单记录暂时无法加载');
 const authError = ref(false);
 const activeRole = ref<OrderRole>('buyer');
 const activeStatus = ref<number | undefined>();
+let loadVersion = 0;
 const statusCounts = computed(() => allOrders.value.reduce<Record<number, number>>((counts, order) => {
   counts[order.status] = (counts[order.status] || 0) + 1;
   return counts;
@@ -49,8 +50,7 @@ onShow(() => {
 });
 
 async function loadOrders() {
-  if (loading.value)
-    return;
+  const requestVersion = ++loadVersion;
   loading.value = true;
   loadError.value = false;
   authError.value = false;
@@ -68,9 +68,13 @@ async function loadOrders() {
       return;
     }
     const result = await withTimeout(getAllCampusTradeOrders(activeRole.value), 10000);
+    if (requestVersion !== loadVersion)
+      return;
     allOrders.value = result.list;
     applyStatusFilter();
   } catch (error: any) {
+    if (requestVersion !== loadVersion)
+      return;
     loadError.value = true;
     const detail = String(error?.message || error?.errMsg || '');
     if (/401|未登录|登录状态/i.test(detail)) {
@@ -80,7 +84,8 @@ async function loadOrders() {
       errorMessage.value = '订单接口响应超时，请确认后端服务已启动';
     }
   } finally {
-    loading.value = false;
+    if (requestVersion === loadVersion)
+      loading.value = false;
   }
 }
 
@@ -92,8 +97,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
 }
 
 function changeRole(role: OrderRole) {
-  if (activeRole.value === role)
-    return;
   activeRole.value = role;
   activeStatus.value = undefined;
   void loadOrders();
@@ -160,15 +163,15 @@ function statusTone(status: number) {
     </view>
 
     <view class="role-tabs">
-      <view :class="['role-tab', { active: activeRole === 'buyer' }]" @tap="changeRole('buyer')">我买的</view>
-      <view :class="['role-tab', { active: activeRole === 'seller' }]" @tap="changeRole('seller')">我卖的</view>
+      <view :class="['role-tab', { active: activeRole === 'buyer' }]" @click="changeRole('buyer')">我买的</view>
+      <view :class="['role-tab', { active: activeRole === 'seller' }]" @click="changeRole('seller')">我卖的</view>
     </view>
 
     <scroll-view class="status-scroll" scroll-x :show-scrollbar="false">
       <view class="status-tabs">
         <view
           v-for="tab in statusTabs" :key="tab.label" :class="{ active: activeStatus === tab.value }"
-          @tap="changeStatus(tab.value)"
+          @click="changeStatus(tab.value)"
         >
           {{ tab.label }}
         </view>
@@ -178,7 +181,7 @@ function statusTone(status: number) {
     <view v-if="loading" class="state">订单记录加载中…</view>
     <view v-else-if="loadError" class="state error-state">
       <text>{{ errorMessage }}</text>
-      <button class="retry-button" @tap="retry">
+      <button class="retry-button" @click="retry">
         {{ authError ? '重新登录' : '重新加载' }}
       </button>
     </view>
@@ -191,7 +194,7 @@ function statusTone(status: number) {
       <view
         v-for="item in orders" :key="item.id" class="order-card"
         :class="{ clickable: activeRole === 'buyer' }"
-        @tap="openOrder(item)"
+        @click="openOrder(item)"
       >
         <view class="order-card-head">
           <text class="order-number">订单号 {{ item.orderNo }}</text>
