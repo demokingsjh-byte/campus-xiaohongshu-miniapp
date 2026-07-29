@@ -142,3 +142,16 @@ ON DUPLICATE KEY UPDATE
     updater = 'campus',
     update_time = NOW(),
     deleted = b'0';
+
+-- Super administrator menu permissions. Keep this idempotent so the upgrade can
+-- be rerun after restoring the database or refreshing the menu cache.
+INSERT INTO system_role_menu (role_id, menu_id, creator, create_time, updater, update_time, deleted, tenant_id)
+SELECT 1, menu_id, 'campus', NOW(), 'campus', NOW(), b'0', 0
+FROM (
+    SELECT 900920 AS menu_id
+    UNION ALL SELECT 900921
+) AS campus_order_menus
+WHERE NOT EXISTS (
+    SELECT 1 FROM system_role_menu rm
+    WHERE rm.role_id = 1 AND rm.menu_id = campus_order_menus.menu_id AND rm.deleted = b'0'
+);

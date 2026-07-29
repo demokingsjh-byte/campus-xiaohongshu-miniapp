@@ -54,6 +54,11 @@
             <el-option v-for="item in refundStatuses" :key="item.value" v-bind="item" />
           </el-select>
         </el-form-item>
+        <el-form-item label="分校区">
+          <el-select v-model="queryParams.tenantId" clearable class="!w-180px" placeholder="全部分校区">
+            <el-option v-for="campus in campusOptions" :key="campus.id" :label="campus.name" :value="campus.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="下单时间">
           <el-date-picker
             v-model="createTimeRange"
@@ -265,6 +270,7 @@ import {
   type CampusTradeOrderQuery,
   type CampusTradeOrderSummary
 } from '@/api/campus/order'
+import { getTenantList, type TenantVO } from '@/api/system/tenant'
 import { formatDate } from '@/utils/formatTime'
 import InfoRow from './InfoRow.vue'
 
@@ -291,6 +297,7 @@ const refundOrder = ref<CampusTradeOrder>()
 const refundReason = ref('')
 const refundLoading = ref(false)
 const syncingId = ref<number>()
+const campusOptions = ref<Array<Pick<TenantVO, 'id' | 'name'>>>([])
 
 const orderStatuses = [
   { label: '待付款', value: 0 },
@@ -352,6 +359,10 @@ const getList = async () => {
 
 const getSummary = async () => {
   summary.value = await getCampusTradeOrderSummary(queryParams.tenantId)
+}
+
+const getCampusOptions = async () => {
+  campusOptions.value = await getTenantList()
 }
 
 const refreshAll = async () => {
@@ -447,7 +458,9 @@ const orderTag = (status: number): TagType =>
 const refundTag = (status: number): TagType =>
   refundTagMap[status] || 'info'
 
-onMounted(() => void refreshAll())
+onMounted(() => {
+  void Promise.all([refreshAll(), getCampusOptions()])
+})
 </script>
 
 <style lang="scss" scoped>

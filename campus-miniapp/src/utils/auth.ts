@@ -11,7 +11,7 @@ const CAMPUS_REFRESH_TOKEN = '/campus/auth/refresh-token';
 interface AuthSession {
   token: string
   refreshToken?: string
-  expiresTime?: string | number
+  expiresTime?: unknown
 }
 
 let refreshPromise: Promise<string> | null = null;
@@ -42,12 +42,30 @@ export function setAuthSession(session: AuthSession) {
   if (session.refreshToken)
     setCache(REFRESH_TOKEN_KEY, session.refreshToken, AUTH_SESSION_CACHE_TIME);
 
-  const expiresTimeValue = typeof session.expiresTime === 'string'
-    ? session.expiresTime.replace(' ', 'T')
-    : session.expiresTime;
-  const expiresTime = expiresTimeValue ? new Date(expiresTimeValue).getTime() : Number.NaN;
+  const expiresTime = parseAuthDate(session.expiresTime);
   if (Number.isFinite(expiresTime))
     setCache(TOKEN_EXPIRES_TIME_KEY, expiresTime, AUTH_SESSION_CACHE_TIME);
+}
+
+function parseAuthDate(value: unknown) {
+  if (!value)
+    return Number.NaN;
+  if (Array.isArray(value)) {
+    const [year, month, day, hour = 0, minute = 0, second = 0] = value.map(Number);
+    return new Date(year, month - 1, day, hour, minute, second).getTime();
+  }
+  if (typeof value === 'object') {
+    const item = value as Record<string, unknown>;
+    const year = Number(item.year);
+    const month = Number(item.month ?? item.monthValue);
+    const day = Number(item.day ?? item.dayOfMonth);
+    if (year && month && day) {
+      return new Date(year, month - 1, day, Number(item.hour || 0), Number(item.minute || 0), Number(item.second || 0)).getTime();
+    }
+    return new Date(String(item.value ?? item.date ?? '')).getTime();
+  }
+  const normalized = typeof value === 'string' ? value.replace(' ', 'T') : value;
+  return new Date(normalized as string | number).getTime();
 }
 
 export function removeToken() {
