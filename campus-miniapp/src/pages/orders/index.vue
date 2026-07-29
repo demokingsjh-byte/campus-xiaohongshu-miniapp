@@ -135,12 +135,29 @@ function openOrder(order: CampusTradeOrder) {
   uni.navigateTo({ url: `/pages/checkout/index?orderId=${order.id}&postId=${order.postId}` });
 }
 
-function formatTime(value?: string) {
+function formatTime(value?: unknown) {
   if (!value)
     return '时间未知';
-  const date = new Date(value.replace(' ', 'T'));
+  let date: Date;
+  if (Array.isArray(value)) {
+    const [year, month, day, hour = 0, minute = 0, second = 0] = value.map(Number);
+    date = new Date(year, month - 1, day, hour, minute, second);
+  } else if (typeof value === 'object') {
+    const item = value as Record<string, unknown>;
+    const year = Number(item.year);
+    const month = Number(item.month ?? item.monthValue);
+    const day = Number(item.day ?? item.dayOfMonth);
+    if (year && month && day) {
+      date = new Date(year, month - 1, day, Number(item.hour || 0), Number(item.minute || 0), Number(item.second || 0));
+    } else {
+      date = new Date(String(item.value ?? item.date ?? ''));
+    }
+  } else {
+    const normalized = typeof value === 'string' ? value.replace(' ', 'T') : value;
+    date = new Date(normalized);
+  }
   if (Number.isNaN(date.getTime()))
-    return value;
+    return typeof value === 'string' ? value : '时间未知';
   return date.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
