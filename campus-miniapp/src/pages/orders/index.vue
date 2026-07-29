@@ -27,8 +27,24 @@ const statusTabs = computed(() => [
   { label: `已关闭 ${statusCounts.value[3] || 0}`, value: 3 },
   { label: `已退款 ${statusCounts.value[4] || 0}`, value: 4 },
 ]);
+const activeStatusLabel = computed(() => {
+  if (activeStatus.value === undefined)
+    return '';
+  return activeStatus.value === 0
+    ? '待付款'
+    : activeStatus.value === 1
+      ? '已付款'
+      : activeStatus.value === 2
+        ? '已完成'
+        : activeStatus.value === 3 ? '已关闭' : '已退款';
+});
+const emptyTitle = computed(() => activeStatusLabel.value ? `${activeStatusLabel.value}暂无订单` : '还没有订单记录');
+const emptyNote = computed(() => activeStatusLabel.value
+  ? `当前账号没有${activeStatusLabel.value}订单，可切换“全部”查看其他订单`
+  : '完成一次校园交易后，付款记录会显示在这里');
 
 onShow(() => {
+  activeStatus.value = undefined;
   void loadOrders();
 });
 
@@ -79,6 +95,7 @@ function changeRole(role: OrderRole) {
   if (activeRole.value === role)
     return;
   activeRole.value = role;
+  activeStatus.value = undefined;
   void loadOrders();
 }
 
@@ -167,8 +184,8 @@ function statusTone(status: number) {
     </view>
     <view v-else-if="!orders.length" class="empty-state">
       <image src="/static/icons/ui/empty.svg" mode="aspectFit" />
-      <text class="empty-title">还没有订单记录</text>
-      <text class="empty-note">完成一次校园交易后，付款记录会显示在这里</text>
+      <text class="empty-title">{{ emptyTitle }}</text>
+      <text class="empty-note">{{ emptyNote }}</text>
     </view>
     <view v-else class="order-list">
       <view
