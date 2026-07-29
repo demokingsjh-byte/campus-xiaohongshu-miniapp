@@ -147,12 +147,12 @@ function statusTone(status: number) {
 
     <scroll-view class="status-scroll" scroll-x :show-scrollbar="false">
       <view class="status-tabs">
-        <button
+        <view
           v-for="tab in statusTabs" :key="tab.label" :class="{ active: activeStatus === tab.value }"
           @tap="changeStatus(tab.value)"
         >
           {{ tab.label }}
-        </button>
+        </view>
       </view>
     </scroll-view>
 
@@ -230,24 +230,27 @@ function statusTone(status: number) {
 }
 .role-tabs {
   display: flex;
-  padding: 6rpx;
-  border-radius: 20rpx;
-  background: rgba(255, 255, 255, 0.68);
+  gap: 14rpx;
 }
 .role-tab {
   flex: 1;
-  height: 70rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 16rpx;
+  box-sizing: border-box;
+  height: 70rpx;
+  border: 1rpx solid rgba(22, 89, 69, 0.1);
+  border-radius: 18rpx;
   color: var(--color-text-secondary);
-  font-size: 25rpx;
+  background: rgba(255, 255, 255, 0.62);
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1;
 }
 .role-tab.active {
+  border-color: rgba(16, 167, 121, 0.28);
   color: var(--color-primary-strong);
-  background: #fff;
-  box-shadow: 0 6rpx 18rpx rgba(22, 89, 69, 0.08);
+  background: rgba(16, 167, 121, 0.12);
   font-weight: 750;
 }
 .status-scroll {
@@ -260,17 +263,23 @@ function statusTone(status: number) {
   padding: 12rpx 24rpx;
   white-space: nowrap;
 }
-.status-tabs button {
+.status-tabs > view {
   flex: 0 0 auto;
-  height: 58rpx;
-  padding: 0 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 170rpx;
+  height: 70rpx;
   border: 1rpx solid rgba(22, 89, 69, 0.1);
   border-radius: 999rpx;
   color: var(--color-text-secondary);
   background: rgba(255, 255, 255, 0.62);
-  font-size: 22rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1;
 }
-.status-tabs button.active {
+.status-tabs > view.active {
   border-color: rgba(16, 167, 121, 0.28);
   color: var(--color-primary-strong);
   background: rgba(16, 167, 121, 0.12);
