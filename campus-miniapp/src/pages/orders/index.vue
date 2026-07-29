@@ -99,6 +99,9 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
 function changeRole(role: OrderRole) {
   activeRole.value = role;
   activeStatus.value = undefined;
+  allOrders.value = [];
+  orders.value = [];
+  total.value = 0;
   void loadOrders();
 }
 
@@ -178,7 +181,7 @@ function statusTone(status: number) {
       </view>
     </scroll-view>
 
-    <view v-if="loading" class="state">订单记录加载中…</view>
+    <view v-if="loading && !allOrders.length" class="state">订单记录加载中…</view>
     <view v-else-if="loadError" class="state error-state">
       <text>{{ errorMessage }}</text>
       <button class="retry-button" @click="retry">
