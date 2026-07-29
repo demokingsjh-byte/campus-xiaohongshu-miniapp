@@ -16,6 +16,34 @@ const contentStore = useCampusContentStore();
 const notificationStore = useCampusNotificationStore();
 const userStore = useUserStore();
 const unreadCount = computed(() => notificationStore.unreadCount);
+const statusBarHeight = ref(0);
+const menuButtonRightInset = ref(184);
+const navigationStyle = computed(() => ({
+  '--status-bar-height': `${statusBarHeight.value}px`,
+  '--menu-button-right-inset': `${menuButtonRightInset.value}px`,
+}));
+
+type MenuButtonRect = {
+  left: number;
+  top: number;
+};
+
+function updateNavigationLayout() {
+  const systemInfo = uni.getSystemInfoSync();
+  const runtime = uni as typeof uni & {
+    getMenuButtonBoundingClientRect?: () => MenuButtonRect;
+  };
+  const menuButton = runtime.getMenuButtonBoundingClientRect?.();
+
+  // Custom navigation pages do not automatically reserve the status bar area.
+  // The menu button position is also used as a fallback in the devtools simulator,
+  // where statusBarHeight can be reported as 0 for a notched device.
+  statusBarHeight.value = Math.max(systemInfo.statusBarHeight || 0, menuButton?.top || 0);
+  if (menuButton?.left && systemInfo.windowWidth)
+    menuButtonRightInset.value = Math.max(16, systemInfo.windowWidth - menuButton.left + 8);
+}
+
+onLoad(() => updateNavigationLayout());
 if (!tenantStore.currentTenant || !campusTenants.some(item => item.id === tenantStore.tenantId))
   tenantStore.selectTenant(getDefaultTenant());
 const visiblePosts = computed(() => contentStore.allPosts.filter((item) => {
@@ -102,6 +130,7 @@ async function onRefresh() {
   }
 }
 onShow(async () => {
+  updateNavigationLayout();
   const channel = uni.getStorageSync('campus-home-channel');
   if (campusChannels.includes(channel))
     chooseChannel(channel);
@@ -118,7 +147,7 @@ watch(() => tenantStore.tenantId, () => loadFeed());
 </script>
 
 <template>
-  <view class="home-page">
+  <view class="home-page" :style="navigationStyle">
     <view class="status-space" />
     <view class="topbar">
       <button class="school-trigger" aria-label="切换学校" @click="openCampusPicker">
@@ -257,7 +286,7 @@ watch(() => tenantStore.tenantId, () => loadFeed());
 }
 
 .status-space {
-  height: env(safe-area-inset-top);
+  height: var(--status-bar-height, env(safe-area-inset-top));
 }
 
 .topbar {
@@ -265,7 +294,7 @@ watch(() => tenantStore.tenantId, () => loadFeed());
   align-items: center;
   justify-content: space-between;
   height: 88rpx;
-  padding: 0 184rpx 0 var(--page-gutter);
+  padding: 0 var(--menu-button-right-inset, 184rpx) 0 var(--page-gutter);
 }
 
 .school-trigger {
@@ -447,7 +476,7 @@ watch(() => tenantStore.tenantId, () => loadFeed());
 }
 
 .feed-scroll {
-  height: calc(100vh - 312rpx - env(safe-area-inset-top));
+  height: calc(100vh - 312rpx - var(--status-bar-height, env(safe-area-inset-top)));
 }
 
 .publish-inspire {

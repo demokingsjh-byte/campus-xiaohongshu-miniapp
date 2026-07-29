@@ -105,6 +105,11 @@ export interface CampusTradeOrder {
   expired?: boolean
 }
 
+export interface CampusTradeOrderPage {
+  list: CampusTradeOrder[]
+  total: number
+}
+
 export interface CampusTradePaymentStatus {
   orderId: number
   orderNo: string
@@ -186,6 +191,13 @@ export function createCampusTradeOrder(postId: number) {
 
 export function getCampusTradeOrder(orderId: number) {
   return request.Get<CampusTradeOrder>('/campus/trade/order/get', { params: { id: orderId }, cacheFor: 0 });
+}
+
+export function getCampusTradeOrderPage(params: { role?: 'buyer' | 'seller', status?: number, pageNo?: number, pageSize?: number } = {}) {
+  return request.Get<CampusTradeOrderPage>('/campus/trade/order/page', {
+    params: { role: 'buyer', pageNo: 1, pageSize: 100, ...params },
+    cacheFor: 0,
+  });
 }
 
 export function createCampusTradePayment(orderId: number) {

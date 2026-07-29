@@ -13,6 +13,7 @@ import {
 import { useUserStore } from '@/stores/modules/user';
 
 const postId = ref(0);
+const orderId = ref(0);
 const post = ref<CampusPost>();
 const order = ref<CampusTradeOrder>();
 const contact = ref<CampusTradeContact>();
@@ -42,6 +43,7 @@ const displayAmount = computed(() => Number(order.value?.amount ?? post.value?.p
 
 onLoad(async (query) => {
   postId.value = Number(query?.postId || 0);
+  orderId.value = Number(query?.orderId || 0);
   await loadCheckout();
 });
 
@@ -56,7 +58,7 @@ onUnload(() => {
 });
 
 async function loadCheckout() {
-  if (!postId.value) {
+  if (!postId.value && !orderId.value) {
     loadError.value = true;
     loading.value = false;
     return;
@@ -73,8 +75,19 @@ async function loadCheckout() {
       });
       return;
     }
-    post.value = await getCampusPost(postId.value);
-    order.value = await createCampusTradeOrder(postId.value);
+    if (orderId.value) {
+      order.value = await getCampusTradeOrder(orderId.value);
+      postId.value = order.value.postId;
+      // Keep order history readable even when the original listing is gone.
+      try {
+        post.value = await getCampusPost(postId.value);
+      } catch {
+        post.value = undefined;
+      }
+    } else {
+      post.value = await getCampusPost(postId.value);
+      order.value = await createCampusTradeOrder(postId.value);
+    }
     startCountdown();
     if (order.value.status === 1) {
       await loadContact();
@@ -410,12 +423,12 @@ function copyContact() {
   <view class="checkout-page">
     <view v-if="loading" class="state">订单信息加载中…</view>
     <view v-else-if="loadError" class="state">订单信息暂时无法加载</view>
-    <template v-else-if="post && order">
+    <template v-else-if="order">
       <view class="card product-card">
         <image v-if="productImage" class="cover" :src="productImage" mode="aspectFill" />
         <view class="product-main">
           <text class="title">{{ order.title || post.title }}</text>
-          <text class="meta">{{ post.tradeMode || '校内当面交易' }} · {{ post.location || post.school }}</text>
+          <text class="meta">{{ post?.tradeMode || '校内当面交易' }} · {{ post?.location || post?.school || order.sellerName || '校园交易' }}</text>
           <text class="price">¥{{ displayAmount }}</text>
         </view>
       </view>
@@ -437,7 +450,7 @@ function copyContact() {
 
       <view v-if="isPaid && contact?.paid" class="card contact-card">
         <text class="success">支付成功 · 联系方式已解锁</text>
-        <text class="seller">发布者：{{ contact.sellerName || post.author }}</text>
+        <text class="seller">发布者：{{ contact.sellerName || post?.author || order.sellerName || '校园同学' }}</text>
         <view class="contact-value" @click="copyContact">
           <text>{{ contact.contact || '发布者尚未填写联系方式，请联系平台处理' }}</text>
           <text v-if="contact.contact" class="copy">复制</text>

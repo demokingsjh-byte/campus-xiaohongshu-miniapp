@@ -86,7 +86,9 @@ function handleMenu(action: string, requiresLogin: boolean) {
     goLogin();
     return;
   }
-  if (action === 'messages') {
+  if (action === 'orders') {
+    uni.navigateTo({ url: '/pages/orders/index' });
+  } else if (action === 'messages') {
     uni.navigateTo({ url: '/pages/messages/index' });
   } else if (action === 'published') {
     uni.navigateTo({ url: '/pages/search/index?mine=1' });
@@ -210,6 +212,17 @@ function handleMenu(action: string, requiresLogin: boolean) {
       </text>
     </view>
 
+    <view v-if="loggedIn" class="order-entry glass-card" @click="handleMenu('orders', true)">
+      <view class="order-entry-icon">
+        <image src="/static/icons/mine/wallet.svg" mode="aspectFit" />
+      </view>
+      <view class="order-entry-copy">
+        <text class="order-entry-title">我的订单</text>
+        <text class="order-entry-note">查看付款记录、订单状态和交易详情</text>
+      </view>
+      <text class="order-entry-arrow">›</text>
+    </view>
+
     <view v-if="loggedIn" class="trade-card glass-card" @click="handleMenu('messages', true)">
       <view class="section-head">
         <text>交易动态</text>
@@ -308,6 +321,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 .guest-card,
 .profile-card,
 .campus-pass,
+.order-entry,
 .trade-card,
 .service-section,
 .version {
@@ -578,6 +592,51 @@ function handleMenu(action: string, requiresLogin: boolean) {
   margin-top: 16rpx;
   padding: 21rpx 20rpx 20rpx;
   border-radius: 26rpx;
+}
+.order-entry {
+  display: flex;
+  align-items: center;
+  margin-top: 16rpx;
+  padding: 22rpx 20rpx;
+  border-radius: 26rpx;
+}
+.order-entry-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 20rpx;
+  background: rgba(16, 167, 121, 0.12);
+}
+.order-entry-icon image {
+  width: 38rpx;
+  height: 38rpx;
+}
+.order-entry-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  margin-left: 18rpx;
+}
+.order-entry-title {
+  color: #2c2c2e;
+  font-size: 27rpx;
+  font-weight: 750;
+}
+.order-entry-note {
+  overflow: hidden;
+  margin-top: 6rpx;
+  color: #8a8b91;
+  font-size: 21rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.order-entry-arrow {
+  margin-left: 14rpx;
+  color: #a1a2a8;
+  font-size: 34rpx;
 }
 .section-head {
   display: flex;
