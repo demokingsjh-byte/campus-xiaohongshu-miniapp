@@ -1,9 +1,10 @@
 <script lang="ts" setup>
-import type { CampusTradeOrder } from '@/services/api/content';
+import type { CampusTradeOrder, CampusTradeOrderPage } from '@/services/api/content';
 import { getCampusTradeOrderPage } from '@/services/api/content';
 import { useUserStore } from '@/stores/modules/user';
 
 type OrderRole = 'buyer' | 'seller';
+type CampusTradeOrderPageLike = Partial<CampusTradeOrderPage> & { records?: CampusTradeOrder[] };
 
 const userStore = useUserStore();
 const orders = ref<CampusTradeOrder[]>([]);
@@ -52,8 +53,12 @@ async function loadOrders() {
       pageNo: 1,
       pageSize: 100,
     }), 10000);
-    orders.value = result?.list || [];
-    total.value = Number(result?.total || 0);
+    const payload = result as CampusTradeOrderPageLike | null | undefined;
+    const list = Array.isArray(payload?.list)
+      ? payload.list
+      : Array.isArray(payload?.records) ? payload.records : [];
+    orders.value = list;
+    total.value = Number(payload?.total ?? list.length);
   } catch (error: any) {
     loadError.value = true;
     const detail = String(error?.message || error?.errMsg || '');
@@ -89,6 +94,14 @@ function changeStatus(status?: number) {
 
 function goLogin() {
   uni.navigateTo({ url: '/pages/login/index' });
+}
+
+function retry() {
+  if (authError.value) {
+    goLogin();
+    return;
+  }
+  void loadOrders();
 }
 
 function openOrder(order: CampusTradeOrder) {
@@ -128,15 +141,15 @@ function statusTone(status: number) {
     </view>
 
     <view class="role-tabs">
-      <button :class="{ active: activeRole === 'buyer' }" @click="changeRole('buyer')">我买的</button>
-      <button :class="{ active: activeRole === 'seller' }" @click="changeRole('seller')">我卖的</button>
+      <view :class="['role-tab', { active: activeRole === 'buyer' }]" @tap="changeRole('buyer')">我买的</view>
+      <view :class="['role-tab', { active: activeRole === 'seller' }]" @tap="changeRole('seller')">我卖的</view>
     </view>
 
     <scroll-view class="status-scroll" scroll-x :show-scrollbar="false">
       <view class="status-tabs">
         <button
           v-for="tab in statusTabs" :key="tab.label" :class="{ active: activeStatus === tab.value }"
-          @click="changeStatus(tab.value)"
+          @tap="changeStatus(tab.value)"
         >
           {{ tab.label }}
         </button>
@@ -146,7 +159,7 @@ function statusTone(status: number) {
     <view v-if="loading" class="state">订单记录加载中…</view>
     <view v-else-if="loadError" class="state error-state">
       <text>{{ errorMessage }}</text>
-      <button class="retry-button" @click="authError ? goLogin() : loadOrders">
+      <button class="retry-button" @tap="retry">
         {{ authError ? '重新登录' : '重新加载' }}
       </button>
     </view>
@@ -159,7 +172,7 @@ function statusTone(status: number) {
       <view
         v-for="item in orders" :key="item.id" class="order-card"
         :class="{ clickable: activeRole === 'buyer' }"
-        @click="openOrder(item)"
+        @tap="openOrder(item)"
       >
         <view class="order-card-head">
           <text class="order-number">订单号 {{ item.orderNo }}</text>
@@ -221,14 +234,17 @@ function statusTone(status: number) {
   border-radius: 20rpx;
   background: rgba(255, 255, 255, 0.68);
 }
-.role-tabs button {
+.role-tab {
   flex: 1;
   height: 70rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 16rpx;
   color: var(--color-text-secondary);
   font-size: 25rpx;
 }
-.role-tabs button.active {
+.role-tab.active {
   color: var(--color-primary-strong);
   background: #fff;
   box-shadow: 0 6rpx 18rpx rgba(22, 89, 69, 0.08);
