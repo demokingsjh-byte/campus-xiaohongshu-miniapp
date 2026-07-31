@@ -36,6 +36,10 @@ function openDetail(id: number) {
   >
     <template v-if="post.channel === '表白'">
       <view class="confession-body">
+        <image
+          v-if="post.coverImage || post.images?.length" class="confession-cover-image"
+          :src="post.coverImage || post.images?.[0]" mode="aspectFill" lazy-load
+        />
         <view class="confession-head">
           <view class="confession-icon">♥</view>
           <view class="confession-author">
@@ -128,6 +132,15 @@ function openDetail(id: number) {
   min-height: 248rpx;
   padding: 24rpx;
   background: linear-gradient(145deg, #fff, #fff7f8);
+}
+
+.confession-cover-image {
+  display: block;
+  width: 100%;
+  height: 220rpx;
+  margin-bottom: 20rpx;
+  border-radius: var(--radius-md);
+  background: #fceaf0;
 }
 
 .confession-head,

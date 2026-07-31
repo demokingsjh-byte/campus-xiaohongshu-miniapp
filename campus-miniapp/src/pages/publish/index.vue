@@ -121,7 +121,6 @@ function chooseType(key: string) {
   activeType.value = key;
   form.tags = [];
   form.tradeMode = typeDetails[key].modes[0];
-  form.anonymous = key === 'confession';
   Object.keys(errors).forEach(keyName => errors[keyName] = '');
 }
 function handleChooseImageFailure(error: { errMsg?: string }) {
@@ -464,7 +463,7 @@ function reset() {
           </text>
         </view>
       </picker>
-      <view class="setting-row" :class="{ 'last-row': !showAdvanced }" @click="showAdvanced = !showAdvanced">
+      <view v-if="!isConfession" class="setting-row" :class="{ 'last-row': !showAdvanced }" @click="showAdvanced = !showAdvanced">
         <view class="setting-icon">
           <image src="/static/icons/mine/settings.svg" mode="aspectFit" />
         </view>
@@ -482,12 +481,12 @@ function reset() {
           <text>联系方式</text><input v-model="form.contact" placeholder="选填，仅回应后可见">
         </view>
       </view>
-      <view v-if="showAdvanced" class="setting-row last-row">
+      <view v-if="showAdvanced || isConfession" class="setting-row last-row">
         <view class="setting-icon">
           <image src="/static/icons/ui/anonymous.svg" mode="aspectFit" />
         </view>
         <view class="setting-main">
-          <text>匿名发布</text><text>{{ isConfession ? '默认开启，保护你的隐私' : '昵称将显示为“同校同学”' }}</text>
+          <text>{{ isConfession ? '匿名发布（可选）' : '匿名发布' }}</text><text>{{ isConfession ? '开启后隐藏昵称和头像' : '昵称将显示为“同校同学”' }}</text>
         </view>
         <switch :checked="form.anonymous" color="#10a779" @change="form.anonymous = $event.detail.value" />
       </view>

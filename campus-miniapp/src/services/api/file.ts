@@ -10,8 +10,17 @@ interface UploadResult {
 }
 
 function uploadCampusFile(filePath: string, directory: string, errorLabel: string) {
-  if (isUseMock())
-    return Promise.resolve(filePath);
+  if (isUseMock()) {
+    // 微信 chooseImage 返回的是临时文件路径，应用重启后会失效。
+    // Mock 模式也保存一份本地副本，保证发布后重新打开详情仍能显示图片。
+    return new Promise<string>((resolve) => {
+      uni.saveFile({
+        tempFilePath: filePath,
+        success: result => resolve(result.savedFilePath || filePath),
+        fail: () => resolve(filePath),
+      });
+    });
+  }
 
   return new Promise<string>((resolve, reject) => {
     const authorization = getAuthorization();

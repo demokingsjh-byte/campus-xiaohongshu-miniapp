@@ -32,6 +32,7 @@ const showCommentComposer = ref(false);
 const emojiList = ['😀', '😂', '🥹', '😍', '😎', '👍', '❤️', '👏', '🎉', '🤔', '😭', '🙏', '🐱', '✨', '😊', '🔥'];
 const expandedReplyCounts = ref<Record<number, number>>({});
 const contactSubmitting = ref(false);
+const coverImageFailed = ref(false);
 const contentStore = useCampusContentStore();
 const userStore = useUserStore();
 const currentUserAvatar = ref(DEFAULT_CAMPUS_AVATAR);
@@ -46,6 +47,12 @@ const channelIcons: Record<string, string> = {
 };
 const channelIcon = computed(() => channelIcons[post.value.channel] || '/static/icons/mine/cloud.svg');
 const isConfession = computed(() => post.value.channel === '表白' || post.value.type === 'confession');
+const postImages = computed(() => {
+  const images = Array.isArray(post.value.images) ? post.value.images.filter(Boolean) : [];
+  const coverImage = typeof post.value.coverImage === 'string' ? post.value.coverImage.trim() : '';
+  return coverImage && !images.includes(coverImage) ? [coverImage, ...images] : images;
+});
+const showCoverImage = computed(() => postImages.value.length > 0 && !coverImageFailed.value);
 const hasMoreComments = computed(() => comments.value.length < commentTotal.value);
 const topLevelComments = computed(() => comments.value.filter(item => !item.parentId));
 const replyAuthor = computed(() => {
@@ -80,6 +87,9 @@ function handleCurrentUserAvatarError() {
 }
 
 watch(() => userStore.userInfo?.avatar, syncCurrentUserAvatar, { immediate: true });
+watch(() => post.value.coverImage, () => {
+  coverImageFailed.value = false;
+});
 
 onLoad(async (query) => {
   resetCommentComposer();
@@ -103,7 +113,7 @@ onHide(() => resetCommentComposer());
 onShareAppMessage(() => ({
   title: postAuthor.value ? `${postAuthor.value}发布的校园内容` : '校园内容分享',
   path: `/pages/detail/index?id=${postId.value}`,
-  imageUrl: post.value.coverImage || undefined,
+  imageUrl: postImages.value[0] || undefined,
 }));
 
 function resetCommentComposer() {
@@ -114,6 +124,10 @@ function resetCommentComposer() {
   showEmojiPanel.value = false;
   showMentionPanel.value = false;
   showCommentComposer.value = false;
+}
+
+function handleCoverImageError() {
+  coverImageFailed.value = true;
 }
 
 async function loadComments(append = false) {
@@ -490,19 +504,23 @@ function reportPost() {
       @action="uni.switchTab({ url: '/pages/index/index' })"
     />
     <template v-else>
-      <view v-if="isConfession" class="confession-detail-hero">
-        <view class="confession-detail-icon">♥</view>
-        <text>校园表白墙</text>
-        <text>每一份心意都值得被认真对待</text>
-      </view>
-      <swiper v-else class="media" indicator-dots indicator-active-color="#10A779">
-        <swiper-item>
-          <image v-if="post.coverImage" class="detail-photo" :src="post.coverImage" mode="aspectFill" />
-          <view v-else class="media-item" :style="{ background: post.coverColor }">
+      <swiper v-if="showCoverImage || !isConfession" class="media" indicator-dots indicator-active-color="#10A779">
+        <template v-if="showCoverImage">
+          <swiper-item v-for="image in postImages" :key="image">
+            <image class="detail-photo" :src="image" mode="aspectFill" @error="handleCoverImageError" />
+          </swiper-item>
+        </template>
+        <swiper-item v-else>
+          <view class="media-item" :style="{ background: post.coverColor }">
             <image :src="channelIcon" mode="aspectFit" /><view>{{ post.coverLabel }}</view>
           </view>
         </swiper-item>
       </swiper>
+      <view v-else class="confession-detail-hero">
+        <view class="confession-detail-icon">♥</view>
+        <text>校园表白墙</text>
+        <text>每一份心意都值得被认真对待</text>
+      </view>
       <view class="content-card" :class="{ 'confession-content-card': isConfession }">
         <view class="author-row">
           <view class="author-avatar">
