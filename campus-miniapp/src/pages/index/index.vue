@@ -102,7 +102,9 @@ async function selectCampus(campus: typeof campusTenants[number]) {
     campusSwitching.value = false;
   }
 }
-function goPublish() {
+function goPublish(type?: string) {
+  if (type)
+    uni.setStorageSync('campus-publish-active-type', type);
   uni.switchTab({ url: '/pages/publish/index' });
 }
 async function loadFeed(showLoading = true) {
@@ -167,7 +169,7 @@ watch(() => tenantStore.tenantId, () => loadFeed());
     <button class="search-entry" aria-label="搜索校园内容" @click="goSearch">
       <image class="search-icon" src="/static/icons/ui/search.svg" mode="aspectFit" />
       <text class="search-placeholder">
-        搜索校内信息、二手、拼车、活动
+        搜索校内信息、二手、表白、活动
       </text>
     </button>
 
@@ -199,13 +201,13 @@ watch(() => tenantStore.tenantId, () => loadFeed());
       scroll-y class="feed-scroll" refresher-enabled :refresher-triggered="refreshing"
       @refresherrefresh="onRefresh"
     >
-      <button class="publish-inspire" @click="goPublish">
+      <button class="publish-inspire" @click="goPublish(activeChannel === '表白' ? 'confession' : undefined)">
         <view class="inspire-avatar">
-          ＋
+          {{ activeChannel === '表白' ? '💌' : '＋' }}
         </view>
         <view class="inspire-copy">
-          <text>分享校园新鲜事</text>
-          <text>记录真实、有用的校园生活</text>
+          <text>{{ activeChannel === '表白' ? '写下想对 TA 说的话' : '分享校园新鲜事' }}</text>
+          <text>{{ activeChannel === '表白' ? '匿名发布也可以，先把心意说出来' : '记录真实、有用的校园生活' }}</text>
         </view>
         <text class="inspire-arrow">
           ›
@@ -221,8 +223,8 @@ watch(() => tenantStore.tenantId, () => loadFeed());
       </view>
       <StatePanel
         v-else-if="state === 'empty'" title="这里还没有新内容"
-        description="做第一个分享校园生活的人吧，真实内容会优先推荐给同校同学。" action="去发布"
-        @action="uni.switchTab({ url: '/pages/publish/index' })"
+        :description="activeChannel === '表白' ? '写下第一份心意，让 TA 有机会看见。' : '做第一个分享校园生活的人吧，真实内容会优先推荐给同校同学。'" action="去发布"
+        @action="goPublish(activeChannel === '表白' ? 'confession' : undefined)"
       />
       <StatePanel
         v-else-if="state === 'error'" type="error" title="内容暂时加载失败"

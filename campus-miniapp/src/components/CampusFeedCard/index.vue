@@ -6,6 +6,7 @@ const props = defineProps<{ post: CampusPost }>();
 const channelClasses: Record<string, string> = {
   二手: 'idle',
   互助: 'help',
+  表白: 'confession',
   拼车: 'ride',
   探店: 'shop',
   失物: 'lost',
@@ -15,6 +16,7 @@ const channelClass = computed(() => `channel-${channelClasses[props.post.channel
 const channelIcons: Record<string, string> = {
   二手: '/static/icons/login/trade.svg',
   互助: '/static/icons/login/help.svg',
+  表白: '/static/icons/mine/heart.svg',
   拼车: '/static/icons/publish/ride.svg',
   探店: '/static/icons/publish/shop.svg',
   失物: '/static/icons/publish/lost.svg',
@@ -32,59 +34,81 @@ function openDetail(id: number) {
     class="post-card" role="button" :aria-label="`${post.title}，查看详情`"
     @click="openDetail(post.id)"
   >
-    <view class="cover" :class="[`cover-${post.height}`, channelClass]" :style="{ background: post.coverColor }">
-      <image v-if="post.coverImage" class="cover-image" :src="post.coverImage" mode="aspectFill" lazy-load />
-      <text class="channel-badge">
-        {{ post.channel }}
-      </text>
-      <view v-if="!post.coverImage" class="cover-art">
-        <view class="cover-icon-wrap">
-          <image class="cover-icon" :src="channelIcon" mode="aspectFit" />
+    <template v-if="post.channel === '表白'">
+      <view class="confession-body">
+        <view class="confession-head">
+          <view class="confession-icon">♥</view>
+          <view class="confession-author">
+            <text>{{ post.author || '匿名用户' }}</text>
+            <text>{{ post.time }}</text>
+          </view>
+          <text class="confession-badge">💌 表白</text>
         </view>
-        <text class="cover-copy">
-          {{ post.coverLabel }}
-        </text>
-        <text class="cover-campus">
-          {{ post.school.slice(0, 4) }} · 同校
-        </text>
-      </view>
-    </view>
-
-    <view class="body">
-      <view class="post-title">
-        {{ post.title }}
-      </view>
-      <view class="meta-line">
-        <view v-if="post.price" class="price">
-          <text class="yen">
-            ¥
-          </text>{{ post.price }}
+        <view class="confession-target">{{ post.title }}</view>
+        <view class="confession-copy">{{ post.content }}</view>
+        <view class="confession-footer">
+          <text>#{{ post.tags[0] || '匿名' }}</text>
+          <view class="confession-actions">
+            <text>♡ {{ post.likes || 0 }}</text>
+            <text>评论 {{ post.comments || 0 }}</text>
+          </view>
         </view>
-        <text v-else class="tag">
-          #{{ post.tags[0] }}
-        </text>
-        <text class="distance">
-          校内
-        </text>
       </view>
-      <view class="author-row">
-        <view class="avatar">
-          <image :src="resolveCampusAvatar(post.avatar)" mode="aspectFill" lazy-load />
-        </view>
-        <view class="author-copy">
-          <text class="author">
-            {{ post.author }}
+    </template>
+    <template v-else>
+      <view class="cover" :class="[`cover-${post.height}`, channelClass]" :style="{ background: post.coverColor }">
+        <image v-if="post.coverImage" class="cover-image" :src="post.coverImage" mode="aspectFill" lazy-load />
+        <text class="channel-badge">
+          {{ post.channel }}
+        </text>
+        <view v-if="!post.coverImage" class="cover-art">
+          <view class="cover-icon-wrap">
+            <image class="cover-icon" :src="channelIcon" mode="aspectFit" />
+          </view>
+          <text class="cover-copy">
+            {{ post.coverLabel }}
           </text>
-          <text class="time">
-            {{ post.time }}
+          <text class="cover-campus">
+            {{ post.school.slice(0, 4) }} · 同校
           </text>
         </view>
-        <view class="like">
-          <image src="/static/icons/mine/heart.svg" mode="aspectFit" />
-          <text>{{ post.likes }}</text>
+      </view>
+      <view class="body">
+        <view class="post-title">
+          {{ post.title }}
+        </view>
+        <view class="meta-line">
+          <view v-if="post.price" class="price">
+            <text class="yen">
+              ¥
+            </text>{{ post.price }}
+          </view>
+          <text v-else class="tag">
+            #{{ post.tags[0] }}
+          </text>
+          <text class="distance">
+            校内
+          </text>
+        </view>
+        <view class="author-row">
+          <view class="avatar">
+            <image :src="resolveCampusAvatar(post.avatar)" mode="aspectFill" lazy-load />
+          </view>
+          <view class="author-copy">
+            <text class="author">
+              {{ post.author }}
+            </text>
+            <text class="time">
+              {{ post.time }}
+            </text>
+          </view>
+          <view class="like">
+            <image src="/static/icons/mine/heart.svg" mode="aspectFit" />
+            <text>{{ post.likes }}</text>
+          </view>
         </view>
       </view>
-    </view>
+    </template>
   </view>
 </template>
 
@@ -98,6 +122,104 @@ function openDetail(id: number) {
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(20rpx) saturate(145%);
   -webkit-backdrop-filter: blur(20rpx) saturate(145%);
+}
+
+.confession-body {
+  min-height: 248rpx;
+  padding: 24rpx;
+  background: linear-gradient(145deg, #fff, #fff7f8);
+}
+
+.confession-head,
+.confession-footer,
+.confession-actions {
+  display: flex;
+  align-items: center;
+}
+
+.confession-head {
+  min-width: 0;
+}
+
+.confession-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+  color: #e85d76;
+  background: #ffe7ed;
+  font-size: 28rpx;
+}
+
+.confession-author {
+  display: flex;
+  overflow: hidden;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  margin-left: 12rpx;
+}
+
+.confession-author text:first-child {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--font-size-meta);
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confession-author text:last-child {
+  margin-top: 4rpx;
+  color: var(--color-text-tertiary);
+  font-size: 18rpx;
+}
+
+.confession-badge {
+  flex: 0 0 auto;
+  padding: 7rpx 10rpx;
+  border-radius: var(--radius-pill);
+  color: #d95a72;
+  background: #ffebf0;
+  font-size: 18rpx;
+}
+
+.confession-target {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 24rpx;
+  color: #a84e65;
+  font-size: 26rpx;
+  font-weight: 800;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.confession-copy {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 12rpx;
+  color: var(--color-text-secondary);
+  font-size: 24rpx;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.confession-footer {
+  justify-content: space-between;
+  margin-top: 18rpx;
+  color: #bd7989;
+  font-size: 18rpx;
+}
+
+.confession-actions {
+  gap: 14rpx;
+  color: var(--color-text-tertiary);
 }
 
 .cover {

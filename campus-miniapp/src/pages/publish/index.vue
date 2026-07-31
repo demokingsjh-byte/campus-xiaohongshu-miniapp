@@ -54,6 +54,7 @@ const typeDetails: Record<string, { eyebrow: string, hint: string, placeholder: 
   shop: { eyebrow: '校园探店', hint: '实拍、价格和真实体验最有参考价值', placeholder: '推荐菜品、价格、排队情况、位置和真实感受...', tags: ['学生折扣', '人均30', '东门', '不踩雷', '适合聚餐'], modes: ['到店消费', '外卖可点'] },
   lost: { eyebrow: '失物招领', hint: '避免公开证件号码等敏感信息', placeholder: '丢失或捡到的物品、时间、地点和辨认特征...', tags: ['急', '校园卡', '图书馆', '已交服务台', '求扩散'], modes: ['失物寻找', '物品招领'] },
   club: { eyebrow: '社团活动', hint: '活动时间、地点和报名方式要完整', placeholder: '活动主题、时间地点、适合人群、名额和报名方式...', tags: ['社团活动', '零基础', '免费', '周末', '招募中'], modes: ['线上报名', '现场参与'] },
+  confession: { eyebrow: '校园表白', hint: '请尊重他人隐私，不要发布联系方式或敏感信息', placeholder: '写下你想对 TA 说的话，可以从一次相遇、一句感谢开始...', tags: ['匿名', '暗恋', '感谢', '毕业季', '求回应'], modes: ['仅表白墙展示'] },
 };
 const typeIcons: Record<string, string> = {
   idle: '/static/icons/login/trade.svg',
@@ -62,12 +63,14 @@ const typeIcons: Record<string, string> = {
   shop: '/static/icons/publish/shop.svg',
   lost: '/static/icons/publish/lost.svg',
   club: '/static/icons/login/event.svg',
+  confession: '/static/icons/mine/heart.svg',
 };
 
 const currentType = computed(() => campusPublishTypes.find(item => item.key === activeType.value)!);
 const currentDetail = computed(() => typeDetails[activeType.value]);
 const showPrice = computed(() => ['idle', 'ride', 'shop'].includes(activeType.value));
 const requiresImage = computed(() => ['idle', 'shop', 'lost'].includes(activeType.value));
+const isConfession = computed(() => activeType.value === 'confession');
 
 onLoad(() => {
   const draft = uni.getStorageSync('campus-publish-draft');
@@ -92,6 +95,11 @@ onLoad(() => {
 });
 
 onShow(async () => {
+  const requestedType = uni.getStorageSync('campus-publish-active-type');
+  if (typeof requestedType === 'string' && campusPublishTypes.some(item => item.key === requestedType)) {
+    chooseType(requestedType);
+    uni.removeStorageSync('campus-publish-active-type');
+  }
   if (!userStore.loggedIn)
     return;
   try {
@@ -113,6 +121,7 @@ function chooseType(key: string) {
   activeType.value = key;
   form.tags = [];
   form.tradeMode = typeDetails[key].modes[0];
+  form.anonymous = key === 'confession';
   Object.keys(errors).forEach(keyName => errors[keyName] = '');
 }
 function handleChooseImageFailure(error: { errMsg?: string }) {
@@ -198,11 +207,17 @@ function selectFrom(key: 'location' | 'visibleRange', options: string[], event: 
 }
 function validate() {
   errors.images = requiresImage.value && !images.value.length ? '请至少上传 1 张真实图片' : '';
-  errors.title = form.title.trim().length >= 4 ? '' : '标题至少填写 4 个字';
+  errors.title = isConfession.value
+    ? (form.title.trim().length >= 2 ? '' : '请填写表白对象或称呼')
+    : (form.title.trim().length >= 4 ? '' : '标题至少填写 4 个字');
   errors.content = form.content.trim().length >= 10 ? '' : '详细描述至少填写 10 个字';
   errors.price = showPrice.value && form.price && Number(form.price) <= 0 ? '价格需要大于 0' : '';
   errors.agreement = agreed.value ? '' : '请先同意社区发布规范';
   return !Object.values(errors).some(Boolean);
+}
+function normalizeConfessionTitle(value: string) {
+  const target = value.replace(/^TO[：:]?\s*/i, '').trim();
+  return `TO：${target}`;
 }
 function saveDraft() {
   uni.setStorageSync('campus-publish-draft', { ...form, images: images.value, activeType: activeType.value });
@@ -261,11 +276,11 @@ async function submit() {
     }));
     const created = await contentStore.publishPost({
       type: activeType.value,
-      title: form.title.trim(),
+      title: isConfession.value ? normalizeConfessionTitle(form.title) : form.title.trim(),
       content: form.content.trim(),
       price: form.price.trim() || undefined,
       originalPrice: form.originalPrice.trim() || undefined,
-      location: form.location,
+      location: isConfession.value ? `${schoolName.value} · 表白墙` : form.location,
       tradeMode: form.tradeMode,
       visibleRange: form.visibleRange,
       contact: form.contact.trim() || undefined,
@@ -283,9 +298,12 @@ async function submit() {
     showSuccess.value = true;
   } catch (error) {
     const message = error instanceof Error ? error.message.replace(/^.*：/, '') : '请检查网络后重试';
+    const backendNotUpdated = /不支持的发布类型/.test(message);
     uni.showModal({
-      title: '发布失败，内容未保存',
-      content: message || '请检查网络后重试，当前填写内容仍为你保留。',
+      title: backendNotUpdated ? '服务器版本未更新' : '发布失败，内容未保存',
+      content: backendNotUpdated
+        ? '表白墙功能已更新到小程序，但服务器仍在运行旧版本。请部署最新后端并重启服务后再试。'
+        : (message || '请检查网络后重试，当前填写内容仍为你保留。'),
       showCancel: false,
       confirmText: '知道了',
     });
@@ -340,7 +358,7 @@ function reset() {
 
     <view class="content-card card-block">
       <view class="block-head media-head">
-        <text>添加图片</text><text>{{ images.length }}/9 · 首图为封面</text>
+        <text>{{ isConfession ? '添加图片（可选）' : '添加图片' }}</text><text>{{ images.length }}/9 · 首图为封面</text>
       </view>
       <view class="uploader-grid">
         <view v-for="(image, index) in images" :key="image" class="image-item" @click="setCover(index)">
@@ -368,7 +386,7 @@ function reset() {
 
       <view class="editor-divider" />
       <view class="title-editor">
-        <input v-model="form.title" maxlength="30" :class="{ invalid: errors.title }" placeholder="填写标题会更容易被看到">
+        <input v-model="form.title" maxlength="30" :class="{ invalid: errors.title }" :placeholder="isConfession ? '例如：TO：图书馆三楼遇到的你' : '填写标题会更容易被看到'">
         <text>{{ form.title.length }}/30</text>
       </view>
       <view v-if="errors.title" class="error">
@@ -422,7 +440,7 @@ function reset() {
     </view>
 
     <view class="setting-card card-block">
-      <picker :range="locations" @change="selectFrom('location', locations, $event)">
+      <picker v-if="!isConfession" :range="locations" @change="selectFrom('location', locations, $event)">
         <view class="setting-row">
           <view class="setting-icon">
             <image src="/static/icons/ui/location.svg" mode="aspectFit" />
@@ -456,7 +474,7 @@ function reset() {
           ›
         </text>
       </view>
-      <view v-if="showAdvanced" class="setting-row contact-row">
+      <view v-if="showAdvanced && !isConfession" class="setting-row contact-row">
         <view class="setting-icon">
           <image src="/static/icons/ui/contact.svg" mode="aspectFit" />
         </view>
@@ -469,7 +487,7 @@ function reset() {
           <image src="/static/icons/ui/anonymous.svg" mode="aspectFit" />
         </view>
         <view class="setting-main">
-          <text>匿名发布</text><text>昵称将显示为“同校同学”</text>
+          <text>匿名发布</text><text>{{ isConfession ? '默认开启，保护你的隐私' : '昵称将显示为“同校同学”' }}</text>
         </view>
         <switch :checked="form.anonymous" color="#10a779" @change="form.anonymous = $event.detail.value" />
       </view>

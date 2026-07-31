@@ -45,6 +45,7 @@ const channelIcons: Record<string, string> = {
   社团: '/static/icons/login/event.svg',
 };
 const channelIcon = computed(() => channelIcons[post.value.channel] || '/static/icons/mine/cloud.svg');
+const isConfession = computed(() => post.value.channel === '表白' || post.value.type === 'confession');
 const hasMoreComments = computed(() => comments.value.length < commentTotal.value);
 const topLevelComments = computed(() => comments.value.filter(item => !item.parentId));
 const replyAuthor = computed(() => {
@@ -489,7 +490,12 @@ function reportPost() {
       @action="uni.switchTab({ url: '/pages/index/index' })"
     />
     <template v-else>
-      <swiper class="media" indicator-dots indicator-active-color="#10A779">
+      <view v-if="isConfession" class="confession-detail-hero">
+        <view class="confession-detail-icon">♥</view>
+        <text>校园表白墙</text>
+        <text>每一份心意都值得被认真对待</text>
+      </view>
+      <swiper v-else class="media" indicator-dots indicator-active-color="#10A779">
         <swiper-item>
           <image v-if="post.coverImage" class="detail-photo" :src="post.coverImage" mode="aspectFill" />
           <view v-else class="media-item" :style="{ background: post.coverColor }">
@@ -497,7 +503,7 @@ function reportPost() {
           </view>
         </swiper-item>
       </swiper>
-      <view class="content-card">
+      <view class="content-card" :class="{ 'confession-content-card': isConfession }">
         <view class="author-row">
           <view class="author-avatar">
             <image :src="resolveCampusAvatar(post.avatar)" mode="aspectFill" />
@@ -527,7 +533,9 @@ function reportPost() {
         </view>
         <view class="meta">
           <view class="meta-location">
-            <image src="/static/icons/ui/location.svg" mode="aspectFit" /><text>{{ post.location || `${post.school} · 校内` }}</text>
+            <image
+              :src="isConfession ? '/static/icons/mine/heart.svg' : '/static/icons/ui/location.svg'" mode="aspectFit"
+            /><text>{{ isConfession ? '仅展示在本校表白墙' : (post.location || `${post.school} · 校内`) }}</text>
           </view><view class="meta-actions">
             <text>浏览 {{ post.views || 0 }}</text><text v-if="!post.owner" class="report-entry" @click="reportPost">
               举报
@@ -541,7 +549,7 @@ function reportPost() {
           <view class="detail-action" :class="{ active: collected }" @click="toggleCollect">
             <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>{{ collected ? '已收藏' : '收藏' }}</text>
           </view>
-          <button class="detail-contact" :disabled="contactSubmitting" @click="contact">
+          <button v-if="!isConfession" class="detail-contact" :disabled="contactSubmitting" @click="contact">
             {{ contactSubmitting ? '提交中…' : contactButtonText }}
           </button>
         </view>
@@ -697,6 +705,37 @@ function reportPost() {
 }
 .media {
   height: 620rpx;
+}
+.confession-detail-hero {
+  display: flex;
+  height: 360rpx;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: #a84e65;
+  background: linear-gradient(145deg, #fff3f5, #fceaf0);
+}
+.confession-detail-icon {
+  display: flex;
+  width: 120rpx;
+  height: 120rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 40rpx;
+  color: #e85d76;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 16rpx 36rpx rgba(190, 85, 110, 0.16);
+  font-size: 58rpx;
+}
+.confession-detail-hero > text:nth-child(2) {
+  margin-top: 24rpx;
+  font-size: 32rpx;
+  font-weight: 900;
+}
+.confession-detail-hero > text:nth-child(3) {
+  margin-top: 10rpx;
+  color: #bb7c8b;
+  font-size: 22rpx;
 }
 .detail-photo {
   width: 100%;
@@ -1130,6 +1169,12 @@ function reportPost() {
   color: #8c9691;
   background: rgba(118, 118, 128, 0.1);
   font-size: 28rpx;
+}
+.confession-content-card .title {
+  color: #a84e65;
+}
+.confession-content-card .detail-action.active {
+  color: #e85d76;
 }
 .current-user-avatar {
   display: flex;

@@ -43,12 +43,13 @@ public class CampusPostServiceImpl implements CampusPostService {
 
     private static final long DEFAULT_TENANT_ID = 201L;
     private static final Set<String> SUPPORTED_TYPES = Collections.unmodifiableSet(
-            new java.util.HashSet<>(Arrays.asList("idle", "help", "ride", "shop", "lost", "club")));
+            new java.util.HashSet<>(Arrays.asList("idle", "help", "confession", "ride", "shop", "lost", "club")));
     private static final Map<String, String> CHANNEL_MAP = new HashMap<>();
 
     static {
         CHANNEL_MAP.put("idle", "二手");
         CHANNEL_MAP.put("help", "互助");
+        CHANNEL_MAP.put("confession", "表白");
         CHANNEL_MAP.put("ride", "拼车");
         CHANNEL_MAP.put("shop", "探店");
         CHANNEL_MAP.put("lost", "失物");

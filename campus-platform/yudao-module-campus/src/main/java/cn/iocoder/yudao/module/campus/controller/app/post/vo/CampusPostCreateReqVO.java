@@ -14,7 +14,7 @@ import java.util.List;
 public class CampusPostCreateReqVO {
 
     @NotBlank
-    @Schema(description = "类型：idle、help、ride、shop、lost、club", requiredMode = Schema.RequiredMode.REQUIRED)
+    @Schema(description = "类型：idle、help、confession、ride、shop、lost、club", requiredMode = Schema.RequiredMode.REQUIRED)
     private String type;
 
     @NotBlank

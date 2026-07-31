@@ -33,6 +33,7 @@ interface MockComment {
 const channelMap: Record<string, string> = {
   idle: '二手',
   help: '互助',
+  confession: '表白',
   ride: '拼车',
   shop: '探店',
   lost: '失物',
@@ -41,6 +42,7 @@ const channelMap: Record<string, string> = {
 const coverMap: Record<string, Pick<CampusPost, 'coverColor' | 'coverEmoji' | 'coverLabel'>> = {
   idle: { coverColor: '#E8F1FF', coverEmoji: '📦', coverLabel: '同校闲置' },
   help: { coverColor: '#EEF2FF', coverEmoji: '🙌', coverLabel: '同校互助' },
+  confession: { coverColor: '#FCEAF0', coverEmoji: '💌', coverLabel: '校园表白' },
   ride: { coverColor: '#DCEEF3', coverEmoji: '🚕', coverLabel: '拼车招募中' },
   shop: { coverColor: '#FCE7DE', coverEmoji: '🥤', coverLabel: '真实探店' },
   lost: { coverColor: '#FFF0D9', coverEmoji: '🔎', coverLabel: '失物信息' },
