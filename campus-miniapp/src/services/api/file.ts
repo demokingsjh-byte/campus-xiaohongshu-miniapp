@@ -9,15 +9,35 @@ interface UploadResult {
   message?: string
 }
 
+function isTemporaryFilePath(filePath: string) {
+  return /^(?:https?|wxfile):\/\/tmp\//i.test(filePath)
+    || /^\/?tmp\//i.test(filePath)
+    || /^blob:/i.test(filePath);
+}
+
+function uploadFailed(errorLabel: string) {
+  return new Error(`${errorLabel}上传失败，请重新选择图片后重试`);
+}
+
 function uploadCampusFile(filePath: string, directory: string, errorLabel: string) {
   if (isUseMock()) {
     // 微信 chooseImage 返回的是临时文件路径，应用重启后会失效。
     // Mock 模式也保存一份本地副本，保证发布后重新打开详情仍能显示图片。
-    return new Promise<string>((resolve) => {
+    if (!isTemporaryFilePath(filePath) && /^(?:file|wxfile):\/\//i.test(filePath))
+      return Promise.resolve(filePath);
+
+    return new Promise<string>((resolve, reject) => {
       uni.saveFile({
         tempFilePath: filePath,
-        success: result => resolve(result.savedFilePath || filePath),
-        fail: () => resolve(filePath),
+        success: (result) => {
+          const savedFilePath = result.savedFilePath || '';
+          if (!savedFilePath || savedFilePath === filePath || isTemporaryFilePath(savedFilePath)) {
+            reject(uploadFailed(errorLabel));
+            return;
+          }
+          resolve(savedFilePath);
+        },
+        fail: () => reject(uploadFailed(errorLabel)),
       });
     });
   }
@@ -38,6 +58,10 @@ function uploadCampusFile(filePath: string, directory: string, errorLabel: strin
         try {
           const result = JSON.parse(data) as UploadResult;
           if (statusCode === 200 && result.code === 0 && result.data) {
+            if (isTemporaryFilePath(result.data)) {
+              reject(uploadFailed(errorLabel));
+              return;
+            }
             resolve(result.data);
             return;
           }

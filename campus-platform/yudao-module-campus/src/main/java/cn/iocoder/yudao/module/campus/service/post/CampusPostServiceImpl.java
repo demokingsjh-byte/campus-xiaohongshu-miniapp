@@ -26,6 +26,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -100,10 +101,7 @@ public class CampusPostServiceImpl implements CampusPostService {
                 .addValue("contact", trimToEmpty(reqVO.getContact()))
                 .addValue("anonymous", Boolean.TRUE.equals(reqVO.getAnonymous()))
                 .addValue("tagsJson", JsonUtils.toJsonString(defaultList(reqVO.getTags())))
-                .addValue("imagesJson", JsonUtils.toJsonString(defaultList(reqVO.getImages()).stream()
-                        .filter(StrUtil::isNotBlank)
-                        .map(HttpUtils::removeUrlQuery)
-                        .collect(Collectors.toList())))
+                .addValue("imagesJson", JsonUtils.toJsonString(normalizePostImages(reqVO.getImages())))
                 .addValue("operator", String.valueOf(userId));
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update("INSERT INTO campus_post (user_id, tenant_id, school_name, campus_name, type, channel,"
@@ -700,6 +698,30 @@ public class CampusPostServiceImpl implements CampusPostService {
 
     private static List<String> defaultList(List<String> list) {
         return list == null ? Collections.emptyList() : list;
+    }
+
+    private static List<String> normalizePostImages(List<String> images) {
+        List<String> normalized = new ArrayList<>();
+        for (String image : defaultList(images)) {
+            if (StrUtil.isBlank(image)) {
+                continue;
+            }
+            String value = HttpUtils.removeUrlQuery(image.trim());
+            if (isTemporaryFilePath(value)) {
+                throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "图片上传失败，请重新选择图片后重试");
+            }
+            normalized.add(value);
+        }
+        return normalized;
+    }
+
+    private static boolean isTemporaryFilePath(String value) {
+        String normalized = value.toLowerCase();
+        return normalized.startsWith("http://tmp/")
+                || normalized.startsWith("https://tmp/")
+                || normalized.startsWith("wxfile://")
+                || normalized.startsWith("file://")
+                || normalized.startsWith("blob:");
     }
 
     private static List<String> parseStringList(String value) {
