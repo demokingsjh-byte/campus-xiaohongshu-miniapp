@@ -21,6 +21,7 @@ VALUES
     (900600, '学生用户', 'campus:miniapp-user:query', 2, 7, 900000, 'miniapp-user', 'ep:user', 'campus/base/index', 'CampusStudentUser', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900700, '数据日志', 'system:operate-log:query', 2, 11, 900000, 'data-log', 'ep:notebook', 'campus/log/index', 'CampusDataLog', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900800, '内容管理', 'campus:post:query', 2, 8, 900000, 'post', 'ep:document', 'campus/base/index', 'CampusPost', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900850, '表白管理', 'campus:post:query', 2, 9, 900000, 'confession', 'ep:chat-line-round', 'campus/confession/index', 'CampusConfession', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900910, '联系申请', 'campus:contact-request:query', 2, 10, 900000, 'contact-request', 'ep:chat-dot-round', 'campus/base/index', 'CampusContactRequest', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
 ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), sort = VALUES(sort), parent_id = VALUES(parent_id), path = VALUES(path), icon = VALUES(icon), component = VALUES(component), component_name = VALUES(component_name), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';
 
