@@ -36,6 +36,11 @@
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
       <el-table-column label="编号" align="center" prop="id" width="90" />
+      <el-table-column label="图片" align="center" width="90">
+        <template #default="scope">
+          <CampusImagePreview :value="scope.row.images_json" />
+        </template>
+      </el-table-column>
       <el-table-column label="表白对象/标题" prop="title" min-width="200" show-overflow-tooltip />
       <el-table-column label="正文" prop="content" min-width="260" show-overflow-tooltip />
       <el-table-column label="发布用户" align="center" prop="user_id" width="100" />
@@ -91,6 +96,7 @@
 
 <script setup lang="ts">
 import { deleteCampus, getCampusPage, updateCampus } from '@/api/campus/base'
+import CampusImagePreview from '@/components/CampusImagePreview/index.vue'
 
 defineOptions({ name: 'CampusConfession' })
 

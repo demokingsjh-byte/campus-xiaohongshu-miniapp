@@ -66,9 +66,7 @@
       <el-table-column label="编号" align="center" prop="id" width="90" />
       <el-table-column v-if="resource === 'miniapp-user'" label="微信头像" align="center" width="90">
         <template #default="scope">
-          <el-avatar :size="42" :src="scope.row.avatar">
-            {{ String(scope.row.nickname || '学').slice(0, 1) }}
-          </el-avatar>
+          <CampusImagePreview :value="scope.row.avatar" :size="42" />
         </template>
       </el-table-column>
       <el-table-column
@@ -78,7 +76,11 @@
         :prop="column.prop"
         align="center"
         :show-overflow-tooltip="true"
-      />
+      >
+        <template v-if="column.type === 'image' || column.type === 'images'" #default="scope">
+          <CampusImagePreview :value="scope.row[column.prop]" />
+        </template>
+      </el-table-column>
       <el-table-column label="创建时间" align="center" prop="create_time" width="180" />
       <el-table-column label="操作" align="center" width="210" fixed="right">
         <template #default="scope">
@@ -134,11 +136,12 @@
 
 <script setup lang="ts">
 import { createCampus, deleteCampus, getCampus, getCampusPage, updateCampus } from '@/api/campus/base'
+import CampusImagePreview from '@/components/CampusImagePreview/index.vue'
 import { useRoute, useRouter } from 'vue-router'
 
 defineOptions({ name: 'CampusBase' })
 
-type FieldType = 'text' | 'textarea' | 'number' | 'decimal' | 'boolean'
+type FieldType = 'text' | 'textarea' | 'number' | 'decimal' | 'boolean' | 'image' | 'images'
 
 interface SelectOption {
   label: string
@@ -204,6 +207,7 @@ const metas: Record<string, PageMeta> = {
     searchLabel: '学校名称',
     statusKey: 'status',
     columns: [
+      { label: 'Logo', prop: 'logo_url', type: 'image' },
       { label: '学校名称', prop: 'name' },
       { label: '省份', prop: 'province' },
       { label: '城市', prop: 'city' },
@@ -225,6 +229,7 @@ const metas: Record<string, PageMeta> = {
     searchLabel: '展示名称',
     statusKey: 'status',
     columns: [
+      { label: 'Logo', prop: 'logo_url', type: 'image' },
       { label: '展示名称', prop: 'display_name' },
       { label: '学校', prop: 'school_name' },
       { label: '校区', prop: 'campus_name' },
@@ -278,6 +283,7 @@ const metas: Record<string, PageMeta> = {
     searchLabel: '商品标题',
     statusKey: 'status',
     columns: [
+      { label: '图片', prop: 'images', type: 'images' },
       { label: '标题', prop: 'title' },
       { label: '发布用户', prop: 'user_id' },
       { label: '分类', prop: 'category_id' },
@@ -319,6 +325,7 @@ const metas: Record<string, PageMeta> = {
       { label: '租户ID', prop: 'tenant_id', type: 'number' }
     ],
     columns: [
+      { label: '图片', prop: 'images_json', type: 'images' },
       { label: '标题', prop: 'title' },
       { label: '发布用户', prop: 'user_id' },
       { label: '学校', prop: 'school_name' },
@@ -362,6 +369,7 @@ const metas: Record<string, PageMeta> = {
       { label: '租户ID', prop: 'tenant_id', type: 'number' }
     ],
     columns: [
+      { label: '图片', prop: 'images_json', type: 'images' },
       { label: '帖子ID', prop: 'post_id' },
       { label: '用户ID', prop: 'user_id' },
       { label: '父评论ID', prop: 'parent_id' },
