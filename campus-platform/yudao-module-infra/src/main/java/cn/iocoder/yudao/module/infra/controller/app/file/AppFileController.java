@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.infra.controller.app.file;
 
 import cn.hutool.core.io.IoUtil;
+import cn.hutool.core.io.FileUtil;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.module.infra.controller.admin.file.vo.file.FileCreateReqVO;
 import cn.iocoder.yudao.module.infra.controller.admin.file.vo.file.FilePresignedUrlRespVO;
@@ -40,7 +41,12 @@ public class AppFileController {
     public CommonResult<String> uploadFile(@Valid AppFileUploadReqVO uploadReqVO) throws Exception {
         MultipartFile file = uploadReqVO.getFile();
         byte[] content = IoUtil.readBytes(file.getInputStream());
-        return success(fileService.createFile(content, file.getOriginalFilename(),
+        // 微信开发者工具可能把 http://tmp/xxx.jpg 作为 multipart 原始文件名。
+        // 只保留最后一段安全文件名，避免临时路径被编码后成为 OSS 对象名。
+        String originalFilename = file.getOriginalFilename();
+        String safeFilename = originalFilename == null ? null
+                : FileUtil.getName(originalFilename.replace('\\', '/'));
+        return success(fileService.createFile(content, safeFilename,
                 uploadReqVO.getDirectory(), file.getContentType()));
     }
 

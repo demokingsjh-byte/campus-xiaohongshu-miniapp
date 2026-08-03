@@ -10,9 +10,17 @@ interface UploadResult {
 }
 
 function isTemporaryFilePath(filePath: string) {
-  return /^(?:https?|wxfile):\/\/tmp\//i.test(filePath)
-    || /^\/?tmp\//i.test(filePath)
-    || /^blob:/i.test(filePath);
+  let normalized = filePath.trim();
+  try {
+    normalized = decodeURIComponent(normalized);
+  }
+  catch {
+    // Keep the original value when it is not a valid encoded URI.
+  }
+  return /^(?:https?|wxfile):\/\/tmp\//i.test(normalized)
+    || /^\/?tmp\//i.test(normalized)
+    || /^blob:/i.test(normalized)
+    || /\/(?:https?|wxfile):\/\/tmp\//i.test(normalized);
 }
 
 function uploadFailed(errorLabel: string) {

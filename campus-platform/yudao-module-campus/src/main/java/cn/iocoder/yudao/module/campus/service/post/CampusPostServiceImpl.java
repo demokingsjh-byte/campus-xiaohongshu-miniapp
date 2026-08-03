@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.campus.service.post;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.core.util.URLUtil;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.http.HttpUtils;
@@ -716,12 +717,15 @@ public class CampusPostServiceImpl implements CampusPostService {
     }
 
     private static boolean isTemporaryFilePath(String value) {
-        String normalized = value.toLowerCase();
+        String normalized = URLUtil.decode(value).toLowerCase();
         return normalized.startsWith("http://tmp/")
                 || normalized.startsWith("https://tmp/")
                 || normalized.startsWith("wxfile://")
                 || normalized.startsWith("file://")
-                || normalized.startsWith("blob:");
+                || normalized.startsWith("blob:")
+                || normalized.contains("/http://tmp/")
+                || normalized.contains("/https://tmp/")
+                || normalized.contains("/wxfile://tmp/");
     }
 
     private static List<String> parseStringList(String value) {
@@ -814,6 +818,7 @@ public class CampusPostServiceImpl implements CampusPostService {
     }
 
     private static String coverColor(String type) {
+        if ("confession".equals(type)) return "#FCEAF0";
         if ("idle".equals(type)) return "#E8F1FF";
         if ("ride".equals(type)) return "#DCEEF3";
         if ("shop".equals(type)) return "#FCE7DE";
@@ -822,6 +827,7 @@ public class CampusPostServiceImpl implements CampusPostService {
     }
 
     private static String coverEmoji(String type) {
+        if ("confession".equals(type)) return "💌";
         if ("idle".equals(type)) return "📦";
         if ("ride".equals(type)) return "🚕";
         if ("shop".equals(type)) return "🥤";
@@ -831,6 +837,7 @@ public class CampusPostServiceImpl implements CampusPostService {
     }
 
     private static String coverLabel(String type) {
+        if ("confession".equals(type)) return "校园表白";
         if ("idle".equals(type)) return "同校闲置";
         if ("ride".equals(type)) return "拼车招募中";
         if ("shop".equals(type)) return "真实探店";
