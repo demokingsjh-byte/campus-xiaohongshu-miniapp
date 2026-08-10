@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import PrototypeTabBar from '@/components/PrototypeTabBar/index.vue';
 import { campusPublishTypes, getDefaultTenant } from '@/mock/campus';
 import { uploadCampusPostImage } from '@/services/api/file';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
@@ -55,6 +56,7 @@ const typeDetails: Record<string, { eyebrow: string, hint: string, placeholder: 
   lost: { eyebrow: '失物招领', hint: '避免公开证件号码等敏感信息', placeholder: '丢失或捡到的物品、时间、地点和辨认特征...', tags: ['急', '校园卡', '图书馆', '已交服务台', '求扩散'], modes: ['失物寻找', '物品招领'] },
   club: { eyebrow: '社团活动', hint: '活动时间、地点和报名方式要完整', placeholder: '活动主题、时间地点、适合人群、名额和报名方式...', tags: ['社团活动', '零基础', '免费', '周末', '招募中'], modes: ['线上报名', '现场参与'] },
   confession: { eyebrow: '校园表白', hint: '请尊重他人隐私，不要发布联系方式或敏感信息', placeholder: '写下你想对 TA 说的话，可以从一次相遇、一句感谢开始...', tags: ['匿名', '暗恋', '感谢', '毕业季', '求回应'], modes: ['仅表白墙展示'] },
+  job: { eyebrow: '兼职信息', hint: '请写清工作内容、结算方式和安全注意事项', placeholder: '岗位职责、工作时间、薪资结算、地点和报名要求...', tags: ['校内兼职', '周末', '日结', '时间灵活', '学生优先'], modes: ['线上申请', '到店面试'] },
 };
 const typeIcons: Record<string, string> = {
   idle: '/static/icons/login/trade.svg',
@@ -64,11 +66,12 @@ const typeIcons: Record<string, string> = {
   lost: '/static/icons/publish/lost.svg',
   club: '/static/icons/login/event.svg',
   confession: '/static/icons/mine/heart.svg',
+  job: '/static/icons/login/event.svg',
 };
 
 const currentType = computed(() => campusPublishTypes.find(item => item.key === activeType.value)!);
 const currentDetail = computed(() => typeDetails[activeType.value]);
-const showPrice = computed(() => ['idle', 'ride', 'shop'].includes(activeType.value));
+const showPrice = computed(() => ['idle', 'ride', 'shop', 'job'].includes(activeType.value));
 const requiresImage = computed(() => ['idle', 'shop', 'lost'].includes(activeType.value));
 const isConfession = computed(() => activeType.value === 'confession');
 
@@ -301,7 +304,7 @@ async function submit() {
     uni.showModal({
       title: backendNotUpdated ? '服务器版本未更新' : '发布失败，内容未保存',
       content: backendNotUpdated
-        ? '表白墙功能已更新到小程序，但服务器仍在运行旧版本。请部署最新后端并重启服务后再试。'
+        ? '该发布类型已加入小程序，但服务器仍在运行旧版本。请部署最新后端并重启服务后再试。'
         : (message || '请检查网络后重试，当前填写内容仍为你保留。'),
       showCancel: false,
       confirmText: '知道了',
@@ -312,7 +315,7 @@ async function submit() {
 }
 function viewPublished() {
   if (!createdPostId.value) {
-    uni.switchTab({ url: '/pages/index/index' });
+    uni.reLaunch({ url: '/pages/index/index' });
     return;
   }
   showSuccess.value = false;
@@ -517,6 +520,8 @@ function reset() {
         </text>
       </button>
     </view>
+
+    <PrototypeTabBar active="publish" @reselect="submit" />
 
     <view v-if="showSuccess" class="success-mask">
       <view class="success-card">
@@ -1163,5 +1168,347 @@ function reset() {
   color: var(--yd-green-dark);
   background: transparent;
   font-size: 22rpx;
+}
+
+/* 蓝湖原型：发布页布局覆盖 */
+.publish-page {
+  min-height: 100vh;
+  padding: 26rpx 26rpx 0;
+  color: #1e201f;
+  background: #f4f4f4;
+  box-sizing: border-box;
+}
+
+.publisher-card {
+  display: none;
+}
+
+.card-block {
+  margin-bottom: 28rpx;
+  padding: 40rpx;
+  border: 0;
+  border-radius: 30rpx;
+  background: #fff;
+  box-shadow: none;
+}
+
+.block-head {
+  margin-bottom: 24rpx;
+}
+
+.block-head > text:first-child {
+  color: #1e201f;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.block-head > text:last-child {
+  color: #929593;
+  font-size: 24rpx;
+}
+
+.type-card {
+  padding: 24rpx 0 22rpx;
+}
+
+.type-card .block-head {
+  margin-bottom: 20rpx;
+  padding: 0 40rpx;
+}
+
+.type-track {
+  min-width: 100%;
+  padding: 0 24rpx;
+  gap: 4rpx;
+  box-sizing: border-box;
+}
+
+.type-item {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-start;
+  width: 124rpx;
+  min-height: 124rpx;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  flex-direction: column;
+}
+
+.type-symbol {
+  width: 76rpx;
+  height: 76rpx;
+  filter: drop-shadow(0 7rpx 8rpx rgba(47, 70, 54, 0.09));
+}
+
+.type-title {
+  margin: 7rpx 0 0;
+  color: #252826;
+  font-size: 25rpx;
+  font-weight: 500;
+}
+
+.type-item.active {
+  border: 0;
+  color: #181b19;
+  background: transparent;
+}
+
+.type-item.active .type-symbol {
+  transform: translateY(-3rpx) scale(1.06);
+}
+
+.type-item.active .type-title {
+  color: #181b19;
+  font-weight: 650;
+}
+
+.content-card {
+  padding: 40rpx;
+}
+
+.uploader-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20rpx;
+}
+
+.image-item,
+.add-image {
+  flex: 0 0 auto;
+  width: 142rpx;
+  height: 142rpx;
+  border-radius: 20rpx;
+}
+
+.add-image {
+  border: 0;
+  color: #929694;
+  background: #f7f7f7;
+}
+
+.add-image.wide-add {
+  width: 142rpx;
+  height: 142rpx;
+  flex-direction: column;
+  gap: 7rpx;
+}
+
+.add-image-copy {
+  align-items: center;
+  text-align: center;
+}
+
+.add-image-copy text:first-child {
+  color: #929694;
+  font-size: 22rpx;
+  font-weight: 500;
+}
+
+.add-image-copy text:last-child {
+  display: none;
+}
+
+.remove-image {
+  top: -16rpx;
+  right: -16rpx;
+  width: 42rpx;
+  height: 42rpx;
+  border: 5rpx solid #fff;
+  color: #fff;
+  background: #ff4c55;
+  font-size: 31rpx;
+  line-height: 38rpx;
+  box-sizing: border-box;
+}
+
+.editor-divider {
+  margin: 30rpx 0 24rpx;
+  background: #f3f3f3;
+}
+
+.title-editor input {
+  color: #202321;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.content-editor {
+  min-height: 210rpx;
+  color: #303331;
+  font-size: 26rpx;
+  line-height: 1.65;
+}
+
+.content-tools {
+  margin-top: 8rpx;
+  color: #a0a3a1;
+  font-size: 22rpx;
+}
+
+.tag-chip {
+  min-height: 56rpx;
+  padding: 0 24rpx;
+  border: 0;
+  border-radius: 28rpx;
+  color: #969a97;
+  background: #f7f7f7;
+  font-size: 24rpx;
+  line-height: 56rpx;
+}
+
+.tag-chip.active {
+  color: #203015;
+  background: #97f820;
+}
+
+.trade-card .price-main,
+.original-price {
+  border: 0;
+  border-radius: 18rpx;
+  background: #f8f8f8;
+}
+
+.price-main > text,
+.price-main input {
+  color: #ff4d55;
+}
+
+.mode-list > view {
+  border-color: #eceeec;
+  color: #303330;
+  background: #fff;
+}
+
+.mode-list > view.active {
+  border-color: #ffe8c6;
+  color: #ff8e16;
+  background: #fff7ea;
+}
+
+.setting-card {
+  padding: 4rpx 40rpx;
+}
+
+.setting-row {
+  min-height: 96rpx;
+  border-bottom-color: #f1f2f1;
+}
+
+.setting-icon {
+  display: none;
+}
+
+.setting-main {
+  margin-left: 0;
+}
+
+.setting-main > text:first-child {
+  color: #1e211f;
+  font-size: 28rpx;
+  font-weight: 550;
+}
+
+.setting-main > text:last-child,
+.setting-main input {
+  color: #959996;
+  font-size: 25rpx;
+  text-align: right;
+}
+
+.community-note,
+.agreement-error,
+.submit-bar {
+  display: none;
+}
+
+.bottom-spacer {
+  height: calc(190rpx + env(safe-area-inset-bottom));
+}
+
+.success-mask {
+  z-index: 100;
+  display: block;
+  padding: 0 32rpx;
+  background: linear-gradient(180deg, #e9fff0 0%, #f4f4f4 26%, #f4f4f4 100%);
+  backdrop-filter: none;
+  box-sizing: border-box;
+}
+
+.success-card {
+  width: 100%;
+  padding: 310rpx 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  box-sizing: border-box;
+}
+
+.success-mark {
+  display: inline-flex;
+  width: 42rpx;
+  height: 42rpx;
+  margin: 0 17rpx 0 0;
+  border-radius: 50%;
+  background: #93ef22;
+  vertical-align: middle;
+}
+
+.success-mark i {
+  top: 12rpx;
+  left: 10rpx;
+  width: 19rpx;
+  height: 10rpx;
+  border-width: 0 0 4rpx 4rpx;
+  border-color: #1c2a13;
+  border-style: solid;
+}
+
+.success-title {
+  display: inline-block;
+  margin: 0;
+  color: #1e201f;
+  font-size: 42rpx;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.success-desc {
+  margin-top: 32rpx;
+  color: #999d9a;
+  font-size: 28rpx;
+}
+
+.success-summary {
+  display: none;
+}
+
+.view-content {
+  width: auto;
+  min-width: 210rpx;
+  height: 66rpx;
+  margin: 32rpx auto 0;
+  padding: 0 30rpx;
+  border: 2rpx solid #dedfdd;
+  border-radius: 30rpx;
+  color: #202220;
+  background: transparent;
+  font-size: 27rpx;
+  font-weight: 500;
+  line-height: 62rpx;
+}
+
+.view-content::after {
+  border: 0;
+}
+
+.again {
+  width: auto;
+  margin: 12rpx auto 0;
+  color: #8f9390;
 }
 </style>

@@ -180,15 +180,13 @@ onLoad((query) => {
   min-height: 100vh;
   padding: 24rpx 24rpx calc(56rpx + env(safe-area-inset-bottom));
   color: var(--color-text);
-  background: var(--yd-paper);
+  background: #f4f4f4;
 }
 .hero {
   padding: 38rpx 32rpx 34rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.84);
+  border: 0;
   border-radius: 32rpx;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 22rpx 58rpx rgba(20, 91, 70, 0.1);
-  backdrop-filter: blur(30rpx) saturate(150%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.6), transparent 50%), #edfbf0;
 }
 .hero-icon {
   display: flex;
@@ -197,15 +195,14 @@ onLoad((query) => {
   width: 76rpx;
   height: 76rpx;
   border-radius: 23rpx;
-  color: #fff;
-  background: var(--yd-green);
-  box-shadow: 0 12rpx 28rpx rgba(16, 167, 121, 0.24);
+  color: #17210f;
+  background: #95f51f;
   font-size: 30rpx;
   font-weight: 800;
 }
 .eyebrow {
   margin-top: 28rpx;
-  color: var(--yd-green);
+  color: #579800;
   font-size: 21rpx;
   font-weight: 700;
   letter-spacing: 1rpx;
@@ -225,11 +222,9 @@ onLoad((query) => {
 .policy-card {
   margin-top: 20rpx;
   padding: 28rpx 28rpx 30rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.8);
+  border: 0;
   border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 15rpx 42rpx rgba(20, 91, 70, 0.09);
-  backdrop-filter: blur(26rpx) saturate(145%);
+  background: #fff;
 }
 .section-title {
   margin-bottom: 18rpx;
@@ -261,7 +256,7 @@ onLoad((query) => {
   height: 9rpx;
   margin: 17rpx 16rpx 0 2rpx;
   border-radius: 50%;
-  background: #64a9ef;
+  background: #95f51f;
 }
 .policy-alert {
   display: flex;

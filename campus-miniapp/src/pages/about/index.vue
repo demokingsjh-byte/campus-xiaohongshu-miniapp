@@ -1,7 +1,8 @@
 <script lang="ts" setup>
 import type { CampusTradeOrder } from '@/services/api/content';
-import { getAllCampusTradeOrders } from '@/services/api/content';
+import PrototypeTabBar from '@/components/PrototypeTabBar/index.vue';
 import { getDefaultTenant } from '@/mock/campus';
+import { getAllCampusTradeOrders } from '@/services/api/content';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { DEFAULT_CAMPUS_AVATAR, resolveCampusAvatar } from '@/utils/avatar';
@@ -29,14 +30,14 @@ const navigationStyle = computed(() => ({
   '--status-bar-height': `${statusBarHeight.value}px`,
 }));
 
-type MenuButtonRect = {
-  top: number;
-};
+interface MenuButtonRect {
+  top: number
+}
 
 function updateNavigationLayout() {
   const systemInfo = uni.getSystemInfoSync();
   const runtime = uni as typeof uni & {
-    getMenuButtonBoundingClientRect?: () => MenuButtonRect;
+    getMenuButtonBoundingClientRect?: () => MenuButtonRect
   };
   const menuButton = runtime.getMenuButtonBoundingClientRect?.();
   statusBarHeight.value = Math.max(systemInfo.statusBarHeight || 0, menuButton?.top || 0);
@@ -123,6 +124,8 @@ function handleMenu(action: string, requiresLogin: boolean) {
   }
   if (action === 'orders') {
     uni.navigateTo({ url: '/pages/orders/index' });
+  } else if (action === 'sold') {
+    uni.navigateTo({ url: '/pages/orders/index?role=seller' });
   } else if (action === 'messages') {
     uni.navigateTo({ url: '/pages/messages/index' });
   } else if (action === 'published') {
@@ -138,7 +141,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
 </script>
 
 <template>
-  <view class="mine-page safe-bottom" :style="navigationStyle">
+  <view v-if="false" class="mine-page safe-bottom" :style="navigationStyle">
     <view class="ambient-layer">
       <view class="ambient ambient-blue" />
       <view class="ambient ambient-indigo" />
@@ -252,10 +255,16 @@ function handleMenu(action: string, requiresLogin: boolean) {
         <image src="/static/icons/mine/wallet.svg" mode="aspectFit" />
       </view>
       <view class="order-entry-copy">
-        <text class="order-entry-title">我的订单</text>
-        <text class="order-entry-note">查看付款记录、订单状态和交易详情</text>
+        <text class="order-entry-title">
+          我的订单
+        </text>
+        <text class="order-entry-note">
+          查看付款记录、订单状态和交易详情
+        </text>
       </view>
-      <text class="order-entry-arrow">›</text>
+      <text class="order-entry-arrow">
+        ›
+      </text>
     </view>
 
     <view v-if="loggedIn" class="trade-card glass-card" @click="handleMenu('orders', true)">
@@ -308,6 +317,118 @@ function handleMenu(action: string, requiresLogin: boolean) {
     <view class="version">
       云点校园 v2.1 · 让校园生活更近一点
     </view>
+  </view>
+
+  <view class="prototype-mine" :style="navigationStyle">
+    <view class="prototype-mine-hero">
+      <view class="prototype-status" />
+      <view class="prototype-capsule-space" />
+
+      <view class="prototype-profile">
+        <view class="prototype-avatar-shell">
+          <button
+            v-if="loggedIn" class="prototype-avatar" open-type="chooseAvatar"
+            @chooseavatar="handleAvatarChoose"
+          >
+            <image :src="profileAvatar" mode="aspectFill" @error="handleProfileAvatarError" />
+            <view v-if="avatarUpdating" class="prototype-avatar-loading" />
+          </button>
+          <view v-else class="prototype-avatar" @click="goLogin()">
+            <image :src="profileAvatar" mode="aspectFill" />
+          </view>
+          <text v-if="!userStore.profileCompleted" class="prototype-avatar-state">
+            待完善
+          </text>
+        </view>
+
+        <view class="prototype-profile-copy" @click="goLogin(loggedIn ? 'edit' : 'login')">
+          <view class="prototype-name-row">
+            <text>{{ loggedIn ? (profile?.nickname || '同校同学') : '登录后开启校园生活' }}</text>
+            <text class="prototype-chevron">
+              ›
+            </text>
+          </view>
+          <view class="prototype-campus-chip">
+            {{ currentSchool }}·{{ currentCampus }}…
+          </view>
+        </view>
+      </view>
+
+      <view class="prototype-overview">
+        <view class="prototype-campus-card" @click="handleCampusPass">
+          <view>
+            <text>{{ currentSchool }}校园卡</text>
+            <text>{{ userStore.profileCompleted ? '校园身份已完善' : '去完善身份 ›' }}</text>
+          </view>
+          <view class="prototype-campus-art">
+            <image src="/static/images/mine-prototype/campus-card-hand.png" mode="aspectFit" />
+          </view>
+        </view>
+        <view class="prototype-stats">
+          <view @click="handleMenu('published', true)">
+            <text>{{ myPublishCount }}</text><text>我的关注</text>
+          </view>
+          <view @click="handleMenu('favorites', true)">
+            <text>{{ myFavoriteCount }}</text><text>我的收藏</text>
+          </view>
+          <view>
+            <text>{{ receivedLikeCount }}</text><text>我的获赞</text>
+          </view>
+          <view>
+            <text>0</text><text>历史浏览</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="prototype-trade-card">
+      <view class="prototype-section-title">
+        我的交易
+      </view>
+      <view class="prototype-trade-grid">
+        <view @click="handleMenu('published', true)">
+          <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-published.png" mode="aspectFit" />
+          <text>已发布</text>
+        </view>
+        <view @click="handleMenu('sold', true)">
+          <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-sold.png" mode="aspectFit" />
+          <text>已卖出</text>
+        </view>
+        <view @click="handleMenu('orders', true)">
+          <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-bought.png" mode="aspectFit" />
+          <text>已买到</text>
+        </view>
+        <view @click="handleMenu('orders', true)">
+          <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-pending.png" mode="aspectFit" />
+          <text>待支付</text>
+        </view>
+        <view @click="handleMenu('orders', true)">
+          <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-paid.png" mode="aspectFit" />
+          <text>已支付</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="prototype-service-card">
+      <view class="prototype-section-title">
+        服务与设置
+      </view>
+      <view class="prototype-service-row" @click="handleMenu('profile', false)">
+        <image class="prototype-service-icon" src="/static/images/mine-prototype/service-badge.png" mode="aspectFit" />
+        <text>校园认证</text><text>›</text>
+      </view>
+      <view class="prototype-service-row" @click="handleMenu('settings', false)">
+        <image class="prototype-service-icon" src="/static/images/mine-prototype/service-settings.png" mode="aspectFit" />
+        <text>设置与隐私</text><text>›</text>
+      </view>
+      <view class="prototype-service-row" @click="handleMenu('help', false)">
+        <image class="prototype-service-icon" src="/static/images/mine-prototype/service-help.png" mode="aspectFit" />
+        <text>帮助与反馈</text><text>›</text>
+      </view>
+    </view>
+
+    <view class="prototype-mine-safe" />
+    <PrototypeTabBar active="mine" />
   </view>
 </template>
 
@@ -808,5 +929,281 @@ function handleMenu(action: string, requiresLogin: boolean) {
   color: #a1a2a8;
   font-size: 19rpx;
   text-align: center;
+}
+
+.prototype-mine {
+  min-height: 100vh;
+  color: #1d201e;
+  background: #f4f4f4;
+}
+
+.prototype-mine-hero {
+  padding: 0 32rpx;
+  background:
+    linear-gradient(45deg, rgba(255, 255, 255, 0.2) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.2) 75%)
+      0 0 / 58rpx 58rpx,
+    linear-gradient(45deg, rgba(255, 255, 255, 0.2) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.2) 75%)
+      29rpx 29rpx / 58rpx 58rpx,
+    linear-gradient(180deg, #c8ffd3 0%, #e6f7ea 52%, #f4f4f4 100%);
+}
+
+.prototype-status {
+  height: var(--status-bar-height, 44px);
+}
+
+.prototype-capsule-space {
+  height: 102rpx;
+}
+
+.prototype-profile {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 144rpx;
+}
+
+.prototype-avatar {
+  position: relative;
+  overflow: visible;
+  flex: 0 0 auto;
+  width: 128rpx;
+  height: 128rpx;
+  margin: 0;
+  padding: 0;
+  border: 8rpx solid rgba(255, 255, 255, 0.74);
+  border-radius: 50%;
+  background: #fff;
+  line-height: normal;
+  box-sizing: border-box;
+}
+
+.prototype-avatar-shell {
+  position: relative;
+  flex: 0 0 auto;
+  width: 128rpx;
+  height: 128rpx;
+}
+
+.prototype-avatar-state {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: -15rpx;
+  height: 42rpx;
+  padding: 0 13rpx;
+  border-radius: 20rpx;
+  color: #ff4467;
+  background: #ffe7ed;
+  font-size: 23rpx;
+  line-height: 42rpx;
+  white-space: nowrap;
+}
+
+.prototype-avatar::after {
+  border: 0;
+}
+
+.prototype-avatar image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.prototype-avatar-loading {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.prototype-profile-copy {
+  min-width: 0;
+  margin-left: 30rpx;
+}
+
+.prototype-name-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  color: #1b1d1c;
+  font-size: 39rpx;
+  font-weight: 650;
+  line-height: 54rpx;
+}
+
+.prototype-name-row > text:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prototype-chevron {
+  margin-left: 16rpx;
+  font-size: 58rpx;
+  font-weight: 300;
+  transform: translateY(-2rpx);
+}
+
+.prototype-campus-chip {
+  overflow: hidden;
+  max-width: 310rpx;
+  height: 46rpx;
+  margin-top: 10rpx;
+  padding: 0 16rpx;
+  border-radius: 24rpx;
+  color: #343735;
+  background: rgba(238, 238, 238, 0.82);
+  font-size: 27rpx;
+  line-height: 46rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.prototype-overview {
+  overflow: visible;
+  margin-top: 38rpx;
+  border-radius: 54rpx;
+  background: transparent;
+}
+
+.prototype-campus-card {
+  position: relative;
+  display: flex;
+  overflow: visible;
+  height: 122rpx;
+  padding: 0 34rpx;
+  border-radius: 54rpx 54rpx 0 0;
+  background: linear-gradient(100deg, #a0ff45 0%, #baff7a 100%);
+  box-sizing: border-box;
+}
+
+.prototype-campus-card > view:first-child {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.prototype-campus-card > view:first-child text:first-child {
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.prototype-campus-card > view:first-child text:last-child {
+  margin-top: 12rpx;
+  color: #72ad51;
+  font-size: 25rpx;
+}
+
+.prototype-campus-art {
+  position: absolute;
+  right: 20rpx;
+  bottom: 0;
+  width: 204rpx;
+  height: 204rpx;
+}
+
+.prototype-campus-art image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.prototype-stats {
+  display: grid;
+  height: 136rpx;
+  border-radius: 0 0 54rpx 54rpx;
+  background: #fff;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.prototype-stats > view {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.prototype-stats text:first-child {
+  font-size: 33rpx;
+  font-weight: 500;
+}
+
+.prototype-stats text:last-child {
+  margin-top: 5rpx;
+  font-size: 24rpx;
+}
+
+.prototype-trade-card,
+.prototype-service-card {
+  margin: 32rpx 32rpx 0;
+  padding: 26rpx 24rpx 28rpx;
+  border-radius: 32rpx;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.prototype-section-title {
+  padding: 0 2rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  line-height: 48rpx;
+}
+
+.prototype-trade-grid {
+  display: grid;
+  margin-top: 4rpx;
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.prototype-trade-grid > view {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  font-size: 25rpx;
+}
+
+.prototype-trade-icon {
+  display: block;
+  width: 82rpx;
+  height: 82rpx;
+  margin-bottom: 2rpx;
+}
+
+.prototype-service-card {
+  padding: 26rpx 24rpx 12rpx;
+}
+
+.prototype-service-row {
+  display: grid;
+  align-items: center;
+  height: 104rpx;
+  padding: 0 4rpx;
+  grid-template-columns: 58rpx 1fr 28rpx;
+}
+
+.prototype-service-row > text:nth-child(2) {
+  margin-left: 16rpx;
+  font-size: 30rpx;
+}
+
+.prototype-service-row > text:last-child {
+  color: #969a97;
+  font-size: 40rpx;
+  font-weight: 300;
+}
+
+.prototype-service-icon {
+  display: block;
+  width: 58rpx;
+  height: 58rpx;
+}
+
+.prototype-mine-safe {
+  height: calc(190rpx + env(safe-area-inset-bottom));
 }
 </style>

@@ -360,4 +360,127 @@ onShow(loadMessages);
   font-size: 24rpx;
   font-weight: 800;
 }
+
+/* 蓝湖原型：消息通知 */
+.messages-page {
+  min-height: 100vh;
+  padding-bottom: env(safe-area-inset-bottom);
+  color: #202321;
+  background: #f4f4f4;
+}
+
+.message-actions {
+  height: 94rpx;
+  padding: 0 32rpx;
+  background: #edfbf0;
+}
+
+.unread-summary {
+  color: #777c79;
+  font-size: 24rpx;
+}
+
+.unread-number {
+  color: #202321;
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.message-actions > text {
+  color: #ff9518;
+  font-size: 23rpx;
+}
+
+.message-tabs {
+  height: 82rpx;
+  border: 0;
+  background: #edfbf0;
+}
+
+.message-tabs > view {
+  display: flex;
+  padding: 10rpx 32rpx 18rpx;
+  gap: 24rpx;
+}
+
+.message-tabs text {
+  min-width: 118rpx;
+  height: 54rpx;
+  padding: 0 18rpx;
+  border-radius: 15rpx;
+  color: #999d9a;
+  background: #fff;
+  font-size: 24rpx;
+  line-height: 54rpx;
+  text-align: center;
+}
+
+.message-tabs text.active {
+  color: #17200c;
+  background: #95f51f;
+  font-weight: 600;
+}
+
+.message-tabs i {
+  top: -8rpx;
+  right: -8rpx;
+  background: #ff4d55;
+}
+
+.message-list {
+  padding: 28rpx 32rpx 50rpx;
+}
+
+.message-section-label {
+  color: #777c79;
+  font-size: 23rpx;
+}
+
+.message-card {
+  overflow: hidden;
+  margin-top: 16rpx;
+  border: 0;
+  border-radius: 30rpx;
+  background: #fff;
+  box-shadow: none;
+}
+
+.message-row {
+  min-height: 136rpx;
+  padding: 22rpx 24rpx;
+  border-bottom-color: #eef0ee;
+}
+
+.message-row.unread {
+  background: #fbfff7;
+}
+
+.message-icon {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 22rpx;
+}
+
+.message-title {
+  color: #202321;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+
+.message-content,
+.message-time {
+  color: #999d9a;
+}
+
+.unread-dot {
+  background: #ff4d55;
+}
+
+.security-card {
+  margin-top: 26rpx;
+  border: 0;
+  border-radius: 28rpx;
+  color: #1d2a14;
+  background: #edffd9;
+}
 </style>

@@ -6,7 +6,7 @@ import { createCampusContactRequest, createCampusPostComment, deleteCampusCommen
 import { uploadCampusCommentImage } from '@/services/api/file';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
-import { DEFAULT_CAMPUS_AVATAR, resolveCampusAvatar } from '@/utils/avatar';
+import { resolveCampusAvatar } from '@/utils/avatar';
 
 const postId = ref(2001);
 const liked = ref(false);
@@ -35,7 +35,6 @@ const contactSubmitting = ref(false);
 const coverImageFailed = ref(false);
 const contentStore = useCampusContentStore();
 const userStore = useUserStore();
-const currentUserAvatar = ref(DEFAULT_CAMPUS_AVATAR);
 const post = computed(() => contentStore.getPost(postId.value) || campusPosts[0]);
 const channelIcons: Record<string, string> = {
   二手: '/static/icons/login/trade.svg',
@@ -78,15 +77,6 @@ const mentionCandidates = computed(() => {
   return [...candidates.values()];
 });
 
-function syncCurrentUserAvatar() {
-  currentUserAvatar.value = resolveCampusAvatar(userStore.userInfo?.avatar);
-}
-
-function handleCurrentUserAvatarError() {
-  currentUserAvatar.value = DEFAULT_CAMPUS_AVATAR;
-}
-
-watch(() => userStore.userInfo?.avatar, syncCurrentUserAvatar, { immediate: true });
 watch(() => post.value.coverImage, () => {
   coverImageFailed.value = false;
 });
@@ -97,7 +87,6 @@ onLoad(async (query) => {
   pageState.value = 'loading';
   try {
     await userStore.initUserInfo();
-    syncCurrentUserAvatar();
     const loaded = await contentStore.loadPost(postId.value);
     liked.value = Boolean(loaded.liked);
     collected.value = Boolean(loaded.collected);
@@ -501,7 +490,7 @@ function reportPost() {
     <StatePanel
       v-else-if="pageState === 'error'" type="error" title="内容不见了"
       description="这条内容可能已下架或被作者删除。" action="返回首页"
-      @action="uni.switchTab({ url: '/pages/index/index' })"
+      @action="uni.reLaunch({ url: '/pages/index/index' })"
     />
     <template v-else>
       <swiper v-if="showCoverImage || !isConfession" class="media" indicator-dots indicator-active-color="#10A779">
@@ -517,7 +506,9 @@ function reportPost() {
         </swiper-item>
       </swiper>
       <view v-else class="confession-detail-hero">
-        <view class="confession-detail-icon">♥</view>
+        <view class="confession-detail-icon">
+          ♥
+        </view>
         <text>校园表白墙</text>
         <text>每一份心意都值得被认真对待</text>
       </view>
@@ -535,6 +526,8 @@ function reportPost() {
             </view>
           </view><button class="follow-btn" :class="{ followed: followed || post.owner }" @click="post.owner ? managePost() : toggleFollow()">
             {{ post.owner ? '管理' : (followed ? '已关注' : '＋ 关注') }}
+          </button><button class="author-share" open-type="share" aria-label="转发给微信好友">
+            <image src="/static/icons/ui/wechat-green.svg" mode="aspectFit" />
           </button>
         </view>
         <view v-if="post.price" class="price">
@@ -578,8 +571,12 @@ function reportPost() {
           评论 {{ commentTotal }}
         </view>
         <view class="comment-sort">
-          <text :class="{ active: commentSort === 'latest' }" @click="changeCommentSort('latest')">最新</text>
-          <text :class="{ active: commentSort === 'likes' }" @click="changeCommentSort('likes')">最热</text>
+          <text :class="{ active: commentSort === 'latest' }" @click="changeCommentSort('latest')">
+            最新
+          </text>
+          <text :class="{ active: commentSort === 'likes' }" @click="changeCommentSort('likes')">
+            最热
+          </text>
         </view>
         <view v-if="commentState === 'loading'" class="comment-status">
           评论加载中…
@@ -605,14 +602,24 @@ function reportPost() {
               </view>
               <view class="comment-meta-row">
                 <view class="comment-left-actions">
-                  <text v-if="!item.owner" class="comment-report" @click.stop="reportCommentItem(item)">举报</text>
-                  <text v-if="item.owner" class="comment-report danger" @click.stop="removeComment(item)">删除</text>
+                  <text v-if="!item.owner" class="comment-report" @click.stop="reportCommentItem(item)">
+                    举报
+                  </text>
+                  <text v-if="item.owner" class="comment-report danger" @click.stop="removeComment(item)">
+                    删除
+                  </text>
                 </view>
-                <text class="comment-time">{{ item.time }}</text>
-                <text class="comment-reply-action" @click.stop="replyToComment(item)">回复</text>
+                <text class="comment-time">
+                  {{ item.time }}
+                </text>
+                <text class="comment-reply-action" @click.stop="replyToComment(item)">
+                  回复
+                </text>
                 <text
                   class="comment-like" :class="{ active: item.liked }" @click.stop="toggleCommentLike(item)"
-                >{{ item.liked ? '♥' : '♡' }} {{ item.likeCount || 0 }}</text>
+                >
+                  {{ item.liked ? '♥' : '♡' }} {{ item.likeCount || 0 }}
+                </text>
               </view>
             </view><view v-if="item.owner" class="comment-owner">
               我
@@ -629,7 +636,9 @@ function reportPost() {
                 <view class="comment-name">
                   {{ reply.author }}
                 </view><view class="comment-content">
-                  <text class="reply-mark">回复 {{ reply.replyToAuthor || item.author }}：</text>{{ reply.content }}
+                  <text class="reply-mark">
+                    回复 {{ reply.replyToAuthor || item.author }}：
+                  </text>{{ reply.content }}
                 </view>
                 <view v-if="reply.images?.length" class="comment-images">
                   <image
@@ -639,14 +648,24 @@ function reportPost() {
                 </view>
                 <view class="comment-meta-row">
                   <view class="comment-left-actions">
-                    <text v-if="!reply.owner" class="comment-report" @click.stop="reportCommentItem(reply)">举报</text>
-                    <text v-if="reply.owner" class="comment-report danger" @click.stop="removeComment(reply)">删除</text>
+                    <text v-if="!reply.owner" class="comment-report" @click.stop="reportCommentItem(reply)">
+                      举报
+                    </text>
+                    <text v-if="reply.owner" class="comment-report danger" @click.stop="removeComment(reply)">
+                      删除
+                    </text>
                   </view>
-                  <text class="comment-time">{{ reply.time }}</text>
-                  <text class="comment-reply-action" @click.stop="replyToComment(reply)">回复</text>
+                  <text class="comment-time">
+                    {{ reply.time }}
+                  </text>
+                  <text class="comment-reply-action" @click.stop="replyToComment(reply)">
+                    回复
+                  </text>
                   <text
                     class="comment-like" :class="{ active: reply.liked }" @click.stop="toggleCommentLike(reply)"
-                  >{{ reply.liked ? '♥' : '♡' }} {{ reply.likeCount || 0 }}</text>
+                  >
+                    {{ reply.liked ? '♥' : '♡' }} {{ reply.likeCount || 0 }}
+                  </text>
                 </view>
               </view><view v-if="reply.owner" class="comment-owner">
                 我
@@ -664,21 +683,29 @@ function reportPost() {
       </view>
 
       <view class="bottom-bar">
-        <view class="current-user-avatar">
-          <image :src="currentUserAvatar" mode="aspectFill" @error="handleCurrentUserAvatarError" />
-        </view>
         <view class="comment-trigger" @click="openCommentComposer">
-          <text>写下你的评论…</text>
+          <text>✎ 留下你的想法</text>
         </view>
-        <button class="wechat-share" open-type="share" aria-label="转发给微信好友">
-          <image src="/static/icons/ui/wechat.svg" mode="aspectFit" />
+        <view class="prototype-bottom-action" :class="{ active: liked }" @click="toggleLike">
+          <text>{{ liked ? '♥' : '♡' }}</text><text>点赞</text>
+        </view>
+        <view class="prototype-bottom-action" :class="{ active: collected }" @click="toggleCollect">
+          <text>{{ collected ? '★' : '☆' }}</text><text>收藏</text>
+        </view>
+        <button v-if="!isConfession" class="prototype-buy" :disabled="contactSubmitting" @click="contact">
+          {{ contactSubmitting ? '提交中…' : contactButtonText }}
+        </button>
+        <button v-else class="prototype-buy" @click="openCommentComposer">
+          去表白
         </button>
       </view>
       <view v-if="showCommentComposer" class="comment-overlay" @click="closeCommentComposer">
         <view class="comment-composer" @click.stop>
           <view class="composer-header">
             <text>{{ composerTitle }}</text>
-            <text class="composer-close" @click="closeCommentComposer">×</text>
+            <text class="composer-close" @click="closeCommentComposer">
+              ×
+            </text>
           </view>
           <textarea
             class="composer-textarea" :value="comment" :disabled="commentSubmitting" maxlength="300"
@@ -687,14 +714,22 @@ function reportPost() {
           />
           <view v-if="commentImages.length" class="comment-upload-preview">
             <view v-for="(image, index) in commentImages" :key="image" class="comment-upload-item">
-              <image :src="image" mode="aspectFill" /><text @click="removeCommentImage(index)">×</text>
+              <image :src="image" mode="aspectFill" /><text @click="removeCommentImage(index)">
+                ×
+              </text>
             </view>
           </view>
           <view class="composer-toolbar">
             <view class="comment-tools">
-              <text :class="{ active: showMentionPanel }" @click="toggleMentionPanel">＠</text>
-              <text :class="{ active: showEmojiPanel }" @click="toggleEmojiPanel">☺</text>
-              <text @click="chooseCommentImages">▧</text>
+              <text :class="{ active: showMentionPanel }" @click="toggleMentionPanel">
+                ＠
+              </text>
+              <text :class="{ active: showEmojiPanel }" @click="toggleEmojiPanel">
+                ☺
+              </text>
+              <text @click="chooseCommentImages">
+                ▧
+              </text>
             </view>
             <text class="comment-send" :class="{ disabled: !comment.trim() && !commentImages.length }" @click="sendComment">
               {{ commentSubmitting ? '发送中' : '发布' }}
@@ -706,8 +741,12 @@ function reportPost() {
             </view>
           </view>
           <view v-if="showEmojiPanel" class="emoji-panel">
-            <view class="emoji-title">全部表情</view>
-            <text v-for="emoji in emojiList" :key="emoji" @click="insertEmoji(emoji)">{{ emoji }}</text>
+            <view class="emoji-title">
+              全部表情
+            </view>
+            <text v-for="emoji in emojiList" :key="emoji" @click="insertEmoji(emoji)">
+              {{ emoji }}
+            </text>
           </view>
         </view>
       </view>
@@ -1479,5 +1518,408 @@ function reportPost() {
 }
 .detail-contact {
   box-shadow: 0 10rpx 26rpx rgba(16, 167, 121, 0.24);
+}
+
+/* 蓝湖原型：详情、评论和购买入口 */
+.detail-page {
+  min-height: 100vh;
+  padding-bottom: calc(154rpx + env(safe-area-inset-bottom));
+  color: #1f2220;
+  background: #fff;
+}
+
+.media {
+  overflow: hidden;
+  height: 620rpx;
+  margin: 0;
+  border-radius: 30rpx 30rpx 0 0;
+  background: #eee;
+}
+
+.detail-photo,
+.media-item {
+  width: 100%;
+  height: 620rpx;
+}
+
+.content-card,
+.comments-card {
+  margin: 0;
+  padding: 30rpx 32rpx;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.author-row {
+  min-height: 88rpx;
+}
+
+.author-avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border: 0;
+  border-radius: 50%;
+}
+
+.author-main {
+  margin-left: 16rpx;
+}
+
+.author-name > text:first-child {
+  color: #292c2a;
+  font-size: 29rpx;
+  font-weight: 600;
+}
+
+.author-main .verified-badge {
+  padding: 3rpx 10rpx;
+  border-radius: 10rpx;
+  color: #33af1c;
+  background: #e9ffe3;
+  font-size: 20rpx;
+}
+
+.author-sub {
+  margin-top: 5rpx;
+  color: #949896;
+  font-size: 24rpx;
+}
+
+.follow-btn {
+  width: 140rpx;
+  height: 64rpx;
+  margin: 0 0 0 14rpx;
+  padding: 0;
+  border: 0;
+  border-radius: 20rpx;
+  color: #14200b;
+  background: #95f51f;
+  font-size: 28rpx;
+  font-weight: 550;
+  line-height: 64rpx;
+}
+
+.follow-btn.followed {
+  color: #929693;
+  background: #f0f0f0;
+}
+
+.follow-btn::after,
+.author-share::after,
+.prototype-buy::after {
+  border: 0;
+}
+
+.author-share {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 70rpx;
+  height: 70rpx;
+  margin: 0 0 0 10rpx;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.author-share image {
+  width: 54rpx;
+  height: 54rpx;
+}
+
+.price {
+  margin-top: 30rpx;
+  color: #ff4d55;
+  font-size: 54rpx;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.price text {
+  margin-right: 5rpx;
+  font-size: 25rpx;
+}
+
+.title {
+  margin-top: 24rpx;
+  color: #202321;
+  font-size: 31rpx;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.body {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 18rpx;
+  color: #969a97;
+  font-size: 26rpx;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tags {
+  margin-top: 16rpx;
+}
+
+.tags text {
+  border: 0;
+  color: #44b62d;
+  background: #efffe9;
+}
+
+.meta {
+  min-height: 66rpx;
+  margin-top: 18rpx;
+  padding: 0;
+  border: 0;
+}
+
+.meta-location {
+  height: 45rpx;
+  padding: 0 12rpx;
+  border: 2rpx solid #e7e9e7;
+  border-radius: 13rpx;
+}
+
+.meta-location image {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.meta-location text,
+.meta-actions {
+  color: #858986;
+  font-size: 23rpx;
+}
+
+.report-entry {
+  color: #ff454f;
+}
+
+.detail-actions {
+  display: none;
+}
+
+.comments-card {
+  padding-top: 18rpx;
+  border-top: 1rpx solid #f1f2f1;
+}
+
+.comments-card .section-title {
+  color: #1f2220;
+  font-size: 31rpx;
+  font-weight: 600;
+}
+
+.comment-sort {
+  display: none;
+}
+
+.comment-status {
+  padding: 58rpx 0 90rpx;
+  color: #9a9e9b;
+  font-size: 25rpx;
+}
+
+.comment-block {
+  padding: 26rpx 0 4rpx;
+  border: 0;
+}
+
+.comment {
+  padding: 0;
+}
+
+.comment-avatar {
+  width: 70rpx;
+  height: 70rpx;
+}
+
+.comment-main {
+  margin-left: 24rpx;
+}
+
+.comment-name {
+  color: #737774;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+
+.comment-content {
+  margin-top: 12rpx;
+  color: #222522;
+  font-size: 28rpx;
+  line-height: 1.65;
+}
+
+.comment-meta-row {
+  margin-top: 12rpx;
+  color: #9c9f9d;
+  font-size: 23rpx;
+}
+
+.comment-left-actions {
+  order: 5;
+}
+
+.comment-time {
+  margin-left: 0;
+}
+
+.comment-reply-action {
+  margin-left: 24rpx;
+}
+
+.comment-like {
+  margin-left: auto;
+  color: #9a9e9b;
+  font-size: 25rpx;
+}
+
+.reply-thread {
+  margin: 20rpx 0 0 94rpx;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.comment-reply {
+  padding: 14rpx 0;
+}
+
+.comment-reply .comment-avatar {
+  width: 50rpx;
+  height: 50rpx;
+}
+
+.reply-expand {
+  margin: 18rpx 0 0 95rpx;
+  color: #999d9a;
+  font-size: 24rpx;
+}
+
+.bottom-bar {
+  z-index: 50;
+  display: flex;
+  height: calc(154rpx + env(safe-area-inset-bottom));
+  padding: 16rpx 32rpx calc(14rpx + env(safe-area-inset-bottom));
+  border: 0;
+  border-top: 1rpx solid #f2f3f2;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+  box-sizing: border-box;
+}
+
+.comment-trigger {
+  flex: 1;
+  height: 80rpx;
+  margin: 0 16rpx 0 0;
+  padding: 0 22rpx;
+  border: 0;
+  border-radius: 36rpx;
+  color: #9b9e9c;
+  background: #f7f7f7;
+  font-size: 25rpx;
+  line-height: 80rpx;
+}
+
+.prototype-bottom-action {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 82rpx;
+  height: 82rpx;
+  color: #969a97;
+  flex-direction: column;
+}
+
+.prototype-bottom-action > text:first-child {
+  font-size: 54rpx;
+  line-height: 48rpx;
+}
+
+.prototype-bottom-action > text:last-child {
+  margin-top: 8rpx;
+  font-size: 22rpx;
+}
+
+.prototype-bottom-action.active > text:first-child {
+  color: #ff4d55;
+}
+
+.prototype-buy {
+  flex: 0 0 auto;
+  width: 184rpx;
+  height: 82rpx;
+  margin: 0 0 0 10rpx;
+  padding: 0;
+  border-radius: 28rpx;
+  color: #14200a;
+  background: #95f51f;
+  font-size: 29rpx;
+  font-weight: 600;
+  line-height: 82rpx;
+}
+
+.comment-overlay {
+  z-index: 80;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.comment-composer {
+  padding: 32rpx 32rpx calc(30rpx + env(safe-area-inset-bottom));
+  border-radius: 32rpx 32rpx 0 0;
+  background: #fff;
+}
+
+.composer-header {
+  display: none;
+}
+
+.composer-textarea {
+  min-height: 120rpx;
+  padding: 26rpx 22rpx;
+  border: 0;
+  border-radius: 28rpx;
+  color: #222522;
+  background: #f7f7f7;
+  font-size: 27rpx;
+}
+
+.composer-toolbar {
+  min-height: 76rpx;
+  margin-top: 12rpx;
+}
+
+.comment-tools text {
+  color: #999d9a;
+  font-size: 37rpx;
+}
+
+.comment-send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140rpx;
+  height: 64rpx;
+  border-radius: 27rpx;
+  color: #14200a;
+  background: #95f51f;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.comment-send.disabled {
+  color: #a2aa9f;
+  background: #c8fb88;
 }
 </style>

@@ -7,6 +7,7 @@ const keyword = ref('');
 const searched = ref(false);
 const onlyMine = ref(false);
 const favoritesMode = ref(false);
+const modeTitle = computed(() => onlyMine.value ? '我发布的' : (favoritesMode.value ? '我的收藏' : ''));
 const activeTab = ref('全部');
 const activeFilter = ref('综合');
 const cachedRecent = uni.getStorageSync('campus-search-recent');
@@ -102,16 +103,23 @@ onLoad(async (query) => {
 
 <template>
   <view class="search-page">
-    <view class="search-status" /><view class="search-top">
+    <view class="search-status" />
+    <view v-if="modeTitle" class="prototype-subpage-nav">
       <view class="back" @click="uni.navigateBack()">
+        <image src="/static/icons/ui/back.svg" mode="aspectFit" />
+      </view>
+      <text>{{ modeTitle }}</text>
+    </view>
+    <view v-if="!onlyMine" class="search-top" :class="{ 'mode-search-top': modeTitle }">
+      <view v-if="!modeTitle" class="back" @click="uni.navigateBack()">
         <image src="/static/icons/ui/back.svg" mode="aspectFit" />
       </view><view class="search-input">
         <image class="search-icon" src="/static/icons/ui/search.svg" mode="aspectFit" />
-        <input v-model="keyword" autofocus placeholder="搜校园内容和同学" confirm-type="search" @confirm="search()">
+        <input v-model="keyword" :autofocus="!modeTitle" :placeholder="modeTitle ? `搜索${modeTitle}内容` : '搜校园内容和同学'" confirm-type="search" @confirm="search()">
         <view v-if="keyword" class="clear" @click="clear">
           <image src="/static/icons/ui/close.svg" mode="aspectFit" />
         </view>
-      </view><text class="search-text" @click="search()">
+      </view><text v-if="!modeTitle" class="search-text" @click="search()">
         搜索
       </text>
     </view>
@@ -144,33 +152,70 @@ onLoad(async (query) => {
     </view>
 
     <view v-else class="results">
-      <scroll-view scroll-x class="tab-scroll">
-        <view class="tabs">
-          <text v-for="tab in tabs" :key="tab" :class="{ active: activeTab === tab }" @click="activeTab = tab">
-            {{ tab }}
+      <template v-if="onlyMine">
+        <view class="prototype-manage-tabs">
+          <text class="active">
+            在卖 {{ results.length }}
           </text>
+          <text>草稿(0)</text>
+          <text>已下架(0)</text>
         </view>
-      </scroll-view>
-      <view class="filters">
-        <text v-for="filter in ['综合', '最新', '附近', '价格']" :key="filter" :class="{ active: activeFilter === filter }" @click="activeFilter = filter">
-          {{ filter }}<i v-if="filter === '价格'">↕</i>
-        </text>
-      </view>
-      <StatePanel
-        v-if="!results.length" :title="onlyMine ? '还没有发布内容' : (favoritesMode ? '还没有收藏内容' : '没有找到相关内容')"
-        :description="onlyMine ? '完成第一次分享后，可以在这里管理自己发布的内容。' : (favoritesMode ? '在内容详情点击收藏后，会同步保存在这里。' : `换个关键词试试，或者去发布「${keyword}」相关内容。`)"
-        action="去发布" @action="uni.switchTab({ url: '/pages/publish/index' })"
-      />
-      <template v-else>
-        <view class="result-count">
-          {{ onlyMine ? `我的发布共 ${results.length} 条` : (favoritesMode ? `我的收藏共 ${results.length} 条` : `找到 ${results.length} 条与“${keyword}”相关的内容`) }}
-        </view><view class="result-grid">
-          <view class="column">
-            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" />
-          </view><view class="column">
-            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" />
+        <StatePanel
+          v-if="!results.length" title="还没有发布内容"
+          description="完成第一次分享后，可以在这里管理自己发布的内容。"
+          action="去发布" @action="uni.reLaunch({ url: '/pages/publish/index' })"
+        />
+        <view v-else class="prototype-manage-list">
+          <view
+            v-for="post in results" :key="post.id" class="prototype-manage-card"
+            @click="uni.navigateTo({ url: `/pages/detail/index?id=${post.id}` })"
+          >
+            <view class="prototype-manage-main">
+              <image v-if="post.coverImage || post.images?.[0]" :src="post.coverImage || post.images?.[0]" mode="aspectFill" />
+              <view v-else class="prototype-manage-placeholder">
+                {{ post.coverEmoji || '📦' }}
+              </view>
+              <view class="prototype-manage-copy">
+                <text>{{ post.title }}</text>
+                <text>浏览 {{ post.views || 0 }}</text>
+                <view><text>{{ post.time }}</text><text><i>¥</i>{{ post.price || '面议' }}</text></view>
+              </view>
+            </view>
+            <view class="prototype-manage-footer">
+              <text>更多</text><text>编辑</text>
+            </view>
           </view>
         </view>
+      </template>
+      <template v-else>
+        <scroll-view scroll-x class="tab-scroll">
+          <view class="tabs">
+            <text v-for="tab in tabs" :key="tab" :class="{ active: activeTab === tab }" @click="activeTab = tab">
+              {{ tab }}
+            </text>
+          </view>
+        </scroll-view>
+        <view class="filters">
+          <text v-for="filter in ['综合', '最新', '附近', '价格']" :key="filter" :class="{ active: activeFilter === filter }" @click="activeFilter = filter">
+            {{ filter }}<i v-if="filter === '价格'">↕</i>
+          </text>
+        </view>
+        <StatePanel
+          v-if="!results.length" :title="onlyMine ? '还没有发布内容' : (favoritesMode ? '还没有收藏内容' : '没有找到相关内容')"
+          :description="onlyMine ? '完成第一次分享后，可以在这里管理自己发布的内容。' : (favoritesMode ? '在内容详情点击收藏后，会同步保存在这里。' : `换个关键词试试，或者去发布「${keyword}」相关内容。`)"
+          action="去发布" @action="uni.reLaunch({ url: '/pages/publish/index' })"
+        />
+        <template v-else>
+          <view class="result-count">
+            {{ onlyMine ? `我的发布共 ${results.length} 条` : (favoritesMode ? `我的收藏共 ${results.length} 条` : `找到 ${results.length} 条与“${keyword}”相关的内容`) }}
+          </view><view class="result-grid">
+            <view class="column">
+              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" />
+            </view><view class="column">
+              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" />
+            </view>
+          </view>
+        </template>
       </template>
     </view>
   </view>
@@ -395,5 +440,275 @@ onLoad(async (query) => {
 }
 .tabs .active::after {
   background: var(--yd-green);
+}
+
+/* 蓝湖原型：搜索、我的发布与收藏 */
+.search-page {
+  min-height: 100vh;
+  color: #202321;
+  background: #f4f4f4;
+}
+
+.search-status {
+  height: calc(28rpx + env(safe-area-inset-top));
+  background: #edfbf0;
+}
+
+.prototype-subpage-nav {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 112rpx;
+  background: #edfbf0;
+}
+
+.prototype-subpage-nav .back {
+  position: absolute;
+  left: 26rpx;
+  top: 20rpx;
+}
+
+.prototype-subpage-nav > text {
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.search-top {
+  gap: 8rpx;
+  padding: 12rpx 24rpx 20rpx;
+  background: #edfbf0;
+}
+
+.search-top.mode-search-top {
+  padding: 14rpx 32rpx 28rpx;
+}
+
+.back {
+  flex-basis: 64rpx;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 18rpx;
+}
+
+.back image {
+  width: 34rpx;
+  height: 34rpx;
+}
+
+.search-input {
+  height: 72rpx;
+  padding: 0 22rpx;
+  border: 0;
+  border-radius: 36rpx;
+  color: #929693;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.mode-search-top .search-input {
+  height: 72rpx;
+  background: #fff;
+}
+
+.search-input input {
+  margin-left: 10rpx;
+  color: #343735;
+  font-size: 25rpx;
+}
+
+.search-icon {
+  width: 38rpx;
+  height: 38rpx;
+  opacity: 0.62;
+}
+
+.search-text {
+  min-width: 68rpx;
+  height: 72rpx;
+  color: #1e211f;
+  font-size: 25rpx;
+  font-weight: 550;
+}
+
+.discover {
+  padding: 8rpx 24rpx 40rpx;
+}
+
+.discover-section {
+  margin-top: 26rpx;
+  padding: 28rpx 24rpx;
+  border: 0;
+  border-radius: 28rpx;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.discover-head b {
+  color: #202321;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.chip-list text {
+  min-height: 58rpx;
+  padding: 12rpx 22rpx;
+  border: 0;
+  border-radius: 29rpx;
+  color: #777c79;
+  background: #f4f4f4;
+}
+
+.rank.top {
+  color: #ff4d55;
+}
+
+.prototype-manage-tabs {
+  display: flex;
+  height: 92rpx;
+  padding: 14rpx 32rpx 20rpx;
+  gap: 32rpx;
+  background: #edfbf0;
+  box-sizing: border-box;
+}
+
+.prototype-manage-tabs text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 56rpx;
+  padding: 0 20rpx;
+  border-radius: 15rpx;
+  color: #999d9a;
+  background: #fff;
+  font-size: 25rpx;
+}
+
+.prototype-manage-tabs text.active {
+  color: #17200c;
+  background: #96f51f;
+  font-weight: 600;
+}
+
+.prototype-manage-list {
+  padding: 28rpx 32rpx;
+}
+
+.prototype-manage-card {
+  margin-bottom: 26rpx;
+  padding: 24rpx;
+  border-radius: 32rpx;
+  background: #fff;
+}
+
+.prototype-manage-main {
+  display: flex;
+  min-height: 176rpx;
+}
+
+.prototype-manage-main > image,
+.prototype-manage-placeholder {
+  flex: 0 0 auto;
+  width: 176rpx;
+  height: 176rpx;
+  border-radius: 20rpx;
+}
+
+.prototype-manage-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef3f0;
+  font-size: 60rpx;
+}
+
+.prototype-manage-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  margin-left: 32rpx;
+  flex-direction: column;
+}
+
+.prototype-manage-copy > text:first-child {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #202321;
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 1.38;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.prototype-manage-copy > text:nth-child(2) {
+  margin-top: 26rpx;
+  color: #999d9a;
+  font-size: 24rpx;
+}
+
+.prototype-manage-copy > view {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+.prototype-manage-copy > view > text:first-child {
+  color: #999d9a;
+  font-size: 23rpx;
+}
+
+.prototype-manage-copy > view > text:last-child {
+  color: #ff4d55;
+  font-size: 46rpx;
+  font-weight: 650;
+}
+
+.prototype-manage-copy i {
+  margin-right: 4rpx;
+  font-size: 23rpx;
+  font-style: normal;
+}
+
+.prototype-manage-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56rpx;
+  margin-top: 20rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid #eef0ee;
+  color: #999d9a;
+  font-size: 24rpx;
+}
+
+.prototype-manage-footer text:last-child {
+  color: #ff9518;
+}
+
+.tab-scroll {
+  border: 0;
+  background: #fff;
+}
+
+.tabs .active::after {
+  background: #95f51f;
+}
+
+.filters {
+  margin: 18rpx 24rpx;
+  border: 0;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.result-grid {
+  gap: 24rpx;
+  padding: 0 32rpx 40rpx;
 }
 </style>

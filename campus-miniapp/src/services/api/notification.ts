@@ -34,7 +34,11 @@ export function getCampusNotificationPage(params: {
 }
 
 export function getCampusNotificationUnreadCount() {
-  return request.Get<number>('/campus/notification/unread-count', { cacheFor: 0 });
+  return request.Get<number>('/campus/notification/unread-count', {
+    cacheFor: 0,
+    // 旧服务端没有通知接口时，铃铛按 0 条未读降级即可。
+    meta: { silentError: true },
+  });
 }
 
 export function markCampusNotificationRead(id: number) {

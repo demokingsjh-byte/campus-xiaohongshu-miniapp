@@ -2,27 +2,27 @@ page {
   min-height: 100%;
 
   /* Brand and semantic colors */
-  --color-primary: #10a779;
-  --color-primary-strong: #08785a;
-  --color-primary-soft: rgba(16, 167, 121, 0.12);
-  --color-accent: #ff9f0a;
-  --color-accent-soft: rgba(255, 159, 10, 0.1);
-  --color-warning: #ff9f0a;
-  --color-danger: #ff3b30;
-  --color-success: #34c759;
+  --color-primary: #95f51f;
+  --color-primary-strong: #1d2a14;
+  --color-primary-soft: #edffd9;
+  --color-accent: #ff9518;
+  --color-accent-soft: #fff3e2;
+  --color-warning: #ff9518;
+  --color-danger: #ff4d55;
+  --color-success: #66d91b;
 
   /* Neutral surfaces and content */
-  --color-page: #edf6f2;
-  --color-page-deep: #dcebe5;
+  --color-page: #f4f4f4;
+  --color-page-deep: #edfbf0;
   --color-surface: #ffffff;
-  --color-surface-subtle: rgba(237, 246, 242, 0.82);
-  --color-glass: rgba(255, 255, 255, 0.62);
-  --color-glass-strong: rgba(255, 255, 255, 0.78);
-  --color-text: #16352b;
-  --color-text-secondary: #587168;
-  --color-text-tertiary: #81958e;
-  --color-border: rgba(22, 89, 69, 0.14);
-  --color-divider: rgba(22, 89, 69, 0.1);
+  --color-surface-subtle: #f7f7f7;
+  --color-glass: #ffffff;
+  --color-glass-strong: #ffffff;
+  --color-text: #202321;
+  --color-text-secondary: #777c79;
+  --color-text-tertiary: #999d9a;
+  --color-border: #eceeec;
+  --color-divider: #eef0ee;
   --color-mask: rgba(0, 0, 0, 0.32);
 
   /* Typography */
@@ -46,12 +46,12 @@ page {
 
   /* Shape, elevation and interaction */
   --radius-sm: 12rpx;
-  --radius-md: 20rpx;
-  --radius-lg: 28rpx;
-  --radius-xl: 36rpx;
+  --radius-md: 22rpx;
+  --radius-lg: 30rpx;
+  --radius-xl: 40rpx;
   --radius-pill: 999rpx;
-  --shadow-card: 0 10rpx 30rpx rgba(20, 91, 70, 0.085);
-  --shadow-floating: 0 26rpx 70rpx rgba(10, 70, 53, 0.18);
+  --shadow-card: 0 4rpx 14rpx rgba(56, 68, 82, 0.025);
+  --shadow-floating: 0 18rpx 48rpx rgba(41, 50, 45, 0.12);
   --touch-compact: 64rpx;
   --touch-regular: 80rpx;
   --touch-large: 96rpx;
@@ -69,7 +69,7 @@ page {
   --yd-mint: var(--color-primary-soft);
   --yd-coral: var(--color-accent);
   --yd-coral-soft: var(--color-accent-soft);
-  --yd-yellow: #ffcc00;
+  --yd-yellow: #ffd238;
   --yd-glass-shadow: var(--shadow-card);
   --yd-control-compact: var(--touch-compact);
   --yd-control-regular: var(--touch-regular);
@@ -126,12 +126,10 @@ textarea {
 }
 
 .yd-card {
-  border: 1rpx solid var(--color-border);
+  border: 0;
   border-radius: var(--radius-lg);
   background: var(--color-glass);
   box-shadow: var(--shadow-card);
-  backdrop-filter: blur(20rpx) saturate(140%);
-  -webkit-backdrop-filter: blur(20rpx) saturate(140%);
 }
 
 .yd-primary-btn,
@@ -148,9 +146,9 @@ textarea {
 }
 
 .yd-primary-btn {
-  color: #fff;
+  color: #14200a;
   background: var(--color-primary);
-  box-shadow: 0 8rpx 22rpx rgba(16, 167, 121, 0.24);
+  box-shadow: none;
 }
 
 .yd-secondary-btn {
@@ -244,13 +242,11 @@ textarea {
 /* Temporary compatibility rules until each legacy page moves to shared controls. */
 page .back,
 page .clear,
-page .message-entry,
 page .picker-close {
   min-width: var(--touch-regular) !important;
   min-height: var(--touch-regular) !important;
 }
 
-page .school-trigger,
 page .refresh-entry,
 page .channel {
   min-height: var(--touch-regular) !important;
@@ -286,7 +282,6 @@ page .action {
 page .quick-item { min-height: var(--touch-large) !important; }
 
 /* Emerald glass page harmonization. Keep page logic local, unify visual language here. */
-page .home-page,
 page .detail-page,
 page .publish-page,
 page .search-page,
@@ -302,7 +297,6 @@ page .policy-page {
     var(--color-page) !important;
 }
 
-page .post-card,
 page .publish-page .card-block,
 page .detail-page .content-card,
 page .detail-page .comments-card,
@@ -321,7 +315,6 @@ page .policy-page .policy-card {
   -webkit-backdrop-filter: blur(26rpx) saturate(155%) !important;
 }
 
-page .home-page .search-entry,
 page .search-page .search-input,
 page .publish-page input,
 page .publish-page textarea,
@@ -332,7 +325,6 @@ page .login-page input {
   box-shadow: none !important;
 }
 
-page .home-page .topbar,
 page .search-page .search-top {
   background: var(--color-glass) !important;
   backdrop-filter: blur(22rpx) saturate(145%);

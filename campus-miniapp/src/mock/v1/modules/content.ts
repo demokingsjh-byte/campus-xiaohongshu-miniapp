@@ -38,6 +38,7 @@ const channelMap: Record<string, string> = {
   shop: '探店',
   lost: '失物',
   club: '社团',
+  job: '兼职',
 };
 const coverMap: Record<string, Pick<CampusPost, 'coverColor' | 'coverEmoji' | 'coverLabel'>> = {
   idle: { coverColor: '#E8F1FF', coverEmoji: '📦', coverLabel: '同校闲置' },
@@ -47,6 +48,7 @@ const coverMap: Record<string, Pick<CampusPost, 'coverColor' | 'coverEmoji' | 'c
   shop: { coverColor: '#FCE7DE', coverEmoji: '🥤', coverLabel: '真实探店' },
   lost: { coverColor: '#FFF0D9', coverEmoji: '🔎', coverLabel: '失物信息' },
   club: { coverColor: '#EEF2FF', coverEmoji: '🎉', coverLabel: '活动报名中' },
+  job: { coverColor: '#EAF8ED', coverEmoji: '🧰', coverLabel: '校内兼职' },
 };
 
 function getStoredPosts(): CampusPost[] {
@@ -215,6 +217,21 @@ function setInteraction(id: number, active: boolean, key: string, countKey: 'lik
 }
 
 export const contentMocks = defineMock({
+  '[GET]/api/campus/home/config': () => createMock({
+    data: {
+      searchPlaceholder: '搜索校园新鲜事',
+      notice: '',
+      categories: [
+        { key: 'recommend', title: '推荐', channel: '推荐', icon: '🚩' },
+        { key: 'idle', title: '二手闲置', channel: '二手', icon: '🧺', publishType: 'idle' },
+        { key: 'errand', title: '代拿代办', channel: '互助', icon: '🏃', publishType: 'help' },
+        { key: 'fun', title: '校园趣事', channel: '社团', icon: '🎒', publishType: 'club' },
+        { key: 'job', title: '兼职信息', channel: '兼职', icon: '🧰', publishType: 'job' },
+        { key: 'confession', title: '表白墙', channel: '表白', icon: '💗', publishType: 'confession' },
+        { key: 'groupbuy', title: '商家团购', channel: '探店', icon: '🏪', publishType: 'shop' },
+      ],
+    },
+  }),
   '[POST]/api/campus/post/create': (params) => {
     const data = params.data || {};
     const profile = uni.getStorageSync(PROFILE_KEY) || {};

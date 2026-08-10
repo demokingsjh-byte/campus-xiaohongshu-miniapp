@@ -28,6 +28,7 @@ const statusTabs = computed(() => [
   { label: `已关闭 ${statusCounts.value[3] || 0}`, value: 3 },
   { label: `已退款 ${statusCounts.value[4] || 0}`, value: 4 },
 ]);
+const prototypeStatusTabs = computed(() => statusTabs.value.filter(tab => [undefined, 0, 1, 4].includes(tab.value)));
 const activeStatusLabel = computed(() => {
   if (activeStatus.value === undefined)
     return '';
@@ -43,6 +44,11 @@ const emptyTitle = computed(() => activeStatusLabel.value ? `${activeStatusLabel
 const emptyNote = computed(() => activeStatusLabel.value
   ? `当前账号没有${activeStatusLabel.value}订单，可切换“全部”查看其他订单`
   : '完成一次校园交易后，付款记录会显示在这里');
+
+onLoad((query) => {
+  activeRole.value = query?.role === 'seller' ? 'seller' : 'buyer';
+  uni.setNavigationBarTitle({ title: activeRole.value === 'seller' ? '卖出订单' : '买到订单' });
+});
 
 onShow(() => {
   activeStatus.value = undefined;
@@ -77,7 +83,7 @@ async function loadOrders() {
       return;
     loadError.value = true;
     const detail = String(error?.message || error?.errMsg || '');
-    if (/401|未登录|登录状态/i.test(detail)) {
+    if (/401|未登录|登录状态/.test(detail)) {
       authError.value = true;
       errorMessage.value = '登录状态已失效，请重新登录后查看订单';
     } else if (detail.includes('timeout')) {
@@ -176,21 +182,31 @@ function statusTone(status: number) {
   <view class="orders-page safe-bottom">
     <view class="orders-head">
       <view>
-        <text class="eyebrow">交易记录</text>
-        <text class="page-title">我的订单</text>
+        <text class="eyebrow">
+          交易记录
+        </text>
+        <text class="page-title">
+          我的订单
+        </text>
       </view>
-      <text class="total">共 {{ total }} 笔</text>
+      <text class="total">
+        共 {{ total }} 笔
+      </text>
     </view>
 
     <view class="role-tabs">
-      <view :class="['role-tab', { active: activeRole === 'buyer' }]" @click="changeRole('buyer')">我买的</view>
-      <view :class="['role-tab', { active: activeRole === 'seller' }]" @click="changeRole('seller')">我卖的</view>
+      <view class="role-tab" :class="[{ active: activeRole === 'buyer' }]" @click="changeRole('buyer')">
+        我买的
+      </view>
+      <view class="role-tab" :class="[{ active: activeRole === 'seller' }]" @click="changeRole('seller')">
+        我卖的
+      </view>
     </view>
 
     <scroll-view class="status-scroll" scroll-x :show-scrollbar="false">
       <view class="status-tabs">
         <view
-          v-for="tab in statusTabs" :key="tab.label" :class="{ active: activeStatus === tab.value }"
+          v-for="tab in prototypeStatusTabs" :key="tab.label" :class="{ active: activeStatus === tab.value }"
           @click="changeStatus(tab.value)"
         >
           {{ tab.label }}
@@ -198,7 +214,9 @@ function statusTone(status: number) {
       </view>
     </scroll-view>
 
-    <view v-if="loading && !allOrders.length" class="state">订单记录加载中…</view>
+    <view v-if="loading && !allOrders.length" class="state">
+      订单记录加载中…
+    </view>
     <view v-else-if="loadError" class="state error-state">
       <text>{{ errorMessage }}</text>
       <button class="retry-button" @click="retry">
@@ -207,8 +225,12 @@ function statusTone(status: number) {
     </view>
     <view v-else-if="!orders.length" class="empty-state">
       <image src="/static/icons/ui/empty.svg" mode="aspectFit" />
-      <text class="empty-title">{{ emptyTitle }}</text>
-      <text class="empty-note">{{ emptyNote }}</text>
+      <text class="empty-title">
+        {{ emptyTitle }}
+      </text>
+      <text class="empty-note">
+        {{ emptyNote }}
+      </text>
     </view>
     <view v-else class="order-list">
       <view
@@ -217,22 +239,38 @@ function statusTone(status: number) {
         @click="openOrder(item)"
       >
         <view class="order-card-head">
-          <text class="order-number">订单号 {{ item.orderNo }}</text>
-          <text :class="['order-status', statusTone(item.status)]">{{ item.statusText }}</text>
+          <text class="order-number">
+            订单号 {{ item.orderNo }}
+          </text>
+          <text class="order-status" :class="[statusTone(item.status)]">
+            {{ item.statusText }}
+          </text>
         </view>
         <view class="order-product">
           <image v-if="item.coverImage" class="order-cover" :src="item.coverImage" mode="aspectFill" />
-          <view v-else class="order-cover cover-placeholder">云点</view>
+          <view v-else class="order-cover cover-placeholder">
+            云点
+          </view>
           <view class="order-copy">
-            <text class="order-title">{{ item.title || '校园交易商品' }}</text>
-            <text class="order-person">{{ activeRole === 'buyer' ? `卖家：${item.sellerName || '校园同学'}` : `买家：${item.buyerName || '校园同学'}` }}</text>
-            <text class="order-time">{{ formatTime(item.paidAt || item.expiresAt) }}</text>
+            <text class="order-title">
+              {{ item.title || '校园交易商品' }}
+            </text>
+            <text class="order-person">
+              {{ activeRole === 'buyer' ? `卖家：${item.sellerName || '校园同学'}` : `买家：${item.buyerName || '校园同学'}` }}
+            </text>
+            <text class="order-time">
+              {{ formatTime(item.paidAt || item.expiresAt) }}
+            </text>
           </view>
           <view class="order-price">
-            <text class="currency">¥</text>{{ Number(item.amount || 0).toFixed(2) }}
+            <text class="currency">
+              ¥
+            </text>{{ Number(item.amount || 0).toFixed(2) }}
           </view>
         </view>
-        <view v-if="activeRole === 'buyer'" class="order-footer">点击查看订单详情 ›</view>
+        <view v-if="activeRole === 'buyer'" class="order-footer">
+          点击查看订单详情 ›
+        </view>
       </view>
     </view>
   </view>
@@ -401,11 +439,21 @@ function statusTone(status: number) {
   font-size: 22rpx;
   font-weight: 750;
 }
-.order-status.pending { color: #ff9500; }
-.order-status.paid { color: var(--color-primary); }
-.order-status.completed { color: #5856d6; }
-.order-status.refunded { color: #ff9500; }
-.order-status.closed { color: var(--color-text-tertiary); }
+.order-status.pending {
+  color: #ff9500;
+}
+.order-status.paid {
+  color: var(--color-primary);
+}
+.order-status.completed {
+  color: #5856d6;
+}
+.order-status.refunded {
+  color: #ff9500;
+}
+.order-status.closed {
+  color: var(--color-text-tertiary);
+}
 .order-cover {
   flex: 0 0 auto;
   width: 142rpx;
@@ -467,5 +515,184 @@ function statusTone(status: number) {
   color: var(--color-primary-strong);
   font-size: 21rpx;
   text-align: right;
+}
+
+/* 蓝湖原型：买到/卖出订单 */
+.orders-page {
+  min-height: 100vh;
+  padding: 16rpx 26rpx 60rpx;
+  color: #202321;
+  background: #f4f4f4;
+  box-sizing: border-box;
+}
+
+.orders-head,
+.role-tabs {
+  display: none;
+}
+
+.status-scroll {
+  height: 84rpx;
+  margin: 0 -26rpx 22rpx;
+}
+
+.status-tabs {
+  min-width: 100%;
+  height: 84rpx;
+  padding: 8rpx 26rpx;
+  gap: 26rpx;
+  box-sizing: border-box;
+}
+
+.status-tabs > view {
+  width: auto;
+  min-width: 124rpx;
+  height: 54rpx;
+  padding: 0 15rpx;
+  border: 0;
+  border-radius: 14rpx;
+  color: #999d9a;
+  background: #fff;
+  font-size: 25rpx;
+  font-weight: 500;
+}
+
+.status-tabs > view.active {
+  border: 0;
+  color: #17200d;
+  background: #96f51f;
+  font-weight: 600;
+}
+
+.order-list {
+  gap: 28rpx;
+}
+
+.order-card {
+  padding: 20rpx;
+  border: 0;
+  border-radius: 28rpx;
+  background: #fff;
+  box-shadow: none;
+}
+
+.order-card-head {
+  height: 48rpx;
+  margin-bottom: 18rpx;
+}
+
+.order-number {
+  max-width: 72%;
+  color: #9a9e9b;
+  font-size: 24rpx;
+}
+
+.order-status {
+  padding: 5rpx 10rpx;
+  border: 2rpx solid #d6dcf2;
+  border-radius: 10rpx;
+  color: #8290bb;
+  background: #f6f7ff;
+  font-size: 21rpx;
+  font-weight: 550;
+}
+
+.order-status.pending {
+  border-color: #b8d8ff;
+  color: #2382ef;
+  background: #eff7ff;
+}
+
+.order-status.paid,
+.order-status.completed {
+  border-color: #bde6ad;
+  color: #43b525;
+  background: #f2ffed;
+}
+
+.order-status.refunded,
+.order-status.closed {
+  color: #8791b4;
+}
+
+.order-product {
+  align-items: stretch;
+}
+
+.order-cover {
+  width: 144rpx;
+  height: 144rpx;
+  border-radius: 20rpx;
+}
+
+.order-copy {
+  margin-left: 26rpx;
+}
+
+.order-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #202321;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.order-person,
+.order-time {
+  margin-top: 18rpx;
+  color: #999d9a;
+  font-size: 23rpx;
+}
+
+.order-time {
+  margin-top: auto;
+}
+
+.order-price {
+  align-self: flex-end;
+  margin: 0 0 2rpx 10rpx;
+  color: #ff4d55;
+  font-size: 42rpx;
+  font-weight: 650;
+}
+
+.currency {
+  color: #ff4d55;
+  font-size: 23rpx;
+}
+
+.order-footer {
+  margin-top: 18rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #eef0ee;
+  color: #ff9518;
+  font-size: 24rpx;
+}
+
+.state,
+.empty-state {
+  min-height: 680rpx;
+  color: #9a9e9b;
+}
+
+.empty-state image {
+  width: 150rpx;
+  height: 150rpx;
+  opacity: 0.45;
+}
+
+.empty-title {
+  color: #999d9a;
+  font-size: 27rpx;
+  font-weight: 500;
+}
+
+.retry-button {
+  color: #14200a;
+  background: #95f51f;
 }
 </style>

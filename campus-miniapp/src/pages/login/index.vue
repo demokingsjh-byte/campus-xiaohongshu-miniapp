@@ -68,7 +68,7 @@ function syncTenantFromProfile() {
 
 function returnToPreviousPage(delay = 0) {
   setTimeout(() => {
-    uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/about/index' }) });
+    uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/about/index' }) });
   }, delay);
 }
 
@@ -1072,5 +1072,251 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .picker,
 .profile-form input {
   background: rgba(230, 242, 255, 0.62);
+}
+
+/* 蓝湖原型：登录与修改校园资料 */
+.login-page {
+  min-height: 100vh;
+  padding: 0 32rpx 170rpx;
+  overflow: visible;
+  color: #202321;
+  background: linear-gradient(180deg, #edfbf0 0%, #f4f4f4 22%, #f4f4f4 100%);
+}
+
+.login-nav {
+  height: 112rpx;
+  color: #202321;
+  font-size: 34rpx;
+  font-weight: 600;
+}
+
+.back {
+  left: -8rpx;
+  width: 70rpx;
+  height: 70rpx;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.profile-content {
+  padding-top: 10rpx;
+}
+
+.profile-intro {
+  padding: 20rpx 0 6rpx;
+}
+
+.profile-kicker {
+  display: none;
+}
+
+.profile-heading {
+  margin-top: 0;
+  color: #202321;
+  font-size: 38rpx;
+  font-weight: 600;
+}
+
+.profile-summary {
+  margin-top: 20rpx;
+  color: #969a97;
+  font-size: 27rpx;
+}
+
+.avatar-card,
+.phone-card,
+.profile-form {
+  border: 0;
+  border-radius: 32rpx;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.avatar-card {
+  margin: 24rpx 0 32rpx;
+}
+
+.avatar-overview {
+  min-height: 166rpx;
+  padding: 28rpx 24rpx;
+}
+
+.avatar-visual {
+  width: 118rpx;
+  height: 118rpx;
+}
+
+.avatar-visual > image {
+  border: 0;
+  box-shadow: none;
+}
+
+.avatar-camera {
+  display: none;
+}
+
+.avatar-copy {
+  margin-left: 28rpx;
+}
+
+.avatar-title {
+  color: #202321;
+  font-size: 29rpx;
+  font-weight: 600;
+}
+
+.avatar-description {
+  margin-top: 18rpx;
+  color: #969a97;
+  font-size: 25rpx;
+}
+
+.wechat-avatar-button {
+  width: calc(100% - 48rpx);
+  height: 84rpx;
+  margin: 0 24rpx;
+  border-radius: 28rpx;
+  color: #14200a;
+  background: #95f51f;
+  box-shadow: none;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.wechat-avatar-button image {
+  display: none;
+}
+
+.avatar-consent-tip {
+  padding: 16rpx 20rpx 24rpx;
+  color: #999d9a;
+  font-size: 21rpx;
+}
+
+.phone-card {
+  margin-bottom: 32rpx;
+  padding: 28rpx 24rpx 24rpx;
+}
+
+.phone-icon {
+  display: none;
+}
+
+.phone-copy {
+  margin-left: 0;
+}
+
+.phone-title {
+  color: #202321;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.phone-description {
+  margin-top: 16rpx;
+  color: #969a97;
+  font-size: 25rpx;
+}
+
+.phone-button {
+  height: 84rpx;
+  margin-top: 28rpx;
+  border: 2rpx solid #86e81a;
+  border-radius: 28rpx;
+  color: #202321;
+  background: #f4ffe9;
+  font-size: 27rpx;
+  font-weight: 550;
+}
+
+.phone-consent-tip {
+  display: none;
+}
+
+.form-section-head {
+  margin: 0;
+  padding: 26rpx 24rpx 18rpx;
+  border-radius: 32rpx 32rpx 0 0;
+  background: #fff;
+}
+
+.form-section-head text:first-child {
+  color: #202321;
+  font-size: 31rpx;
+  font-weight: 600;
+}
+
+.form-section-head text:last-child {
+  color: #ff4d55;
+  font-size: 23rpx;
+}
+
+.profile-form {
+  border-radius: 0 0 32rpx 32rpx;
+}
+
+.profile-form label {
+  min-height: 108rpx;
+  padding: 0 24rpx;
+  border-bottom: 0;
+  color: #202321;
+  font-size: 28rpx;
+  font-weight: 550;
+}
+
+.field-name {
+  min-width: 150rpx;
+  color: #202321;
+}
+
+.field-name image,
+.field-name .optional {
+  display: none;
+}
+
+.profile-form input,
+.picker {
+  min-height: 68rpx;
+  margin-left: 20rpx;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: #969a97;
+  background: transparent;
+  box-shadow: none;
+  font-size: 27rpx;
+  font-weight: 500;
+}
+
+.picker text {
+  color: #969a97;
+}
+
+.wechat-btn {
+  position: fixed;
+  z-index: 40;
+  right: 32rpx;
+  bottom: calc(22rpx + env(safe-area-inset-bottom));
+  left: 32rpx;
+  width: auto;
+  height: 84rpx;
+  margin: 0;
+  border: 0;
+  border-radius: 28rpx;
+  color: #14200a;
+  background: #95f51f;
+  box-shadow: none;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.done-icon {
+  color: #14200a;
+  background: #95f51f;
+  box-shadow: none;
 }
 </style>

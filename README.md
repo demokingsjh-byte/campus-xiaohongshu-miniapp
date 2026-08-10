@@ -17,6 +17,10 @@
 
 [docs/STARTUP_GUIDE.md](docs/STARTUP_GUIDE.md)
 
+本机手动运行命令、访问地址和故障排查见：
+
+[docs/LOCAL_MANUAL_RUN_GUIDE.md](docs/LOCAL_MANUAL_RUN_GUIDE.md)
+
 自动打包、版本发布和服务器更新方案见：
 
 [docs/UPDATE_PIPELINE.md](docs/UPDATE_PIPELINE.md)

@@ -6,6 +6,24 @@ export interface CampusPostPage {
   total: number
 }
 
+export interface CampusHomeCategory {
+  key: string
+  title: string
+  channel: string
+  icon: string
+  publishType?: string
+  iconVisible?: boolean
+  titleVisible?: boolean
+}
+
+export interface CampusHomeConfig {
+  searchPlaceholder: string
+  notice?: string
+  categoryIconVisible?: boolean
+  categoryTitleVisible?: boolean
+  categories: CampusHomeCategory[]
+}
+
 export interface CampusPostComment {
   id: number
   postId: number
@@ -131,6 +149,20 @@ export function createCampusPost(params: CampusPostCreateParams) {
 
 export function getCampusPostPage(params: CampusPostPageParams) {
   return request.Get<CampusPostPage>(`${POST_BASE}/page`, { params, cacheFor: 0, meta: { ignoreAuth: true } });
+}
+
+/**
+ * 首页导航和运营文案由后台“基础设施 / 配置管理”维护。
+ * 支持 campus.home.* 全局配置，以及 campus.home.{tenantId}.* 校园级覆盖。
+ */
+export function getCampusHomeConfig(tenantId?: number) {
+  return request.Get<CampusHomeConfig>('/campus/home/config', {
+    params: tenantId ? { tenantId } : {},
+    cacheFor: 0,
+    // 兼容尚未部署首页配置接口的旧服务端：页面会回退到本地蓝湖配置，
+    // 不应把可选运营配置的 404 暴露成全局网络错误。
+    meta: { ignoreAuth: true, silentError: true },
+  });
 }
 
 export function getMyCampusPostPage(params: Pick<CampusPostPageParams, 'pageNo' | 'pageSize'> = {}) {

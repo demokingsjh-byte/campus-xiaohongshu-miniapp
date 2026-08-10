@@ -32,49 +32,50 @@ const icons = {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 430rpx;
-  padding: 64rpx 36rpx;
+  min-height: 620rpx;
+  padding: 80rpx 36rpx;
   text-align: center;
 }
 .state-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 112rpx;
-  height: 112rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.7);
-  border-radius: 32rpx;
-  background: var(--yd-mint);
-  box-shadow: var(--shadow-card);
+  width: 140rpx;
+  height: 170rpx;
+  border: 0;
+  border-radius: 22rpx;
+  background: #dedede;
+  box-shadow: none;
 }
 .state-icon image {
-  width: 58rpx;
-  height: 58rpx;
+  width: 86rpx;
+  height: 86rpx;
+  filter: grayscale(1) brightness(2.1);
 }
 .state-title {
   margin-top: 28rpx;
-  color: var(--yd-ink);
-  font-size: 32rpx;
-  font-weight: 800;
+  color: #999d9a;
+  font-size: 28rpx;
+  font-weight: 500;
 }
 .state-desc {
   max-width: 520rpx;
   margin-top: 14rpx;
-  color: var(--color-text-secondary);
-  font-size: 25rpx;
+  color: #a0a3a1;
+  font-size: 24rpx;
   line-height: 1.55;
 }
 .state-action {
-  min-width: 220rpx;
-  height: var(--yd-control-regular);
-  margin-top: 30rpx;
-  padding: 0 34rpx;
-  border-radius: var(--yd-control-radius);
-  color: #fff;
-  background: var(--yd-green);
-  box-shadow: 0 8rpx 22rpx rgba(16, 167, 121, 0.24);
-  font-size: 26rpx;
-  font-weight: 700;
+  min-width: 140rpx;
+  height: 64rpx;
+  margin-top: 28rpx;
+  padding: 0 28rpx;
+  border-radius: 23rpx;
+  color: #14200a;
+  background: #95f51f;
+  box-shadow: none;
+  font-size: 27rpx;
+  font-weight: 600;
   line-height: 1;
 }
 </style>

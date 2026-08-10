@@ -22,7 +22,7 @@ const userStore = useUserStore();
   min-height: 100vh;
   padding: 120rpx var(--page-gutter);
   color: var(--color-text);
-  background: var(--color-page);
+  background: linear-gradient(180deg, #edfbf0 0, rgba(237, 251, 240, 0) 430rpx), #f4f4f4;
 }
 .utility-page > view,
 .utility-page > image {
@@ -31,9 +31,9 @@ const userStore = useUserStore();
 }
 .utility-avatar {
   overflow: hidden;
-  border: 4rpx solid #fff;
+  border: 6rpx solid #fff;
   border-radius: 50%;
-  background: var(--color-primary-soft);
-  box-shadow: var(--shadow-card);
+  background: #edf0ed;
+  box-shadow: none;
 }
 </style>

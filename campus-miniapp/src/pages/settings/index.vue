@@ -120,7 +120,7 @@ function deleteAccount() {
             consent.value = null;
             uni.hideLoading();
             uni.showToast({ title: '账号已注销', icon: 'success' });
-            setTimeout(() => uni.switchTab({ url: '/pages/index/index' }), 700);
+            setTimeout(() => uni.reLaunch({ url: '/pages/index/index' }), 700);
           } catch {
             uni.hideLoading();
             uni.showToast({ title: '注销失败，请稍后重试', icon: 'none' });
@@ -469,5 +469,81 @@ function deleteAccount() {
   font-size: 20rpx;
   line-height: 1.65;
   text-align: center;
+}
+
+/* 蓝湖原型：设置与隐私 */
+.settings-page {
+  padding: 28rpx 32rpx calc(60rpx + env(safe-area-inset-bottom));
+  color: #202321;
+  background: #f4f4f4;
+}
+
+.privacy-hero {
+  padding: 28rpx 24rpx;
+  border: 0;
+  border-radius: 32rpx;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.shield {
+  color: #14200a;
+  background: #95f51f;
+  box-shadow: none;
+}
+
+.shield-check {
+  border-color: #14200a;
+}
+
+.hero-title {
+  color: #202321;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.status-chip {
+  color: #3ba61e;
+  background: #edffd9;
+}
+
+.section-label {
+  color: #777c79;
+  font-size: 23rpx;
+}
+
+.settings-card {
+  border: 0;
+  border-radius: 30rpx;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.setting-row,
+.contact-row {
+  min-height: 106rpx;
+  padding: 18rpx 24rpx;
+  border-bottom-color: #eef0ee;
+}
+
+.row-icon {
+  border-radius: 18rpx;
+  background: #edffd9;
+}
+
+.row-main text {
+  color: #202321;
+  font-size: 27rpx;
+  font-weight: 550;
+}
+
+.row-main span {
+  color: #999d9a;
+}
+
+.value {
+  color: #48b827;
 }
 </style>

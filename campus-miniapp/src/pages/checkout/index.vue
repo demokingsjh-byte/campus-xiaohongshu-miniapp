@@ -2,12 +2,12 @@
 import type { CampusPost } from '@/mock/campus';
 import type { CampusTradeContact, CampusTradeOrder } from '@/services/api/content';
 import {
+  cancelCampusTradeOrder,
   createCampusTradeOrder,
   createCampusTradePayment,
-  cancelCampusTradeOrder,
   getCampusPost,
-  getCampusTradeOrder,
   getCampusTradeContact,
+  getCampusTradeOrder,
   getCampusTradePaymentStatus,
 } from '@/services/api/content';
 import { useUserStore } from '@/stores/modules/user';
@@ -374,7 +374,7 @@ async function recreateOrder() {
 async function cancelCurrentOrder() {
   if (!order.value || order.value.status !== 0 || busy.value || paymentPending.value)
     return;
-  const confirmed = await new Promise<boolean>(resolve => {
+  const confirmed = await new Promise<boolean>((resolve) => {
     uni.showModal({
       title: '取消订单',
       content: '确定取消当前订单吗？取消后可以重新下单。',
@@ -421,39 +421,67 @@ function copyContact() {
 
 <template>
   <view class="checkout-page">
-    <view v-if="loading" class="state">订单信息加载中…</view>
-    <view v-else-if="loadError" class="state">订单信息暂时无法加载</view>
+    <view v-if="loading" class="state">
+      订单信息加载中…
+    </view>
+    <view v-else-if="loadError" class="state">
+      订单信息暂时无法加载
+    </view>
     <template v-else-if="order">
       <view class="card product-card">
         <image v-if="productImage" class="cover" :src="productImage" mode="aspectFill" />
         <view class="product-main">
-          <text class="title">{{ order.title || post.title }}</text>
-          <text class="meta">{{ post?.tradeMode || '校内当面交易' }} · {{ post?.location || post?.school || order.sellerName || '校园交易' }}</text>
-          <text class="price">¥{{ displayAmount }}</text>
+          <text class="title">
+            {{ order.title || post.title }}
+          </text>
+          <text class="meta">
+            {{ post?.tradeMode || '校内自提' }}
+          </text>
+          <text class="price">
+            ¥{{ displayAmount }}
+          </text>
         </view>
       </view>
 
       <view class="card order-card">
-        <view class="order-row"><text>订单状态</text><text class="order-status">{{ isPaymentPending ? (paymentTimedOut ? '支付状态待确认' : '支付确认中') : order.statusText }}</text></view>
+        <view class="order-row">
+          <text>订单状态</text><text class="order-status">
+            {{ isPaymentPending ? (paymentTimedOut ? '支付状态待确认' : '支付确认中') : order.statusText }}
+          </text>
+        </view>
         <view v-if="order.status === 0" class="order-row">
           <text>支付倒计时</text>
-          <text :class="['countdown', { danger: !isWaitingPayment }]">{{ isWaitingPayment ? countdownText : '已过期' }}</text>
+          <text class="countdown" :class="[{ danger: !isWaitingPayment }]">
+            {{ isWaitingPayment ? countdownText : '已过期' }}
+          </text>
         </view>
-        <text class="order-no">订单号：{{ order.orderNo }}</text>
+        <view class="order-row order-number-row">
+          <text>订单编号</text><text class="order-no">
+            {{ order.orderNo }} ｜ 复制
+          </text>
+        </view>
       </view>
 
       <view class="card notice">
-        <text class="notice-title">购买说明</text>
+        <text class="notice-title">
+          购买说明
+        </text>
         <text>支付金额以订单中锁定的商品价格为准。</text>
         <text>支付成功后才会显示发布者预留的联系方式，请先沟通验货和交付安排。</text>
       </view>
 
       <view v-if="isPaid && contact?.paid" class="card contact-card">
-        <text class="success">支付成功 · 联系方式已解锁</text>
-        <text class="seller">发布者：{{ contact.sellerName || post?.author || order.sellerName || '校园同学' }}</text>
+        <text class="success">
+          支付成功 · 联系方式已解锁
+        </text>
+        <text class="seller">
+          发布者：{{ contact.sellerName || post?.author || order.sellerName || '校园同学' }}
+        </text>
         <view class="contact-value" @click="copyContact">
           <text>{{ contact.contact || '发布者尚未填写联系方式，请联系平台处理' }}</text>
-          <text v-if="contact.contact" class="copy">复制</text>
+          <text v-if="contact.contact" class="copy">
+            复制
+          </text>
         </view>
       </view>
 
@@ -633,5 +661,163 @@ function copyContact() {
   padding: 160rpx 20rpx;
   color: #78827e;
   text-align: center;
+}
+
+/* 蓝湖原型：确认购买 */
+.checkout-page {
+  min-height: 100vh;
+  padding: 32rpx 32rpx calc(156rpx + env(safe-area-inset-bottom));
+  color: #202321;
+  background: #f4f4f4;
+}
+
+.card {
+  margin-bottom: 32rpx;
+  padding: 24rpx;
+  border: 0;
+  border-radius: 32rpx;
+  background: #fff;
+}
+
+.product-card {
+  min-height: 238rpx;
+  gap: 32rpx;
+  box-sizing: border-box;
+}
+
+.cover {
+  width: 176rpx;
+  height: 176rpx;
+  border-radius: 20rpx;
+}
+
+.title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #1e211f;
+  font-size: 31rpx;
+  font-weight: 600;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.meta {
+  align-self: flex-start;
+  height: 48rpx;
+  margin-top: 20rpx;
+  padding: 0 14rpx;
+  border-radius: 13rpx;
+  color: #ff8c16;
+  background: #fff5e6;
+  font-size: 25rpx;
+  line-height: 48rpx;
+}
+
+.price {
+  margin-top: 26rpx;
+  color: #ff4d55;
+  font-size: 48rpx;
+  font-weight: 650;
+}
+
+.price::first-letter {
+  font-size: 23rpx;
+}
+
+.order-card {
+  gap: 0;
+  padding: 10rpx 24rpx;
+}
+
+.order-row {
+  min-height: 74rpx;
+  color: #202321;
+  font-size: 28rpx;
+}
+
+.order-status {
+  padding: 5rpx 10rpx;
+  border: 2rpx solid #b8d8ff;
+  border-radius: 10rpx;
+  color: #2483ee;
+  background: #eef6ff;
+  font-size: 23rpx;
+  font-weight: 550;
+}
+
+.countdown {
+  color: #ff4d55;
+  font-size: 29rpx;
+  font-weight: 500;
+}
+
+.order-number-row {
+  align-items: center;
+}
+
+.order-no {
+  overflow: hidden;
+  max-width: 470rpx;
+  color: #969a97;
+  font-size: 24rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notice {
+  gap: 10rpx;
+  padding: 26rpx 24rpx 30rpx;
+  color: #959996;
+  font-size: 26rpx;
+  line-height: 1.75;
+}
+
+.notice-title {
+  margin-bottom: 14rpx;
+  color: #202321;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.action-bar {
+  z-index: 40;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: calc(146rpx + env(safe-area-inset-bottom));
+  padding: 20rpx 32rpx calc(18rpx + env(safe-area-inset-bottom));
+  gap: 24rpx;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.pay-button,
+.cancel-button {
+  height: 84rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 28rpx;
+  font-weight: 600;
+  line-height: 84rpx;
+}
+
+.pay-button {
+  color: #142008;
+  background: #95f51f;
+  font-size: 30rpx;
+}
+
+.cancel-button {
+  width: 184rpx;
+  border: 2rpx solid #eceeec;
+  color: #949895;
+  background: #fff;
+  font-size: 27rpx;
+}
+
+.pay-button::after,
+.cancel-button::after {
+  border: 0;
 }
 </style>
