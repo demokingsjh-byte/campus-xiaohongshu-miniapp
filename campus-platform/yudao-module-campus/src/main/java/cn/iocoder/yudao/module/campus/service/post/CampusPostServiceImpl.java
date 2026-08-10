@@ -45,7 +45,7 @@ public class CampusPostServiceImpl implements CampusPostService {
 
     private static final long DEFAULT_TENANT_ID = 201L;
     private static final Set<String> SUPPORTED_TYPES = Collections.unmodifiableSet(
-            new java.util.HashSet<>(Arrays.asList("idle", "help", "confession", "ride", "shop", "lost", "club")));
+            new java.util.HashSet<>(Arrays.asList("idle", "help", "confession", "ride", "shop", "lost", "club", "job")));
     private static final Map<String, String> CHANNEL_MAP = new HashMap<>();
 
     static {
@@ -56,6 +56,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         CHANNEL_MAP.put("shop", "探店");
         CHANNEL_MAP.put("lost", "失物");
         CHANNEL_MAP.put("club", "社团");
+        CHANNEL_MAP.put("job", "兼职");
     }
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
@@ -823,6 +824,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         if ("ride".equals(type)) return "#DCEEF3";
         if ("shop".equals(type)) return "#FCE7DE";
         if ("lost".equals(type)) return "#FFF0D9";
+        if ("job".equals(type)) return "#EAF8ED";
         return "#EEF2FF";
     }
 
@@ -833,6 +835,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         if ("shop".equals(type)) return "🥤";
         if ("lost".equals(type)) return "🔎";
         if ("club".equals(type)) return "🎉";
+        if ("job".equals(type)) return "🧰";
         return "🙌";
     }
 
@@ -843,6 +846,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         if ("shop".equals(type)) return "真实探店";
         if ("lost".equals(type)) return "失物信息";
         if ("club".equals(type)) return "活动报名中";
+        if ("job".equals(type)) return "校内兼职";
         return "同校互助";
     }
 }

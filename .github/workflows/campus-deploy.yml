@@ -79,6 +79,7 @@ jobs:
           tar -czf release/campus-admin-ui-dist.tar.gz -C campus-platform/yudao-ui/yudao-ui-admin-vue3-full dist
           cp scripts/deploy/update-server.sh release/update-server.sh
           cp scripts/deploy/migrate-server.sh release/migrate-server.sh
+          cp campus-platform/sql/mysql/campus-home-config-upgrade.sql release/migrations/
           cp campus-platform/sql/mysql/campus-student-user-upgrade.sql release/migrations/
           cp campus-platform/sql/mysql/campus-community-upgrade.sql release/migrations/
           cp campus-platform/sql/mysql/campus-comment-upgrade.sql release/migrations/
@@ -149,3 +150,19 @@ jobs:
             exit 1
           fi
           echo "Public campus post page verified."
+
+          home_config="$(curl --fail --silent --show-error --max-time 20 \
+            'https://huanwoshidai.com.cn/app-api/campus/home/config?tenantId=201')"
+          if ! jq -e '.code == 0
+            and (.data.searchPlaceholder | type == "string")
+            and (.data.categoryIconVisible | type == "boolean")
+            and (.data.categoryTitleVisible | type == "boolean")
+            and (.data.categories | type == "array")
+            and (.data.categories | length > 0)
+            and (.data.categories[0].icon | type == "string")
+            and (.data.categories[0].iconVisible | type == "boolean")
+            and (.data.categories[0].titleVisible | type == "boolean")' <<<"$home_config" >/dev/null; then
+            echo "::error title=Public campus home config smoke test failed::Unexpected response: $home_config"
+            exit 1
+          fi
+          echo "Public campus home config verified."
