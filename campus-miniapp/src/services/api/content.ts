@@ -41,6 +41,7 @@ export interface CampusPostComment {
   owner?: boolean
   likeCount: number
   replyCount: number
+  status?: number
   liked?: boolean
   createTime?: string
 }

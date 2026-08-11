@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.campus.service.post;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.URLUtil;
+import cn.hutool.crypto.digest.DigestUtil;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.http.HttpUtils;
@@ -12,6 +13,8 @@ import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRe
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
+import cn.iocoder.yudao.module.campus.service.contentsecurity.CampusContentCheckResult;
+import cn.iocoder.yudao.module.campus.service.contentsecurity.CampusContentSecurityService;
 import cn.iocoder.yudao.module.campus.service.notification.CampusNotificationService;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -62,12 +65,15 @@ public class CampusPostServiceImpl implements CampusPostService {
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final FileApi fileApi;
     private final CampusNotificationService campusNotificationService;
+    private final CampusContentSecurityService contentSecurityService;
 
     public CampusPostServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi,
-                                 CampusNotificationService campusNotificationService) {
+                                 CampusNotificationService campusNotificationService,
+                                 CampusContentSecurityService contentSecurityService) {
         this.jdbcTemplate = jdbcTemplate;
         this.fileApi = fileApi;
         this.campusNotificationService = campusNotificationService;
+        this.contentSecurityService = contentSecurityService;
     }
 
     @Override
@@ -80,12 +86,21 @@ public class CampusPostServiceImpl implements CampusPostService {
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "不支持的发布类型");
         }
         Map<String, Object> user = getUser(userId);
+        enforceRateLimit("campus_post", userId, 3, Duration.ofMinutes(10), "发布过于频繁，请稍后再试");
         String schoolName = value(user, "school_name");
         String campusName = value(user, "campus_name");
         if (StrUtil.isBlank(schoolName) || StrUtil.isBlank(campusName)) {
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "请先完善学校和校区资料后再发布");
         }
         long tenantId = toLong(user.get("tenant_id"), DEFAULT_TENANT_ID);
+        List<String> images = normalizePostImages(reqVO.getImages());
+        String auditText = reqVO.getTitle().trim() + "\n" + reqVO.getContent().trim() + "\n"
+                + String.join(" ", defaultList(reqVO.getTags()));
+        List<CampusContentCheckResult> auditResults = checkContent(value(user, "openid"),
+                CampusContentSecurityService.SCENE_FORUM, auditText, reqVO.getTitle().trim(),
+                userNickname(user), images);
+        ensureContentNotRisky(auditResults);
+        int initialStatus = allChecksPassed(auditResults) ? 1 : 0;
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("userId", userId)
                 .addValue("tenantId", tenantId)
@@ -103,7 +118,8 @@ public class CampusPostServiceImpl implements CampusPostService {
                 .addValue("contact", trimToEmpty(reqVO.getContact()))
                 .addValue("anonymous", Boolean.TRUE.equals(reqVO.getAnonymous()))
                 .addValue("tagsJson", JsonUtils.toJsonString(defaultList(reqVO.getTags())))
-                .addValue("imagesJson", JsonUtils.toJsonString(normalizePostImages(reqVO.getImages())))
+                .addValue("imagesJson", JsonUtils.toJsonString(images))
+                .addValue("status", initialStatus)
                 .addValue("operator", String.valueOf(userId));
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update("INSERT INTO campus_post (user_id, tenant_id, school_name, campus_name, type, channel,"
@@ -111,13 +127,14 @@ public class CampusPostServiceImpl implements CampusPostService {
                         + " tags_json, images_json, status, like_count, collect_count, comment_count, view_count,"
                         + " creator, updater, create_time, update_time, deleted) VALUES (:userId, :tenantId, :schoolName,"
                         + " :campusName, :type, :channel, :title, :content, :price, :originalPrice, :location, :tradeMode,"
-                        + " :visibleRange, :contact, :anonymous, :tagsJson, :imagesJson, 1, 0, 0, 0, 0, :operator,"
+                        + " :visibleRange, :contact, :anonymous, :tagsJson, :imagesJson, :status, 0, 0, 0, 0, :operator,"
                         + " :operator, NOW(), NOW(), b'0')",
                 params, keyHolder);
         Number key = keyHolder.getKey();
         if (key == null) {
             throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "发布失败，请稍后重试");
         }
+        saveAuditResults("POST", key.longValue(), userId, tenantId, auditText, images, auditResults);
         return getPost(key.longValue(), userId);
     }
 
@@ -202,6 +219,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         requireUserId(userId);
         Map<String, Object> post = getPostRow(postId);
         Map<String, Object> user = getUser(userId);
+        enforceRateLimit("campus_post_comment", userId, 6, Duration.ofMinutes(1), "评论过于频繁，请稍后再试");
         long postTenantId = toLong(post.get("tenant_id"), DEFAULT_TENANT_ID);
         long userTenantId = toLong(user.get("tenant_id"), DEFAULT_TENANT_ID);
         if (postTenantId != userTenantId) {
@@ -226,11 +244,17 @@ public class CampusPostServiceImpl implements CampusPostService {
             }
         }
         String content = trimToEmpty(reqVO.getContent());
-        List<String> images = defaultList(reqVO.getImages()).stream()
-                .filter(StrUtil::isNotBlank).limit(3).map(HttpUtils::removeUrlQuery).collect(Collectors.toList());
+        List<String> images = normalizePostImages(reqVO.getImages()).stream().distinct().limit(3)
+                .collect(Collectors.toList());
         if (StrUtil.isBlank(content) && images.isEmpty()) {
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "请输入评论内容或上传图片");
         }
+        String auditText = StrUtil.blankToDefault(content, "[图片评论]");
+        List<CampusContentCheckResult> auditResults = checkContent(value(user, "openid"),
+                CampusContentSecurityService.SCENE_COMMENT, auditText, value(post, "title"),
+                userNickname(user), images);
+        ensureContentNotRisky(auditResults);
+        int initialStatus = allChecksPassed(auditResults) ? 1 : 0;
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("postId", postId)
                 .addValue("userId", userId)
@@ -242,41 +266,28 @@ public class CampusPostServiceImpl implements CampusPostService {
                         ? Collections.<Long>emptyList() : reqVO.getMentionUserIds()).stream()
                         .filter(java.util.Objects::nonNull).distinct().limit(20).collect(Collectors.toList())))
                 .addValue("imagesJson", JsonUtils.toJsonString(images))
+                .addValue("status", initialStatus)
                 .addValue("operator", String.valueOf(userId));
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update("INSERT INTO campus_post_comment (post_id, user_id, parent_id, reply_to_user_id, tenant_id, content,"
                         + " mention_user_ids_json, images_json, status, like_count, creator, updater, create_time, update_time, deleted)"
                         + " VALUES (:postId, :userId, :parentId, :replyToUserId, :tenantId, :content, :mentionUserIdsJson,"
-                        + " :imagesJson, 1, 0, :operator, :operator, NOW(), NOW(), b'0')", params, keyHolder);
+                        + " :imagesJson, :status, 0, :operator, :operator, NOW(), NOW(), b'0')", params, keyHolder);
         Number key = keyHolder.getKey();
         if (key == null) {
             throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "评论发布失败，请稍后重试");
         }
-        jdbcTemplate.update("UPDATE campus_post SET comment_count = (SELECT COUNT(*) FROM campus_post_comment c"
-                        + " WHERE c.post_id = :postId AND c.status = 1 AND c.deleted = b'0'), update_time = NOW()"
-                        + " WHERE id = :postId AND deleted = b'0'", new MapSqlParameterSource("postId", postId));
+        saveAuditResults("COMMENT", key.longValue(), userId, postTenantId, auditText, images, auditResults);
+        if (initialStatus == 1) {
+            updateCommentCount(postId);
+            notifyPublishedComment(key.longValue());
+        }
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(commentSelectSql()
-                + " WHERE c.id = :id AND c.post_id = :postId AND c.status = 1 AND c.deleted = b'0' LIMIT 1",
+                + " WHERE c.id = :id AND c.post_id = :postId AND c.deleted = b'0' LIMIT 1",
                 new MapSqlParameterSource().addValue("id", key.longValue()).addValue("postId", postId)
                         .addValue("loginUserId", userId));
         if (rows.isEmpty()) {
-            throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "璇勮淇℃伅鍥炶澶辫触锛岃绋嶅悗閲嶈瘯");
-        }
-        Long recipientUserId = parentId == null ? toLongObject(post.get("user_id")) : replyToUserId;
-        String actorNickname = userNickname(user);
-        String eventType = parentId == null ? "COMMENT" : "REPLY";
-        String title = parentId == null ? actorNickname + "评论了你的发布" : actorNickname + "回复了你";
-        Set<Long> notifiedUserIds = new HashSet<>();
-        if (recipientUserId != null)
-            notifiedUserIds.add(recipientUserId);
-        campusNotificationService.createInteraction(recipientUserId, postTenantId, userId, actorNickname,
-                eventType, title, content, "POST", postId);
-        for (Long mentionUserId : reqVO.getMentionUserIds()) {
-            if (mentionUserId == null || notifiedUserIds.contains(mentionUserId))
-                continue;
-            campusNotificationService.createInteraction(mentionUserId, postTenantId, userId, actorNickname,
-                    "MENTION", actorNickname + "@了你", content, "POST", postId);
-            notifiedUserIds.add(mentionUserId);
+            throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "评论信息读取失败，请稍后重试");
         }
         return toCommentResp(rows.get(0), userId);
     }
@@ -488,6 +499,156 @@ public class CampusPostServiceImpl implements CampusPostService {
                 params);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void handleMediaAuditCallback(String traceId, String suggest, String label, String rawResult) {
+        if (StrUtil.isBlank(traceId) || !Arrays.asList(CampusContentCheckResult.PASS,
+                CampusContentCheckResult.REVIEW, CampusContentCheckResult.RISKY).contains(suggest)) {
+            return;
+        }
+        List<Map<String, Object>> auditRows = jdbcTemplate.queryForList(
+                "SELECT id, entity_type, entity_id FROM campus_content_audit"
+                        + " WHERE trace_id = :traceId AND deleted = b'0' LIMIT 1",
+                new MapSqlParameterSource("traceId", traceId));
+        if (auditRows.isEmpty()) {
+            return;
+        }
+        Map<String, Object> audit = auditRows.get(0);
+        jdbcTemplate.update("UPDATE campus_content_audit SET suggest = :suggest, label = :label,"
+                        + " raw_result = :rawResult, updater = 'wechat', update_time = NOW()"
+                        + " WHERE id = :id AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("id", audit.get("id")).addValue("suggest", suggest)
+                        .addValue("label", truncate(label, 64)).addValue("rawResult", truncate(rawResult, 65535)));
+
+        String entityType = value(audit, "entity_type");
+        Long entityId = toLongObject(audit.get("entity_id"));
+        if (entityId == null || !("POST".equals(entityType) || "COMMENT".equals(entityType))) {
+            return;
+        }
+        List<String> suggestions = jdbcTemplate.queryForList(
+                "SELECT suggest FROM campus_content_audit WHERE entity_type = :entityType"
+                        + " AND entity_id = :entityId AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("entityType", entityType).addValue("entityId", entityId),
+                String.class);
+        int targetStatus = suggestions.stream().anyMatch(CampusContentCheckResult.RISKY::equals) ? 2
+                : (suggestions.stream().allMatch(CampusContentCheckResult.PASS::equals) ? 1 : 0);
+        if (targetStatus == 0) {
+            return;
+        }
+        String table = "POST".equals(entityType) ? "campus_post" : "campus_post_comment";
+        int updated = jdbcTemplate.update("UPDATE " + table + " SET status = :status, updater = 'wechat',"
+                        + " update_time = NOW() WHERE id = :id AND status = 0 AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("status", targetStatus).addValue("id", entityId));
+        if (updated > 0 && targetStatus == 1 && "COMMENT".equals(entityType)) {
+            Long postId = jdbcTemplate.queryForObject("SELECT post_id FROM campus_post_comment WHERE id = :id",
+                    new MapSqlParameterSource("id", entityId), Long.class);
+            if (postId != null) {
+                updateCommentCount(postId);
+            }
+            notifyPublishedComment(entityId);
+        }
+    }
+
+    private List<CampusContentCheckResult> checkContent(String openid, int scene, String text,
+                                                         String title, String nickname, List<String> images) {
+        List<CampusContentCheckResult> results = new ArrayList<>();
+        results.add(contentSecurityService.checkText(openid, scene, text, title, nickname));
+        for (String image : images) {
+            results.add(contentSecurityService.checkImage(openid, scene, refreshFileUrl(image)));
+        }
+        return results;
+    }
+
+    private static void ensureContentNotRisky(List<CampusContentCheckResult> results) {
+        if (results.stream().anyMatch(CampusContentCheckResult::isRisky)) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "内容未通过安全检测，请修改后重试");
+        }
+    }
+
+    private static boolean allChecksPassed(List<CampusContentCheckResult> results) {
+        return results.stream().allMatch(CampusContentCheckResult::isPass);
+    }
+
+    private void saveAuditResults(String entityType, Long entityId, Long userId, Long tenantId,
+                                  String text, List<String> images, List<CampusContentCheckResult> results) {
+        if (results.isEmpty()) {
+            return;
+        }
+        saveAuditResult(entityType, entityId, userId, tenantId, "TEXT",
+                DigestUtil.sha256Hex(StrUtil.blankToDefault(text, "")), results.get(0));
+        for (int i = 0; i < images.size() && i + 1 < results.size(); i++) {
+            saveAuditResult(entityType, entityId, userId, tenantId, "IMAGE", images.get(i), results.get(i + 1));
+        }
+    }
+
+    private void saveAuditResult(String entityType, Long entityId, Long userId, Long tenantId,
+                                 String contentType, String contentRef, CampusContentCheckResult result) {
+        jdbcTemplate.update("INSERT INTO campus_content_audit (tenant_id, entity_type, entity_id, user_id,"
+                        + " content_type, content_ref, trace_id, suggest, label, raw_result, creator, updater,"
+                        + " create_time, update_time, deleted) VALUES (:tenantId, :entityType, :entityId, :userId,"
+                        + " :contentType, :contentRef, :traceId, :suggest, :label, :rawResult, :operator, :operator,"
+                        + " NOW(), NOW(), b'0')",
+                new MapSqlParameterSource().addValue("tenantId", tenantId).addValue("entityType", entityType)
+                        .addValue("entityId", entityId).addValue("userId", userId).addValue("contentType", contentType)
+                        .addValue("contentRef", truncate(contentRef, 1024))
+                        .addValue("traceId", StrUtil.blankToDefault(result.getTraceId(), null))
+                        .addValue("suggest", result.getSuggest()).addValue("label", truncate(result.getLabel(), 64))
+                        .addValue("rawResult", truncate(result.getRawResult(), 65535))
+                        .addValue("operator", String.valueOf(userId)));
+    }
+
+    private void notifyPublishedComment(Long commentId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT c.post_id, c.user_id, c.parent_id, c.reply_to_user_id, c.tenant_id, c.content,"
+                        + " c.mention_user_ids_json, p.user_id AS post_owner_user_id, u.nickname AS actor_nickname"
+                        + " FROM campus_post_comment c JOIN campus_post p ON p.id = c.post_id"
+                        + " LEFT JOIN campus_miniapp_user u ON u.id = c.user_id AND u.deleted = b'0'"
+                        + " WHERE c.id = :id AND c.status = 1 AND c.deleted = b'0' LIMIT 1",
+                new MapSqlParameterSource("id", commentId));
+        if (rows.isEmpty()) {
+            return;
+        }
+        Map<String, Object> row = rows.get(0);
+        Long postId = toLongObject(row.get("post_id"));
+        Long actorUserId = toLongObject(row.get("user_id"));
+        Long tenantId = toLongObject(row.get("tenant_id"));
+        boolean reply = row.get("parent_id") != null;
+        Long recipientUserId = reply ? toLongObject(row.get("reply_to_user_id"))
+                : toLongObject(row.get("post_owner_user_id"));
+        String actorNickname = StrUtil.blankToDefault(value(row, "actor_nickname"), "校园同学");
+        String content = StrUtil.blankToDefault(value(row, "content"), "[图片]");
+        Set<Long> notifiedUserIds = new HashSet<>();
+        if (recipientUserId != null) {
+            notifiedUserIds.add(recipientUserId);
+        }
+        campusNotificationService.createInteraction(recipientUserId, tenantId, actorUserId, actorNickname,
+                reply ? "REPLY" : "COMMENT", reply ? actorNickname + "回复了你" : actorNickname + "评论了你的发布",
+                content, "POST", postId);
+        for (Long mentionUserId : parseLongList(value(row, "mention_user_ids_json"))) {
+            if (mentionUserId == null || notifiedUserIds.contains(mentionUserId)) {
+                continue;
+            }
+            campusNotificationService.createInteraction(mentionUserId, tenantId, actorUserId, actorNickname,
+                    "MENTION", actorNickname + "@了你", content, "POST", postId);
+            notifiedUserIds.add(mentionUserId);
+        }
+    }
+
+    private static String truncate(String value, int maxLength) {
+        String safe = StrUtil.blankToDefault(value, "");
+        return safe.length() <= maxLength ? safe : safe.substring(0, maxLength);
+    }
+
+    private void enforceRateLimit(String table, Long userId, int maximum, Duration window, String message) {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM " + table
+                        + " WHERE user_id = :userId AND create_time >= :since AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("userId", userId)
+                        .addValue("since", LocalDateTime.now().minus(window)), Long.class);
+        if (count != null && count >= maximum) {
+            throw exception0(GlobalErrorCodeConstants.TOO_MANY_REQUESTS.getCode(), message);
+        }
+    }
+
     private PageResult<CampusPostRespVO> page(String where, MapSqlParameterSource params, Long loginUserId,
                                                Integer pageNo, Integer pageSize, String orderBy) {
         int safePageNo = Math.max(pageNo == null ? 1 : pageNo, 1);
@@ -591,6 +752,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         vo.setOwner(loginUserId != null && loginUserId.equals(vo.getUserId()));
         vo.setLikeCount(toInt(row.get("like_count")));
         vo.setReplyCount(toInt(row.get("reply_count")));
+        vo.setStatus(toInt(row.get("status")));
         vo.setLiked(toBoolean(row.get("login_liked")));
         return vo;
     }
@@ -660,7 +822,7 @@ public class CampusPostServiceImpl implements CampusPostService {
 
     private Map<String, Object> getUser(Long userId) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT id, tenant_id, nickname, mobile, school_name, campus_name FROM campus_miniapp_user"
+                "SELECT id, tenant_id, openid, nickname, mobile, school_name, campus_name FROM campus_miniapp_user"
                         + " WHERE id = :id AND deleted = b'0' LIMIT 1",
                 new MapSqlParameterSource("id", userId));
         if (rows.isEmpty()) {
@@ -712,7 +874,15 @@ public class CampusPostServiceImpl implements CampusPostService {
             if (isTemporaryFilePath(value)) {
                 throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "图片上传失败，请重新选择图片后重试");
             }
-            normalized.add(value);
+            if (!(value.startsWith("https://") || value.startsWith("http://"))) {
+                throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "图片地址无效，请重新上传");
+            }
+            if (!normalized.contains(value)) {
+                normalized.add(value);
+            }
+            if (normalized.size() > 9) {
+                throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "图片最多上传 9 张");
+            }
         }
         return normalized;
     }

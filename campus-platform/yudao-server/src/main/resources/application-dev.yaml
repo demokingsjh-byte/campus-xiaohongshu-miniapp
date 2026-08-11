@@ -162,6 +162,9 @@ wx: # 参见 https://github.com/Wechat-Group/WxJava/blob/develop/spring-boot-sta
   miniapp: # 小程序配置（必填），参见 https://github.com/Wechat-Group/WxJava/blob/develop/spring-boot-starters/wx-java-miniapp-spring-boot-starter/README.md 文档
     appid: ${WX_MINIAPP_APPID:wx3141ca27b55b0b9c}
     secret: ${WX_MINIAPP_SECRET:34faf6475497b6c5c9ad777b725a2ed3}
+    token: ${WX_MINIAPP_MESSAGE_TOKEN:}
+    aes-key: ${WX_MINIAPP_MESSAGE_AES_KEY:}
+    msg-data-format: JSON
     config-storage:
       type: RedisTemplate # 采用 RedisTemplate 操作 Redis，会自动从 Spring 中获取
       key-prefix: wa # Redis Key 的前缀
@@ -281,6 +284,9 @@ com:
 
 # 校园二手微信支付。服务器通过环境变量挂载密钥和 PEM 文件。
 campus:
+  content-security:
+    # 线上默认启用；可用环境变量临时关闭。微信消息服务器回调地址见合规发布清单。
+    enabled: ${CAMPUS_CONTENT_SECURITY_ENABLED:true}
   wechat-pay:
     enabled: ${CAMPUS_WECHAT_PAY_ENABLED:true}
     app-id: ${WX_MINIAPP_APPID:wx3141ca27b55b0b9c}

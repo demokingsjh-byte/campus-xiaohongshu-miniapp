@@ -105,7 +105,8 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
 
   async function publishPost(input: PublishPostInput) {
     const created = await createCampusPost(input);
-    posts.value = [created, ...posts.value.filter(item => item.id !== created.id)];
+    if (created.status === 1)
+      posts.value = [created, ...posts.value.filter(item => item.id !== created.id)];
     publishedPosts.value = [created, ...publishedPosts.value.filter(item => item.id !== created.id)];
     currentPost.value = created;
     return created;

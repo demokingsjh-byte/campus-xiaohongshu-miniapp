@@ -14,6 +14,7 @@ const submitting = ref(false);
 const showSuccess = ref(false);
 const showAdvanced = ref(false);
 const createdPostId = ref<number | null>(null);
+const createdPostStatus = ref<number>(1);
 const publishedSummary = ref<{ typeTitle: string, location: string, visibleRange: string } | null>(null);
 const agreed = ref(true);
 const errors = reactive<Record<string, string>>({});
@@ -291,6 +292,7 @@ async function submit() {
       anonymous: form.anonymous,
     });
     createdPostId.value = created.id;
+    createdPostStatus.value = created.status ?? 1;
     publishedSummary.value = {
       typeTitle: currentType.value.title,
       location: form.location,
@@ -324,6 +326,7 @@ function viewPublished() {
 function reset() {
   showSuccess.value = false;
   createdPostId.value = null;
+  createdPostStatus.value = 1;
   publishedSummary.value = null;
   clearEditor();
 }
@@ -529,10 +532,12 @@ function reset() {
           <i />
         </view>
         <view class="success-title">
-          发布成功
+          {{ createdPostStatus === 1 ? '发布成功' : '已提交审核' }}
         </view>
         <view class="success-desc">
-          内容已发布到{{ schoolName }}，新的回应会通过消息通知你。
+          {{ createdPostStatus === 1
+            ? `内容已发布到${schoolName}，新的回应会通过消息通知你。`
+            : '文字和图片正在进行安全审核，通过后会自动展示给同校同学。' }}
         </view>
         <view class="success-summary">
           <text>{{ publishedSummary?.location }}</text><text>{{ publishedSummary?.visibleRange }}</text>

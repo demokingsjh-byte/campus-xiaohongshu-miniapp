@@ -21,10 +21,15 @@
 - 「设置与隐私」提供权限清单、本地数据清理、撤回同意、退出登录和账号注销。
 - 注销接口会失效当前令牌，并删除或匿名化账号资料、发布、互动和举报关联信息。
 - 内容详情提供真实举报接口；后台「举报处理」可查询、处理和记录结果。
+- 帖子、评论发布时调用微信文字内容安全接口；图片进入异步审核，通过前不会出现在公共列表。
+- 图片审核结果通过微信消息服务器回调自动落库；风险内容自动拒绝，审核异常时默认保持不可见。
 
 ## 3. 数据库与后台
 
 - 部署新后端前执行 `campus-platform/sql/mysql/campus-content-governance-upgrade.sql`，创建举报表和后台菜单。
+- 执行 `campus-platform/sql/mysql/campus-content-security-upgrade.sql`，创建内容审核记录表；自动部署会按顺序执行该迁移。
+- 线上通过 `CAMPUS_CONTENT_SECURITY_ENABLED=true` 开启审核（`dev` 配置默认开启，本机默认关闭）。
+- 在微信公众平台将消息服务器 URL 配置为 `https://huanwoshidai.com.cn/app-api/campus/content-security/wechat/callback`，并在服务器设置同值的 `WX_MINIAPP_MESSAGE_TOKEN`、`WX_MINIAPP_MESSAGE_AES_KEY`。建议先用明文模式验证，确认回调成功后再切换兼容模式或安全模式。
 - 将菜单 `900900`、`900901`、`900902` 分配给校园运营角色；超级管理员默认可直接核验。
 - 运营人员处理举报时只填写必要信息，不在处理说明中复制身份证号、手机号、住址等敏感内容。
 - 设置安全日志留存与清理周期，限制数据库、对象存储和日志平台的访问权限。

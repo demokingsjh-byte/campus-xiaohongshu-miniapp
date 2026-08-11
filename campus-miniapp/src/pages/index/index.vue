@@ -50,6 +50,7 @@ function categoryTitleVisible(category: CampusHomeCategory) {
 const state = ref<'content' | 'loading' | 'empty' | 'error'>('loading');
 const showCampusPicker = ref(false);
 const campusSwitching = ref(false);
+const categoryScrollLeft = ref(0);
 const tenantStore = useTenantStore();
 const contentStore = useCampusContentStore();
 const notificationStore = useCampusNotificationStore();
@@ -130,7 +131,23 @@ async function loadFeed(showLoading = true) {
   }
 }
 
+function centerCategory(category: CampusHomeCategory) {
+  const index = categories.value.findIndex(item => item.key === category.key);
+  if (index < 0)
+    return;
+
+  const { windowWidth = 375 } = uni.getSystemInfoSync();
+  const rpxToPx = windowWidth / 750;
+  const itemWidth = 150 * rpxToPx;
+  const stripPadding = 15 * rpxToPx;
+  const stripWidth = categories.value.length * itemWidth + stripPadding * 2;
+  const centeredLeft = stripPadding + index * itemWidth + itemWidth / 2 - windowWidth / 2;
+  const maxScrollLeft = Math.max(0, stripWidth - windowWidth);
+  categoryScrollLeft.value = Math.round(Math.min(Math.max(centeredLeft, 0), maxScrollLeft));
+}
+
 async function chooseCategory(category: CampusHomeCategory) {
+  centerCategory(category);
   if (activeCategoryKey.value === category.key)
     return;
   activeCategoryKey.value = category.key;
@@ -235,7 +252,10 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
         </button>
       </view>
 
-      <scroll-view class="category-scroll" scroll-x :show-scrollbar="false">
+      <scroll-view
+        class="category-scroll" scroll-x scroll-with-animation
+        :scroll-left="categoryScrollLeft" :show-scrollbar="false"
+      >
         <view class="category-strip">
           <button
             v-for="category in categories" :key="category.key" class="category-item"
@@ -781,7 +801,7 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
 
 .skeleton-card {
   overflow: hidden;
-  height: 390rpx;
+  height: 640rpx;
   margin-bottom: 18rpx;
   border-radius: 15rpx;
   background: #fff;
@@ -795,7 +815,7 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
 }
 
 .skeleton-cover {
-  height: 276rpx;
+  height: 536rpx;
 }
 
 .skeleton-line {

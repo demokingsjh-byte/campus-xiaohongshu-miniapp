@@ -26,6 +26,8 @@ public class CampusPostCommentRespVO {
     private Boolean owner;
     private Integer likeCount;
     private Integer replyCount;
+    @Schema(description = "审核状态：0 审核中，1 已通过，2 未通过")
+    private Integer status;
     private Boolean liked;
     private LocalDateTime createTime;
 }

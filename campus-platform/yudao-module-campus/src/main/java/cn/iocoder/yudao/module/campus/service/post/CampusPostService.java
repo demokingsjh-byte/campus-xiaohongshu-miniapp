@@ -39,4 +39,6 @@ public interface CampusPostService {
     void deletePost(Long postId, Long userId);
 
     void reportPost(Long postId, Long userId, CampusPostReportReqVO reqVO);
+
+    void handleMediaAuditCallback(String traceId, String suggest, String label, String rawResult);
 }

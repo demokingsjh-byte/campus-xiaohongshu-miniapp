@@ -213,8 +213,18 @@ function openDetail(id: number) {
   position: relative;
   overflow: hidden;
   width: 100%;
-  height: 280rpx;
+  height: 0;
+  padding-top: 161.8%;
   background: #eef5f1;
+}
+
+.cover > .cover-image,
+.cover > .cover-fallback {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
 }
 
 .cover-image {
@@ -298,7 +308,6 @@ function openDetail(id: number) {
 .post-title {
   display: -webkit-box;
   overflow: hidden;
-  min-height: 76rpx;
   color: #232626;
   font-size: 28rpx;
   font-weight: 500;

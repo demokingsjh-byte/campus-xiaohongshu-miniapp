@@ -183,9 +183,12 @@ async function sendComment() {
     });
     if (Number(created.postId) !== postId.value)
       throw new Error('评论所属帖子不一致');
-    comments.value.unshift(created);
-    commentTotal.value += 1;
-    post.value.comments = commentTotal.value;
+    const awaitingReview = created.status === 0;
+    if (!awaitingReview) {
+      comments.value.unshift(created);
+      commentTotal.value += 1;
+      post.value.comments = commentTotal.value;
+    }
     comment.value = '';
     commentImages.value = [];
     mentionUserIds.value = [];
@@ -194,11 +197,18 @@ async function sendComment() {
     showMentionPanel.value = false;
     showCommentComposer.value = false;
     commentState.value = 'content';
-    // Re-read the current post's comments so the list and total use server data.
-    await loadComments();
-    uni.showToast({ title: '评论成功', icon: 'success' });
-  } catch {
-    uni.showToast({ title: '评论发布失败，请重试', icon: 'none' });
+    // Re-read only visible comments; pending comments are deliberately excluded by the server.
+    if (!awaitingReview)
+      await loadComments();
+    uni.showToast({ title: awaitingReview ? '评论审核中' : '评论成功', icon: awaitingReview ? 'none' : 'success' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message.replace(/^.*：/, '') : '评论发布失败，请重试';
+    uni.showModal({
+      title: '评论未发布',
+      content: message || '请检查网络后重试',
+      showCancel: false,
+      confirmText: '知道了',
+    });
   } finally {
     commentSubmitting.value = false;
   }
