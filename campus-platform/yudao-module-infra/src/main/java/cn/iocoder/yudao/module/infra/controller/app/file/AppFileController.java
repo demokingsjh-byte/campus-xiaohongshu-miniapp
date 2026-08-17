@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.infra.controller.app.file;
 
 import cn.hutool.core.io.IoUtil;
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.module.infra.controller.admin.file.vo.file.FileCreateReqVO;
 import cn.iocoder.yudao.module.infra.controller.admin.file.vo.file.FilePresignedUrlRespVO;
@@ -17,9 +18,13 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletResponse;
 import javax.annotation.Resource;
 import javax.annotation.security.PermitAll;
 import javax.validation.Valid;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 
@@ -29,6 +34,8 @@ import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 @Validated
 @Slf4j
 public class AppFileController {
+
+    private static final String CAMPUS_OSS_HOST = "dylsjh.oss-cn-shenzhen.aliyuncs.com";
 
     @Resource
     private FileService fileService;
@@ -67,6 +74,43 @@ public class AppFileController {
     @PermitAll
     public CommonResult<Long> createFile(@Valid @RequestBody FileCreateReqVO createReqVO) {
         return success(fileService.createFile(createReqVO));
+    }
+
+    @GetMapping("/proxy")
+    @PermitAll
+    @Operation(summary = "代理读取校园媒体文件", description = "让微信体验版通过已备案的业务域名读取私有 OSS 文件")
+    public void proxyCampusMedia(@RequestParam("url") String sourceUrl, HttpServletResponse response) throws Exception {
+        URI source = URI.create(sourceUrl);
+        if (!"https".equalsIgnoreCase(source.getScheme())
+                || !CAMPUS_OSS_HOST.equalsIgnoreCase(source.getHost())
+                || source.getRawPath() == null || !source.getRawPath().startsWith("/campus/")) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "不支持的媒体地址");
+            return;
+        }
+
+        // 数据库只需要保存稳定对象地址；每次读取时由服务端生成短期有效签名。
+        String stableUrl = source.getScheme() + "://" + source.getHost() + source.getRawPath();
+        URL signedUrl = new URL(fileService.presignGetUrl(stableUrl, 300));
+        HttpURLConnection connection = (HttpURLConnection) signedUrl.openConnection();
+        connection.setConnectTimeout(10_000);
+        connection.setReadTimeout(20_000);
+        connection.setRequestMethod("GET");
+        try {
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                response.sendError(HttpServletResponse.SC_BAD_GATEWAY, "媒体文件读取失败");
+                return;
+            }
+            String contentType = connection.getContentType();
+            response.setContentType(StrUtil.blankToDefault(contentType, "application/octet-stream"));
+            if (connection.getContentLengthLong() >= 0) {
+                response.setContentLengthLong(connection.getContentLengthLong());
+            }
+            response.setHeader("Cache-Control", "public, max-age=3600");
+            IoUtil.copy(connection.getInputStream(), response.getOutputStream());
+        } finally {
+            connection.disconnect();
+        }
     }
 
 }
