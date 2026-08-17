@@ -4,6 +4,7 @@ import cn.hutool.core.io.IoUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
+import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
 import cn.iocoder.yudao.module.infra.controller.admin.file.vo.file.FileCreateReqVO;
 import cn.iocoder.yudao.module.infra.controller.admin.file.vo.file.FilePresignedUrlRespVO;
 import cn.iocoder.yudao.module.infra.controller.app.file.vo.AppFileUploadReqVO;
@@ -78,6 +79,7 @@ public class AppFileController {
 
     @GetMapping("/proxy")
     @PermitAll
+    @TenantIgnore
     @Operation(summary = "代理读取校园媒体文件", description = "让微信体验版通过已备案的业务域名读取私有 OSS 文件")
     public void proxyCampusMedia(@RequestParam("url") String sourceUrl, HttpServletResponse response) throws Exception {
         URI source = URI.create(sourceUrl);
