@@ -79,6 +79,7 @@ public class AppFileController {
 
     @GetMapping("/proxy")
     @PermitAll
+    // Mini-program image requests cannot attach tenant headers, so this public media bridge must bypass tenant validation.
     @TenantIgnore
     @Operation(summary = "代理读取校园媒体文件", description = "让微信体验版通过已备案的业务域名读取私有 OSS 文件")
     public void proxyCampusMedia(@RequestParam("url") String sourceUrl, HttpServletResponse response) throws Exception {
