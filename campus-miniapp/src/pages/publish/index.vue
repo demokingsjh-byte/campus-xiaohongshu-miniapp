@@ -12,7 +12,6 @@ const images = ref<string[]>([]);
 const choosingImages = ref(false);
 const submitting = ref(false);
 const showSuccess = ref(false);
-const showAdvanced = ref(false);
 const createdPostId = ref<number | null>(null);
 const createdPostStatus = ref<number>(1);
 const publishedSummary = ref<{ typeTitle: string, location: string, visibleRange: string } | null>(null);
@@ -50,7 +49,7 @@ watch(schoolName, () => {
 });
 
 const typeDetails: Record<string, { eyebrow: string, hint: string, placeholder: string, tags: string[], modes: string[] }> = {
-  idle: { eyebrow: '闲置交易', hint: '真实图片和成色描述能更快成交', placeholder: '品牌、型号、成色、购买时间、瑕疵和取货方式...', tags: ['宿舍自提', '可小刀', '九成新', '毕业出', '校内交易'], modes: ['校内自提', '送到宿舍', '快递邮寄'] },
+  idle: { eyebrow: '闲置交易', hint: '真实图片和成色描述能更快成交', placeholder: '品牌、型号、成色、购买时间、瑕疵和取货方式...', tags: ['宿舍自提', '可小刀', '九成新', '全新未拆', '毕业出', '校内交易'], modes: ['校内自提', '送到宿舍', '快递邮寄'] },
   help: { eyebrow: '同学互助', hint: '把时间、地点和具体需求写清楚', placeholder: '需要什么帮助、截止时间、地点和答谢方式...', tags: ['急', '有偿', '奶茶答谢', '今天', '女生优先'], modes: ['线上回应', '当面帮助'] },
   ride: { eyebrow: '拼车出行', hint: '请注明时间、路线、人数和行李情况', placeholder: '出发时间、上车点、目的地、空位和行李要求...', tags: ['高铁站', '火车站', '女生优先', '可带行李', '周末'], modes: ['费用均摊', '司机接单'] },
   shop: { eyebrow: '校园探店', hint: '实拍、价格和真实体验最有参考价值', placeholder: '推荐菜品、价格、排队情况、位置和真实感受...', tags: ['学生折扣', '人均30', '东门', '不踩雷', '适合聚餐'], modes: ['到店消费', '外卖可点'] },
@@ -60,27 +59,45 @@ const typeDetails: Record<string, { eyebrow: string, hint: string, placeholder: 
   job: { eyebrow: '兼职信息', hint: '请写清工作内容、结算方式和安全注意事项', placeholder: '岗位职责、工作时间、薪资结算、地点和报名要求...', tags: ['校内兼职', '周末', '日结', '时间灵活', '学生优先'], modes: ['线上申请', '到店面试'] },
 };
 const typeIcons: Record<string, string> = {
-  idle: '/static/icons/login/trade.svg',
-  help: '/static/icons/login/help.svg',
+  idle: '/static/images/home-prototype/category-idle.png',
+  help: '/static/images/home-prototype/category-errand.png',
   ride: '/static/icons/publish/ride.svg',
-  shop: '/static/icons/publish/shop.svg',
+  shop: '/static/images/home-prototype/category-groupbuy.png',
   lost: '/static/icons/publish/lost.svg',
-  club: '/static/icons/login/event.svg',
-  confession: '/static/icons/mine/heart.svg',
-  job: '/static/icons/login/event.svg',
+  club: '/static/images/home-prototype/category-fun.png',
+  confession: '/static/images/home-prototype/category-confession.png',
+  job: '/static/images/home-prototype/category-job.png',
 };
 
-const currentType = computed(() => campusPublishTypes.find(item => item.key === activeType.value)!);
+const selectableTypeKeys = ['idle', 'help', 'club', 'job', 'confession', 'shop'];
+const selectablePublishTypes = computed(() => selectableTypeKeys
+  .map(key => campusPublishTypes.find(item => item.key === key))
+  .filter((item): item is typeof campusPublishTypes[number] => Boolean(item)));
+const selectableTypeTitles: Record<string, string> = {
+  idle: '二手闲置',
+  help: '代拿代办',
+  club: '校园趣事',
+  job: '兼职信息',
+  confession: '表白墙',
+  shop: '商家团购',
+};
+function selectableTypeTitle(key: string) {
+  return selectableTypeTitles[key] || campusPublishTypes.find(item => item.key === key)?.title || key;
+}
+
+const currentType = computed(() => {
+  const item = campusPublishTypes.find(type => type.key === activeType.value)!;
+  return { ...item, title: selectableTypeTitle(activeType.value) };
+});
 const currentDetail = computed(() => typeDetails[activeType.value]);
-const showPrice = computed(() => ['idle', 'ride', 'shop', 'job'].includes(activeType.value));
-const requiresImage = computed(() => ['idle', 'shop', 'lost'].includes(activeType.value));
+const showPrice = computed(() => ['idle', 'help', 'ride', 'shop', 'job'].includes(activeType.value));
 const isConfession = computed(() => activeType.value === 'confession');
 
 onLoad(() => {
   const draft = uni.getStorageSync('campus-publish-draft');
   if (!draft || typeof draft !== 'object')
     return;
-  const draftType = campusPublishTypes.some(item => item.key === draft.activeType) ? draft.activeType : 'idle';
+  const draftType = selectableTypeKeys.includes(draft.activeType) ? draft.activeType : 'idle';
   activeType.value = draftType;
   Object.assign(form, {
     title: draft.title || '',
@@ -108,6 +125,8 @@ onShow(async () => {
     return;
   try {
     await userStore.getUserInfo();
+    if (!form.contact && userStore.userInfo?.mobile)
+      form.contact = userStore.userInfo.mobile;
   } catch {
     // 发布表单仍可继续编辑，提交时会再校验登录状态。
   }
@@ -209,7 +228,7 @@ function selectFrom(key: 'location' | 'visibleRange', options: string[], event: 
   form[key] = options[Number(event.detail.value)];
 }
 function validate() {
-  errors.images = requiresImage.value && !images.value.length ? '请至少上传 1 张真实图片' : '';
+  errors.images = '';
   errors.title = isConfession.value
     ? (form.title.trim().length >= 2 ? '' : '请填写表白对象或称呼')
     : (form.title.trim().length >= 4 ? '' : '标题至少填写 4 个字');
@@ -218,6 +237,17 @@ function validate() {
   errors.agreement = agreed.value ? '' : '请先同意社区发布规范';
   return !Object.values(errors).some(Boolean);
 }
+
+watch([() => form.title, isConfession], ([value, confession]) => {
+  const minimum = confession ? 2 : 4;
+  if (errors.title && value.trim().length >= minimum)
+    errors.title = '';
+});
+
+watch(() => form.content, (value) => {
+  if (errors.content && value.trim().length >= 10)
+    errors.content = '';
+});
 function normalizeConfessionTitle(value: string) {
   const target = value.replace(/^TO[：:]?\s*/i, '').trim();
   return `TO：${target}`;
@@ -321,7 +351,7 @@ function viewPublished() {
     return;
   }
   showSuccess.value = false;
-  uni.navigateTo({ url: `/pages/detail/index?id=${createdPostId.value}` });
+  uni.navigateTo({ url: `/pages/detail/index?id=${createdPostId.value}&mine=1` });
 }
 function reset() {
   showSuccess.value = false;
@@ -352,9 +382,9 @@ function reset() {
       </view>
       <scroll-view scroll-x class="type-scroll" :show-scrollbar="false">
         <view class="type-track">
-          <view v-for="item in campusPublishTypes" :key="item.key" class="type-item" :class="{ active: activeType === item.key }" @click="chooseType(item.key)">
+          <view v-for="item in selectablePublishTypes" :key="item.key" class="type-item" :class="{ active: activeType === item.key }" @click="chooseType(item.key)">
             <image class="type-symbol" :src="typeIcons[item.key]" mode="aspectFit" /><text class="type-title">
-              {{ item.title }}
+              {{ selectableTypeTitle(item.key) }}
             </text>
           </view>
         </view>
@@ -363,7 +393,7 @@ function reset() {
 
     <view class="content-card card-block">
       <view class="block-head media-head">
-        <text>{{ isConfession ? '添加图片（可选）' : '添加图片' }}</text><text>{{ images.length }}/9 · 首图为封面</text>
+        <text>添加图片（可选）</text><text>{{ images.length }}/9 · 首图为封面</text>
       </view>
       <view class="uploader-grid">
         <view v-for="(image, index) in images" :key="image" class="image-item" @click="setCover(index)">
@@ -408,20 +438,20 @@ function reset() {
 
       <view class="editor-divider" />
       <view class="block-head tag-head">
-        <text>添加标签</text><text>最多选 3 个</text>
+        <text>添加标签</text><text>最多可选3个标签</text>
       </view>
-      <scroll-view scroll-x class="tag-scroll" :show-scrollbar="false">
+      <view class="tag-scroll">
         <view class="tag-track">
           <view v-for="tag in currentDetail.tags" :key="tag" class="tag-chip" :class="{ active: form.tags.includes(tag) }" @click="toggleTag(tag)">
-            # {{ tag }}
+            <text class="tag-hash">#</text><text>{{ tag }}</text>
           </view>
         </view>
-      </scroll-view>
+      </view>
     </view>
 
     <view v-if="showPrice" class="trade-card card-block">
       <view class="block-head">
-        <text>{{ activeType === 'ride' ? '费用信息' : '交易信息' }}</text><text>价格可面议</text>
+        <text>{{ activeType === 'ride' ? '费用信息' : '交易信息' }}</text><text>价格可面议 ◯</text>
       </view>
       <view class="price-row">
         <view class="price-main">
@@ -451,7 +481,7 @@ function reset() {
             <image src="/static/icons/ui/location.svg" mode="aspectFit" />
           </view>
           <view class="setting-main">
-            <text>发布位置</text><text>{{ form.location }}</text>
+            <text>所在位置</text><text>{{ form.location }}</text>
           </view><text class="arrow">
             ›
           </text>
@@ -469,30 +499,20 @@ function reset() {
           </text>
         </view>
       </picker>
-      <view v-if="!isConfession" class="setting-row" :class="{ 'last-row': !showAdvanced }" @click="showAdvanced = !showAdvanced">
-        <view class="setting-icon">
-          <image src="/static/icons/mine/settings.svg" mode="aspectFit" />
-        </view>
-        <view class="setting-main">
-          <text>更多设置</text><text>{{ showAdvanced ? '收起联系方式与匿名选项' : '联系方式、匿名发布' }}</text>
-        </view><text class="arrow" :class="{ expanded: showAdvanced }">
-          ›
-        </text>
-      </view>
-      <view v-if="showAdvanced && !isConfession" class="setting-row contact-row">
+      <view v-if="!isConfession" class="setting-row contact-row">
         <view class="setting-icon">
           <image src="/static/icons/ui/contact.svg" mode="aspectFit" />
         </view>
         <view class="setting-main">
-          <text>联系方式</text><input v-model="form.contact" placeholder="选填，仅回应后可见">
+          <text>联系方式</text><input v-model="form.contact" placeholder="请输入联系方式">
         </view>
       </view>
-      <view v-if="showAdvanced || isConfession" class="setting-row last-row">
+      <view class="setting-row last-row">
         <view class="setting-icon">
           <image src="/static/icons/ui/anonymous.svg" mode="aspectFit" />
         </view>
         <view class="setting-main">
-          <text>{{ isConfession ? '匿名发布（可选）' : '匿名发布' }}</text><text>{{ isConfession ? '开启后隐藏昵称和头像' : '昵称将显示为“同校同学”' }}</text>
+          <text>匿名发布</text>
         </view>
         <switch :checked="form.anonymous" color="#10a779" @change="form.anonymous = $event.detail.value" />
       </view>
@@ -1189,7 +1209,7 @@ function reset() {
 }
 
 .card-block {
-  margin-bottom: 28rpx;
+  margin-bottom: 20rpx;
   padding: 40rpx;
   border: 0;
   border-radius: 30rpx;
@@ -1369,6 +1389,47 @@ function reset() {
   background: #97f820;
 }
 
+.tag-head > text:last-child {
+  color: #ff4d55;
+  font-weight: 500;
+}
+
+.tag-scroll {
+  width: 100%;
+  white-space: normal;
+}
+
+.tag-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx 16rpx;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tag-hash {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26rpx;
+  height: 26rpx;
+  margin-right: 8rpx;
+  border-radius: 50%;
+  color: #fff;
+  background: #222522;
+  font-size: 18rpx;
+  font-weight: 700;
+  line-height: 26rpx;
+}
+
+.mode-label {
+  display: none;
+}
+
 .trade-card .price-main,
 .original-price {
   border: 0;
@@ -1407,7 +1468,11 @@ function reset() {
 }
 
 .setting-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-left: 0;
+  flex-direction: row;
 }
 
 .setting-main > text:first-child {
@@ -1418,9 +1483,23 @@ function reset() {
 
 .setting-main > text:last-child,
 .setting-main input {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+  margin-left: 24rpx;
   color: #959996;
   font-size: 25rpx;
   text-align: right;
+}
+
+.setting-main input {
+  height: 72rpx;
+}
+
+.setting-row switch {
+  margin-right: -10rpx;
+  transform: scale(0.72);
+  transform-origin: right center;
 }
 
 .community-note,

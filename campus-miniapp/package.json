@@ -13,6 +13,8 @@
     "dev:mp-lark": "uni -p mp-lark",
     "dev:mp-qq": "uni -p mp-qq",
     "dev:mp-toutiao": "uni -p mp-toutiao",
+    "sync:production-data": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../scripts/sync-production-data.ps1",
+    "predev:mp-weixin": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ../scripts/sync-production-data.ps1",
     "dev:mp-weixin": "uni -p mp-weixin",
     "dev:quickapp-webview": "uni -p quickapp-webview",
     "dev:quickapp-webview-huawei": "uni -p quickapp-webview-huawei",

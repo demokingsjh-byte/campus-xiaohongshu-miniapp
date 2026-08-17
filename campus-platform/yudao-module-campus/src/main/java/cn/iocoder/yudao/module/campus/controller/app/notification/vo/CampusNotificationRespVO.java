@@ -21,4 +21,5 @@ public class CampusNotificationRespVO {
     private Boolean read;
     private String targetType;
     private Long targetId;
+    private String targetImage;
 }

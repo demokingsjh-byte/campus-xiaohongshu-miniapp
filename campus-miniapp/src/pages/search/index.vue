@@ -165,25 +165,12 @@ onLoad(async (query) => {
           description="完成第一次分享后，可以在这里管理自己发布的内容。"
           action="去发布" @action="uni.reLaunch({ url: '/pages/publish/index' })"
         />
-        <view v-else class="prototype-manage-list">
-          <view
-            v-for="post in results" :key="post.id" class="prototype-manage-card"
-            @click="uni.navigateTo({ url: `/pages/detail/index?id=${post.id}` })"
-          >
-            <view class="prototype-manage-main">
-              <image v-if="post.coverImage || post.images?.[0]" :src="post.coverImage || post.images?.[0]" mode="aspectFill" />
-              <view v-else class="prototype-manage-placeholder">
-                {{ post.coverEmoji || '📦' }}
-              </view>
-              <view class="prototype-manage-copy">
-                <text>{{ post.title }}</text>
-                <text>浏览 {{ post.views || 0 }}</text>
-                <view><text>{{ post.time }}</text><text><i>¥</i>{{ post.price || '面议' }}</text></view>
-              </view>
-            </view>
-            <view class="prototype-manage-footer">
-              <text>更多</text><text>编辑</text>
-            </view>
+        <view v-else class="result-grid">
+          <view class="column">
+            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" :owner-context="onlyMine" />
+          </view>
+          <view class="column">
+            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" :owner-context="onlyMine" />
           </view>
         </view>
       </template>
@@ -210,9 +197,9 @@ onLoad(async (query) => {
             {{ onlyMine ? `我的发布共 ${results.length} 条` : (favoritesMode ? `我的收藏共 ${results.length} 条` : `找到 ${results.length} 条与“${keyword}”相关的内容`) }}
           </view><view class="result-grid">
             <view class="column">
-              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" />
+              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" :owner-context="onlyMine" />
             </view><view class="column">
-              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" />
+              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" :owner-context="onlyMine" />
             </view>
           </view>
         </template>
@@ -417,9 +404,9 @@ onLoad(async (query) => {
 }
 .result-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 18rpx;
-  padding: 0 20rpx 30rpx;
+  padding: 0 30.77rpx 30rpx;
+  column-gap: 23.08rpx;
+  grid-template-columns: repeat(2, 332.69rpx);
 }
 
 /* Emerald glass theme */
@@ -708,7 +695,7 @@ onLoad(async (query) => {
 }
 
 .result-grid {
-  gap: 24rpx;
-  padding: 0 32rpx 40rpx;
+  padding: 0 30.77rpx 40rpx;
+  column-gap: 23.08rpx;
 }
 </style>

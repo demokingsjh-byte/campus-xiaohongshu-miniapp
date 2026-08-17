@@ -6,7 +6,8 @@ import { createCampusContactRequest, createCampusPostComment, deleteCampusCommen
 import { uploadCampusCommentImage } from '@/services/api/file';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
-import { resolveCampusAvatar } from '@/utils/avatar';
+import { resolveCampusAvatar, resolveCampusMediaUrl } from '@/utils/avatar';
+import { isCampusFollowing, recordCampusHistory, setCampusFollowing } from '@/utils/personalRecords';
 
 const postId = ref(2001);
 const liked = ref(false);
@@ -15,6 +16,7 @@ const followed = ref(false);
 const interactionBusy = ref(false);
 const pageState = ref<'loading' | 'content' | 'error'>('loading');
 const comment = ref('');
+const commentError = ref('');
 const comments = ref<CampusPostComment[]>([]);
 const commentTotal = ref(0);
 const commentPageNo = ref(1);
@@ -29,6 +31,10 @@ const mentionUserIds = ref<number[]>([]);
 const showEmojiPanel = ref(false);
 const showMentionPanel = ref(false);
 const showCommentComposer = ref(false);
+const commentInputFocused = ref(false);
+const keyboardHeight = ref(0);
+const contentExpanded = ref(false);
+const ownerContext = ref(false);
 const emojiList = ['😀', '😂', '🥹', '😍', '😎', '👍', '❤️', '👏', '🎉', '🤔', '😭', '🙏', '🐱', '✨', '😊', '🔥'];
 const expandedReplyCounts = ref<Record<number, number>>({});
 const contactSubmitting = ref(false);
@@ -46,6 +52,7 @@ const channelIcons: Record<string, string> = {
 };
 const channelIcon = computed(() => channelIcons[post.value.channel] || '/static/icons/mine/cloud.svg');
 const isConfession = computed(() => post.value.channel === '表白' || post.value.type === 'confession');
+const isIdlePost = computed(() => post.value.channel === '二手' || post.value.type === 'idle');
 const postImages = computed(() => {
   const images = Array.isArray(post.value.images) ? post.value.images.filter(Boolean) : [];
   const coverImage = typeof post.value.coverImage === 'string' ? post.value.coverImage.trim() : '';
@@ -62,9 +69,53 @@ const postAuthor = computed(() => {
   const author = post.value?.author;
   return typeof author === 'string' ? author.trim() : '';
 });
-const contactButtonText = computed(() => post.value?.type === 'idle' && Number(post.value?.price || 0) > 0 ? '立即购买' : '联系TA');
+
+function normalizeIdentityText(value?: string) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[\s\u200B-\u200D\uFEFF]/g, '')
+    .toLocaleLowerCase();
+}
+
+function normalizeIdentityUrl(value?: string) {
+  return String(value || '').trim().replace(/^http:/i, 'https:');
+}
+
+const isOwnPost = computed(() => {
+  if (ownerContext.value)
+    return true;
+  if (post.value?.owner === true)
+    return true;
+  if (contentStore.publishedPosts.some(item => Number(item.id) === Number(postId.value)))
+    return true;
+  const currentUserId = Number(userStore.userInfo?.id || 0);
+  const postUserId = Number(post.value?.userId || 0);
+  if (currentUserId > 0 && postUserId > 0 && currentUserId === postUserId)
+    return true;
+
+  // 兼容历史线上数据：部分旧帖子 owner/userId 不正确，但作者快照仍然完整。
+  // 昵称相同后继续核对头像；没有头像时核对学校，避免只凭昵称误判。
+  const currentNickname = normalizeIdentityText(userStore.userInfo?.nickname);
+  const authorNickname = normalizeIdentityText(post.value?.author);
+  if (!currentNickname || currentNickname !== authorNickname)
+    return false;
+  const currentAvatar = normalizeIdentityUrl(userStore.userInfo?.avatar);
+  const authorAvatar = normalizeIdentityUrl(post.value?.avatar);
+  const currentSchool = normalizeIdentityText(userStore.userInfo?.schoolName);
+  const authorSchool = normalizeIdentityText(post.value?.school);
+  const avatarMatches = Boolean(currentAvatar && authorAvatar && currentAvatar === authorAvatar);
+  const schoolMatches = Boolean(currentSchool && authorSchool && currentSchool === authorSchool);
+  return avatarMatches || schoolMatches;
+});
+const contentExpandable = computed(() => String(post.value?.content || '').trim().length > 60);
+const contactButtonText = computed(() => {
+  if (isOwnPost.value)
+    return isIdlePost.value ? '管理商品' : '管理内容';
+  return isIdlePost.value && Number(post.value?.price || 0) > 0 ? '立即购买' : '联系TA';
+});
 const composerTitle = computed(() => replyAuthor.value ? `回复 ${replyAuthor.value}` : (postAuthor.value ? `评论 ${postAuthor.value}` : '评论内容'));
-const composerPlaceholder = computed(() => replyAuthor.value ? `回复 ${replyAuthor.value}…` : '写下你的评论…');
+const composerPlaceholder = computed(() => replyAuthor.value ? `回复@${replyAuthor.value}` : '留下你的评论');
+const composerKeyboardStyle = computed(() => ({ bottom: `${keyboardHeight.value}px` }));
 const mentionCandidates = computed(() => {
   const candidates = new Map<number, { id: number, name: string, avatar?: string }>();
   if (post.value.userId && post.value.author) {
@@ -77,19 +128,38 @@ const mentionCandidates = computed(() => {
   return [...candidates.values()];
 });
 
+watch([() => comment.value.trim().length, () => commentImages.value.length], ([length, imageCount]) => {
+  if (commentError.value && (length >= 2 || imageCount > 0))
+    commentError.value = '';
+});
+
 watch(() => post.value.coverImage, () => {
   coverImageFailed.value = false;
 });
 
 onLoad(async (query) => {
   resetCommentComposer();
+  contentExpanded.value = false;
   postId.value = Number(query?.id || 2001);
+  ownerContext.value = query?.mine === '1';
   pageState.value = 'loading';
   try {
     await userStore.initUserInfo();
     const loaded = await contentStore.loadPost(postId.value);
+    // 某些环境的详情接口没有稳定返回 owner。登录状态下再用“我的发布”
+    // 接口核验一次，避免从首页进入自己的帖子时被当成普通访客。
+    if (!ownerContext.value && loaded.owner !== true && userStore.loggedIn) {
+      try {
+        await contentStore.loadMyPosts();
+      } catch {
+        // 本人列表核验失败不影响详情本身继续展示，仍可依赖 userId 判断。
+      }
+    }
     liked.value = Boolean(loaded.liked);
     collected.value = Boolean(loaded.collected);
+    followed.value = isCampusFollowing(userStore.userInfo?.id, loaded);
+    if (userStore.loggedIn)
+      recordCampusHistory(userStore.userInfo?.id, loaded);
     pageState.value = 'content';
     await loadComments();
   } catch {
@@ -107,12 +177,14 @@ onShareAppMessage(() => ({
 
 function resetCommentComposer() {
   comment.value = '';
+  commentError.value = '';
   replyTarget.value = null;
   commentImages.value = [];
   mentionUserIds.value = [];
   showEmojiPanel.value = false;
   showMentionPanel.value = false;
   showCommentComposer.value = false;
+  commentInputFocused.value = false;
 }
 
 function handleCoverImageError() {
@@ -137,7 +209,13 @@ async function loadComments(append = false) {
     // Ignore stale responses and defensively keep only this post's comments.
     if (requestToken !== commentsRequestToken || requestedPostId !== postId.value)
       return;
-    const postComments = (page.list || []).filter(item => Number(item.postId) === requestedPostId);
+    const postComments = (page.list || [])
+      .filter(item => Number(item.postId) === requestedPostId)
+      .map(item => ({
+        ...item,
+        avatar: resolveCampusAvatar(item.avatar),
+        images: (item.images || []).map(resolveCampusMediaUrl).filter(Boolean),
+      }));
     comments.value = append
       ? [...comments.value, ...postComments.filter(item => !comments.value.some(existing => existing.id === item.id))]
       : postComments;
@@ -165,8 +243,12 @@ async function sendComment() {
   if (!ensureLogin())
     return;
   const content = comment.value.trim();
-  if ((!content && !commentImages.value.length) || commentSubmitting.value)
+  if (commentSubmitting.value)
     return;
+  if (!commentImages.value.length && content.length < 2) {
+    commentError.value = '评论至少填写 2 个字，或添加图片';
+    return;
+  }
   if (content.length > 300) {
     uni.showToast({ title: '评论最多 300 个字', icon: 'none' });
     return;
@@ -174,13 +256,18 @@ async function sendComment() {
   commentSubmitting.value = true;
   try {
     const uploadedImages = await Promise.all(commentImages.value.map(image => uploadCampusCommentImage(image)));
-    const created = await createCampusPostComment(postId.value, {
+    const createdResult = await createCampusPostComment(postId.value, {
       content,
       parentId: replyTarget.value?.id,
       replyToUserId: replyTarget.value?.userId,
       mentionUserIds: mentionUserIds.value,
       images: uploadedImages,
     });
+    const created = {
+      ...createdResult,
+      avatar: resolveCampusAvatar(createdResult.avatar),
+      images: (createdResult.images || []).map(resolveCampusMediaUrl).filter(Boolean),
+    };
     if (Number(created.postId) !== postId.value)
       throw new Error('评论所属帖子不一致');
     const awaitingReview = created.status === 0;
@@ -196,6 +283,7 @@ async function sendComment() {
     showEmojiPanel.value = false;
     showMentionPanel.value = false;
     showCommentComposer.value = false;
+    commentInputFocused.value = false;
     commentState.value = 'content';
     // Re-read only visible comments; pending comments are deliberately excluded by the server.
     if (!awaitingReview)
@@ -219,11 +307,20 @@ function replyToComment(item: CampusPostComment) {
   showCommentComposer.value = true;
   showEmojiPanel.value = false;
   showMentionPanel.value = false;
+  focusCommentInput();
 }
 
 function openCommentComposer() {
   replyTarget.value = null;
   showCommentComposer.value = true;
+  focusCommentInput();
+}
+
+function focusCommentInput() {
+  commentInputFocused.value = false;
+  nextTick(() => {
+    commentInputFocused.value = true;
+  });
 }
 
 function closeCommentComposer() {
@@ -231,6 +328,12 @@ function closeCommentComposer() {
   showEmojiPanel.value = false;
   showMentionPanel.value = false;
   showCommentComposer.value = false;
+  commentInputFocused.value = false;
+  keyboardHeight.value = 0;
+}
+
+function handleKeyboardHeightChange(event: any) {
+  keyboardHeight.value = Math.max(0, Number(event?.detail?.height || 0));
 }
 
 function toggleMentionPanel() {
@@ -369,9 +472,13 @@ async function changeCommentSort(sort: 'latest' | 'likes') {
   await loadComments();
 }
 async function contact() {
+  if (isOwnPost.value) {
+    managePost();
+    return;
+  }
   if (!ensureLogin() || contactSubmitting.value)
     return;
-  if (post.value.type === 'idle' && Number(post.value.price || 0) > 0) {
+  if (isIdlePost.value && Number(post.value.price || 0) > 0) {
     uni.navigateTo({ url: `/pages/checkout/index?postId=${postId.value}` });
     return;
   }
@@ -410,7 +517,7 @@ async function toggleLike() {
     const updated = await contentStore.setPostLike(postId.value, !liked.value);
     liked.value = Boolean(updated.liked);
   } catch {
-    uni.showToast({ title: '点赞失败，请重试', icon: 'none' });
+    uni.showToast({ title: '操作失败，请重试', icon: 'none' });
   } finally {
     interactionBusy.value = false;
   }
@@ -430,8 +537,11 @@ async function toggleCollect() {
   }
 }
 function toggleFollow() {
-  if (ensureLogin())
-    followed.value = !followed.value;
+  if (!ensureLogin())
+    return;
+  followed.value = !followed.value;
+  setCampusFollowing(userStore.userInfo?.id, post.value, followed.value);
+  uni.showToast({ title: followed.value ? '已关注' : '已取消关注', icon: 'none' });
 }
 function managePost() {
   uni.showActionSheet({
@@ -534,8 +644,8 @@ function reportPost() {
             </view><view class="author-sub">
               {{ post.school }} · {{ post.time }}
             </view>
-          </view><button class="follow-btn" :class="{ followed: followed || post.owner }" @click="post.owner ? managePost() : toggleFollow()">
-            {{ post.owner ? '管理' : (followed ? '已关注' : '＋ 关注') }}
+          </view><button class="follow-btn" :class="{ followed: followed || isOwnPost }" @click="isOwnPost ? managePost() : toggleFollow()">
+            {{ isOwnPost ? '管理' : (followed ? '已关注' : '＋ 关注') }}
           </button><button class="author-share" open-type="share" aria-label="转发给微信好友">
             <image src="/static/icons/ui/wechat-green.svg" mode="aspectFit" />
           </button>
@@ -544,8 +654,11 @@ function reportPost() {
           <text>¥</text>{{ post.price }}
         </view><view class="title">
           {{ post.title }}
-        </view><view class="body">
+        </view><view class="body" :class="{ expanded: contentExpanded }">
           {{ post.content }}
+        </view>
+        <view v-if="contentExpandable" class="body-toggle" @click="contentExpanded = !contentExpanded">
+          {{ contentExpanded ? '收起全文' : '展开全文' }}
         </view>
         <view class="tags">
           <text v-for="tag in post.tags" :key="tag">
@@ -558,19 +671,19 @@ function reportPost() {
               :src="isConfession ? '/static/icons/mine/heart.svg' : '/static/icons/ui/location.svg'" mode="aspectFit"
             /><text>{{ isConfession ? '仅展示在本校表白墙' : (post.location || `${post.school} · 校内`) }}</text>
           </view><view class="meta-actions">
-            <text>浏览 {{ post.views || 0 }}</text><text v-if="!post.owner" class="report-entry" @click="reportPost">
+            <text>浏览 {{ post.views || 0 }}</text><text v-if="!isOwnPost" class="report-entry" @click="reportPost">
               举报
             </text>
           </view>
         </view>
         <view class="detail-actions">
           <view class="detail-action" :class="{ active: liked }" @click="toggleLike">
-            <image src="/static/icons/mine/heart.svg" mode="aspectFit" /><text>{{ post.likes || 0 }}</text>
+            <text class="detail-heart">{{ liked ? '♥' : '♡' }}</text><text>{{ post.likes || 0 }}人想要</text>
           </view>
           <view class="detail-action" :class="{ active: collected }" @click="toggleCollect">
-            <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>{{ collected ? '已收藏' : '收藏' }}</text>
+            <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>{{ post.collects || 0 }}人收藏</text>
           </view>
-          <button v-if="!isConfession" class="detail-contact" :disabled="contactSubmitting" @click="contact">
+          <button v-if="isOwnPost || !isConfession" class="detail-contact" :disabled="contactSubmitting" @click="contact">
             {{ contactSubmitting ? '提交中…' : contactButtonText }}
           </button>
         </view>
@@ -578,7 +691,7 @@ function reportPost() {
 
       <view class="comments-card">
         <view class="section-title">
-          评论 {{ commentTotal }}
+          共 {{ commentTotal }} 条评论
         </view>
         <view class="comment-sort">
           <text :class="{ active: commentSort === 'latest' }" @click="changeCommentSort('latest')">
@@ -594,8 +707,9 @@ function reportPost() {
         <view v-else-if="commentState === 'error'" class="comment-status comment-retry" @click="loadComments()">
           评论加载失败，点击重试
         </view>
-        <view v-else-if="!comments.length" class="comment-status">
-          还没有评论，来聊聊你的想法吧
+        <view v-else-if="!comments.length" class="comment-empty-state">
+          <image src="/static/icons/ui/comment-empty.svg" mode="aspectFit" />
+          <text>暂无评论，快留下你的想法吧</text>
         </view>
         <view v-for="item in topLevelComments" :key="item.id" class="comment-block">
           <view class="comment" @click="replyToComment(item)">
@@ -696,13 +810,19 @@ function reportPost() {
         <view class="comment-trigger" @click="openCommentComposer">
           <text>✎ 留下你的想法</text>
         </view>
-        <view class="prototype-bottom-action" :class="{ active: liked }" @click="toggleLike">
-          <text>{{ liked ? '♥' : '♡' }}</text><text>点赞</text>
+        <view
+          class="prototype-bottom-action" :class="{ active: liked }"
+          :aria-label="`想要，当前${post.likes || 0}人`" @click="toggleLike"
+        >
+          <text>{{ liked ? '♥' : '♡' }}</text><text>{{ post.likes || 0 }}</text>
         </view>
-        <view class="prototype-bottom-action" :class="{ active: collected }" @click="toggleCollect">
-          <text>{{ collected ? '★' : '☆' }}</text><text>收藏</text>
+        <view
+          class="prototype-bottom-action" :class="{ active: collected }"
+          :aria-label="`收藏，当前${post.collects || 0}人`" @click="toggleCollect"
+        >
+          <text>{{ collected ? '★' : '☆' }}</text><text>{{ post.collects || 0 }}</text>
         </view>
-        <button v-if="!isConfession" class="prototype-buy" :disabled="contactSubmitting" @click="contact">
+        <button v-if="isOwnPost || !isConfession" class="prototype-buy" :disabled="contactSubmitting" @click="contact">
           {{ contactSubmitting ? '提交中…' : contactButtonText }}
         </button>
         <button v-else class="prototype-buy" @click="openCommentComposer">
@@ -710,7 +830,7 @@ function reportPost() {
         </button>
       </view>
       <view v-if="showCommentComposer" class="comment-overlay" @click="closeCommentComposer">
-        <view class="comment-composer" @click.stop>
+        <view class="comment-composer" :style="composerKeyboardStyle" @click.stop>
           <view class="composer-header">
             <text>{{ composerTitle }}</text>
             <text class="composer-close" @click="closeCommentComposer">
@@ -718,10 +838,15 @@ function reportPost() {
             </text>
           </view>
           <textarea
-            class="composer-textarea" :value="comment" :disabled="commentSubmitting" maxlength="300"
+            class="composer-textarea" :class="{ invalid: commentError }" :value="comment" :disabled="commentSubmitting" maxlength="300"
             :placeholder="composerPlaceholder"
-            auto-height @input="handleCommentInput" @confirm="sendComment"
+            :focus="commentInputFocused" :adjust-position="false" :show-confirm-bar="false" :hold-keyboard="true" :cursor-spacing="16"
+            auto-height confirm-type="send" @input="handleCommentInput" @confirm="sendComment"
+            @keyboardheightchange="handleKeyboardHeightChange"
           />
+          <view v-if="commentError" class="composer-error">
+            {{ commentError }}
+          </view>
           <view v-if="commentImages.length" class="comment-upload-preview">
             <view v-for="(image, index) in commentImages" :key="image" class="comment-upload-item">
               <image :src="image" mode="aspectFill" /><text @click="removeCommentImage(index)">
@@ -731,18 +856,18 @@ function reportPost() {
           </view>
           <view class="composer-toolbar">
             <view class="comment-tools">
-              <text :class="{ active: showMentionPanel }" @click="toggleMentionPanel">
-                ＠
-              </text>
-              <text :class="{ active: showEmojiPanel }" @click="toggleEmojiPanel">
-                ☺
-              </text>
-              <text @click="chooseCommentImages">
-                ▧
-              </text>
+              <view class="comment-tool" :class="{ active: showEmojiPanel }" aria-label="添加表情" @click="toggleEmojiPanel">
+                <image src="/static/icons/ui/comment-emoji.svg" mode="aspectFit" />
+              </view>
+              <view class="comment-tool" aria-label="添加图片" @click="chooseCommentImages">
+                <image src="/static/icons/ui/comment-image.svg" mode="aspectFit" />
+              </view>
+              <view class="comment-tool" :class="{ active: showMentionPanel }" aria-label="艾特他人" @click="toggleMentionPanel">
+                <image src="/static/icons/ui/comment-at.svg" mode="aspectFit" />
+              </view>
             </view>
             <text class="comment-send" :class="{ disabled: !comment.trim() && !commentImages.length }" @click="sendComment">
-              {{ commentSubmitting ? '发送中' : '发布' }}
+              {{ commentSubmitting ? '发送中' : '发送' }}
             </text>
           </view>
           <view v-if="showMentionPanel" class="mention-panel">
@@ -1012,6 +1137,16 @@ function reportPost() {
 .detail-action image {
   width: 30rpx;
   height: 30rpx;
+}
+
+.detail-heart {
+  color: #8b8b8b;
+  font-size: 34rpx;
+  line-height: 1;
+}
+
+.detail-action.active .detail-heart {
+  color: #ff4747;
 }
 .detail-action.active {
   color: var(--yd-coral);
@@ -1666,11 +1801,25 @@ function reportPost() {
   display: -webkit-box;
   overflow: hidden;
   margin-top: 18rpx;
-  color: #969a97;
-  font-size: 26rpx;
-  line-height: 1.55;
+  color: #4f5652;
+  font-size: 30.77rpx;
+  line-height: 1.7;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 4;
+}
+
+.body.expanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+
+.body-toggle {
+  margin-top: 12rpx;
+  color: #02a83e;
+  font-size: 26.92rpx;
+  font-weight: 500;
+  line-height: 38.46rpx;
 }
 
 .tags {
@@ -1735,6 +1884,27 @@ function reportPost() {
   padding: 58rpx 0 90rpx;
   color: #9a9e9b;
   font-size: 25rpx;
+}
+
+.comment-empty-state {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 430rpx;
+  padding-top: 58rpx;
+  color: #9a9e9b;
+  flex-direction: column;
+}
+
+.comment-empty-state image {
+  width: 240rpx;
+  height: 116rpx;
+}
+
+.comment-empty-state text {
+  margin-top: 18rpx;
+  font-size: 25rpx;
+  line-height: 36rpx;
 }
 
 .comment-block {
@@ -1886,9 +2056,12 @@ function reportPost() {
 }
 
 .comment-composer {
-  padding: 32rpx 32rpx calc(30rpx + env(safe-area-inset-bottom));
+  min-height: 250rpx;
+  max-height: 70vh;
+  padding: 28rpx 32rpx 18rpx;
   border-radius: 32rpx 32rpx 0 0;
   background: #fff;
+  transition: bottom .12s ease-out;
 }
 
 .composer-header {
@@ -1896,8 +2069,8 @@ function reportPost() {
 }
 
 .composer-textarea {
-  min-height: 120rpx;
-  padding: 26rpx 22rpx;
+  min-height: 112rpx;
+  padding: 22rpx;
   border: 0;
   border-radius: 28rpx;
   color: #222522;
@@ -1905,14 +2078,46 @@ function reportPost() {
   font-size: 27rpx;
 }
 
-.composer-toolbar {
-  min-height: 76rpx;
-  margin-top: 12rpx;
+.composer-textarea.invalid {
+  color: #ff4d4f;
+  box-shadow: inset 0 0 0 2rpx rgba(255, 77, 79, 0.72);
 }
 
-.comment-tools text {
-  color: #999d9a;
-  font-size: 37rpx;
+.composer-error {
+  margin-top: 10rpx;
+  color: #ff4d4f;
+  font-size: 23.08rpx;
+  line-height: 30.77rpx;
+}
+
+.composer-toolbar {
+  min-height: 70rpx;
+  margin-top: 8rpx;
+}
+
+.composer-toolbar .comment-tools {
+  display: flex;
+  align-items: center;
+  height: 64rpx;
+  gap: 24rpx;
+}
+
+.comment-tool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 50%;
+}
+
+.comment-tool.active {
+  background: #efffdf;
+}
+
+.comment-tool image {
+  width: 42rpx;
+  height: 42rpx;
 }
 
 .comment-send {

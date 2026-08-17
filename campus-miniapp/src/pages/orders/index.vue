@@ -2,6 +2,7 @@
 import type { CampusTradeOrder } from '@/services/api/content';
 import { getAllCampusTradeOrders } from '@/services/api/content';
 import { useUserStore } from '@/stores/modules/user';
+import { resolveCampusMediaUrl } from '@/utils/avatar';
 
 type OrderRole = 'buyer' | 'seller';
 
@@ -15,6 +16,8 @@ const errorMessage = ref('订单记录暂时无法加载');
 const authError = ref(false);
 const activeRole = ref<OrderRole>('buyer');
 const activeStatus = ref<number | undefined>();
+const statusBarHeight = ref(0);
+const navigationStyle = computed(() => ({ '--status-bar-height': `${statusBarHeight.value}px` }));
 let loadVersion = 0;
 const statusCounts = computed(() => allOrders.value.reduce<Record<number, number>>((counts, order) => {
   counts[order.status] = (counts[order.status] || 0) + 1;
@@ -28,30 +31,52 @@ const statusTabs = computed(() => [
   { label: `已关闭 ${statusCounts.value[3] || 0}`, value: 3 },
   { label: `已退款 ${statusCounts.value[4] || 0}`, value: 4 },
 ]);
-const prototypeStatusTabs = computed(() => statusTabs.value.filter(tab => [undefined, 0, 1, 4].includes(tab.value)));
+const prototypeStatusTabs = computed(() => [
+  { label: `全部 ${allOrders.value.length}`, value: undefined },
+  { label: `待支付(${statusCounts.value[0] || 0})`, value: 0 },
+  { label: `已支付(${statusCounts.value[1] || 0})`, value: 1 },
+  { label: `已退款(${statusCounts.value[4] || 0})`, value: 4 },
+]);
 const activeStatusLabel = computed(() => {
   if (activeStatus.value === undefined)
     return '';
   return activeStatus.value === 0
-    ? '待付款'
+    ? '待支付'
     : activeStatus.value === 1
       ? '已付款'
       : activeStatus.value === 2
         ? '已完成'
         : activeStatus.value === 3 ? '已关闭' : '已退款';
 });
+const pageTitle = computed(() => {
+  if (activeRole.value === 'seller')
+    return '卖出订单';
+  if (activeStatus.value === 0)
+    return '待支付订单';
+  if (activeStatus.value === 1)
+    return '已支付订单';
+  if (activeStatus.value === 4)
+    return '退款订单';
+  return '买到订单';
+});
+const otherOrderCount = computed(() => Math.max(0, allOrders.value.length - orders.value.length));
 const emptyTitle = computed(() => activeStatusLabel.value ? `${activeStatusLabel.value}暂无订单` : '还没有订单记录');
-const emptyNote = computed(() => activeStatusLabel.value
-  ? `当前账号没有${activeStatusLabel.value}订单，可切换“全部”查看其他订单`
-  : '完成一次校园交易后，付款记录会显示在这里');
+const emptyNote = computed(() => {
+  if (!activeStatusLabel.value)
+    return '完成一次校园交易后，付款记录会显示在这里';
+  if (otherOrderCount.value > 0)
+    return `当前没有${activeStatusLabel.value}订单，另有 ${otherOrderCount.value} 条其他状态订单，可点击“全部”查看`;
+  return `当前账号没有${activeStatusLabel.value}订单`;
+});
 
 onLoad((query) => {
+  statusBarHeight.value = uni.getWindowInfo().statusBarHeight || 0;
   activeRole.value = query?.role === 'seller' ? 'seller' : 'buyer';
-  uni.setNavigationBarTitle({ title: activeRole.value === 'seller' ? '卖出订单' : '买到订单' });
+  const requestedStatus = Number(query?.status);
+  activeStatus.value = ['0', '1', '2', '3', '4'].includes(String(query?.status)) ? requestedStatus : undefined;
 });
 
 onShow(() => {
-  activeStatus.value = undefined;
   void loadOrders();
 });
 
@@ -164,7 +189,28 @@ function formatTime(value?: unknown) {
   }
   if (Number.isNaN(date.getTime()))
     return typeof value === 'string' ? value : '时间未知';
-  return date.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  const hour = `${date.getHours()}`.padStart(2, '0');
+  const minute = `${date.getMinutes()}`.padStart(2, '0');
+  return `${year}-${month}-${day}—${hour}:${minute}`;
+}
+
+function displayStatus(status: number, fallback: string) {
+  if (status === 0)
+    return '待支付';
+  if (status === 1)
+    return '已支付';
+  if (status === 4)
+    return '已退款';
+  if (status === 3)
+    return '已取消';
+  return fallback || '已完成';
+}
+
+function goBack() {
+  uni.navigateBack();
 }
 
 function statusTone(status: number) {
@@ -179,7 +225,14 @@ function statusTone(status: number) {
 </script>
 
 <template>
-  <view class="orders-page safe-bottom">
+  <view class="orders-page safe-bottom" :style="navigationStyle">
+    <view class="orders-nav">
+      <view class="orders-back" @click="goBack">
+        <image src="/static/icons/ui/back.svg" mode="aspectFit" />
+      </view>
+      <text>{{ pageTitle }}</text>
+      <view class="orders-capsule-space" />
+    </view>
     <view class="orders-head">
       <view>
         <text class="eyebrow">
@@ -243,11 +296,11 @@ function statusTone(status: number) {
             订单号 {{ item.orderNo }}
           </text>
           <text class="order-status" :class="[statusTone(item.status)]">
-            {{ item.statusText }}
+            {{ displayStatus(item.status, item.statusText) }}
           </text>
         </view>
         <view class="order-product">
-          <image v-if="item.coverImage" class="order-cover" :src="item.coverImage" mode="aspectFill" />
+          <image v-if="item.coverImage" class="order-cover" :src="resolveCampusMediaUrl(item.coverImage)" mode="aspectFill" />
           <view v-else class="order-cover cover-placeholder">
             云点
           </view>
@@ -269,7 +322,7 @@ function statusTone(status: number) {
           </view>
         </view>
         <view v-if="activeRole === 'buyer'" class="order-footer">
-          点击查看订单详情 ›
+          点击查看订单详情
         </view>
       </view>
     </view>
@@ -520,11 +573,41 @@ function statusTone(status: number) {
 /* 蓝湖原型：买到/卖出订单 */
 .orders-page {
   min-height: 100vh;
-  padding: 16rpx 26rpx 60rpx;
+  padding: calc(var(--status-bar-height) + 88rpx) 26rpx 60rpx;
   color: #202321;
   background: #f4f4f4;
   box-sizing: border-box;
 }
+
+.orders-nav {
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: calc(var(--status-bar-height) + 88rpx);
+  padding-top: var(--status-bar-height);
+  background: #edfff3;
+  font-size: 31rpx;
+  font-weight: 600;
+}
+
+.orders-back {
+  position: absolute;
+  bottom: 14rpx;
+  left: 31rpx;
+  display: flex;
+  align-items: center;
+  width: 52rpx;
+  height: 60rpx;
+}
+
+.orders-back image { width: 28rpx; height: 28rpx; }
+.orders-capsule-space { position: absolute; right: 0; bottom: 12rpx; width: 190rpx; height: 64rpx; }
 
 .orders-head,
 .role-tabs {
@@ -533,20 +616,21 @@ function statusTone(status: number) {
 
 .status-scroll {
   height: 84rpx;
-  margin: 0 -26rpx 22rpx;
+  margin: 0 -26rpx 20rpx;
+  background: #edfff3;
 }
 
 .status-tabs {
   min-width: 100%;
   height: 84rpx;
   padding: 8rpx 26rpx;
-  gap: 26rpx;
+  gap: 24rpx;
   box-sizing: border-box;
 }
 
 .status-tabs > view {
   width: auto;
-  min-width: 124rpx;
+  min-width: 122rpx;
   height: 54rpx;
   padding: 0 15rpx;
   border: 0;
@@ -569,7 +653,8 @@ function statusTone(status: number) {
 }
 
 .order-card {
-  padding: 20rpx;
+  min-height: 328rpx;
+  padding: 20rpx 22rpx;
   border: 0;
   border-radius: 28rpx;
   background: #fff;
@@ -584,7 +669,7 @@ function statusTone(status: number) {
 .order-number {
   max-width: 72%;
   color: #9a9e9b;
-  font-size: 24rpx;
+  font-size: 23rpx;
 }
 
 .order-status {
@@ -620,8 +705,8 @@ function statusTone(status: number) {
 }
 
 .order-cover {
-  width: 144rpx;
-  height: 144rpx;
+  width: 146rpx;
+  height: 146rpx;
   border-radius: 20rpx;
 }
 

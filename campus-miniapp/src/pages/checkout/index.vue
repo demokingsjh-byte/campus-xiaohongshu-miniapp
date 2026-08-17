@@ -11,6 +11,7 @@ import {
   getCampusTradePaymentStatus,
 } from '@/services/api/content';
 import { useUserStore } from '@/stores/modules/user';
+import { resolveCampusMediaUrl } from '@/utils/avatar';
 
 const postId = ref(0);
 const orderId = ref(0);
@@ -33,7 +34,7 @@ const PAYMENT_CONFIRMATION_GRACE_MS = 30_000;
 const isPaid = computed(() => order.value?.status === 1);
 const isWaitingPayment = computed(() => order.value?.status === 0 && remainingSeconds.value > 0);
 const isPaymentPending = computed(() => paymentPending.value && order.value?.status === 0);
-const productImage = computed(() => order.value?.coverImage || post.value?.coverImage || post.value?.images?.[0] || '');
+const productImage = computed(() => resolveCampusMediaUrl(order.value?.coverImage || post.value?.coverImage || post.value?.images?.[0] || ''));
 const countdownText = computed(() => {
   const minutes = Math.floor(remainingSeconds.value / 60).toString().padStart(2, '0');
   const seconds = (remainingSeconds.value % 60).toString().padStart(2, '0');

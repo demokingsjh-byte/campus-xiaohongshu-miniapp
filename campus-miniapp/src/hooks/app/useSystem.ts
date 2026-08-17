@@ -4,7 +4,7 @@
  * @link https://uniapp.dcloud.net.cn/api/system/info.html
  */
 export function useSystem() {
-  const systemInfo = reactive<UniNamespace.GetSystemInfoResult>(uni.getSystemInfoSync());
+  const systemInfo = reactive<UniNamespace.GetWindowInfoResult>(uni.getWindowInfo());
   return {
     systemInfo,
   };

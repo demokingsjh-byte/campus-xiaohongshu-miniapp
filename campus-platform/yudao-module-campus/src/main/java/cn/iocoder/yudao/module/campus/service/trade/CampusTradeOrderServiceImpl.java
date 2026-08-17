@@ -243,8 +243,9 @@ public class CampusTradeOrderServiceImpl implements CampusTradeOrderService {
         vo.setSellerName(value(row, "seller_name"));
         vo.setTitle(value(row, "item_title_snapshot"));
         String coverImage = value(row, "item_cover_snapshot");
-        if (StrUtil.isBlank(coverImage)) {
-            coverImage = firstImage(value(row, "post_images_json"));
+        String currentPostCover = firstImage(value(row, "post_images_json"));
+        if (StrUtil.isBlank(coverImage) || (isTemporarySignedUrl(coverImage) && StrUtil.isNotBlank(currentPostCover))) {
+            coverImage = currentPostCover;
         }
         vo.setCoverImage(refreshFileUrl(coverImage));
         vo.setAmount(decimal(row.get("amount")));
@@ -296,6 +297,13 @@ public class CampusTradeOrderServiceImpl implements CampusTradeOrderService {
         } catch (RuntimeException ex) {
             return url;
         }
+    }
+
+    private boolean isTemporarySignedUrl(String url) {
+        return StrUtil.containsIgnoreCase(url, "X-Amz-Signature=")
+                || StrUtil.containsIgnoreCase(url, "X-Amz-Expires=")
+                || StrUtil.containsIgnoreCase(url, "OSSAccessKeyId=")
+                || StrUtil.containsIgnoreCase(url, "Expires=");
     }
 
     private String createOrderNo() {

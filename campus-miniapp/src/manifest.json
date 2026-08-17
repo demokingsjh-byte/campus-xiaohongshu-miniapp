@@ -94,7 +94,7 @@
   /* 小程序特有相关 */
   "mp-weixin": {
     "appid": "wx3141ca27b55b0b9c",
-    "libVersion": "3.16.2",
+    "libVersion": "3.17.0",
     "setting": {
       "urlCheck": false,
       "es6": true,

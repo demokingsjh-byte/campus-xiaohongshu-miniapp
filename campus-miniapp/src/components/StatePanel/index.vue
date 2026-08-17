@@ -12,7 +12,7 @@ const icons = {
 <template>
   <view class="state-panel">
     <view class="state-icon">
-      <image :src="icons[type]" mode="aspectFit" />
+      <image class="state-icon-image" :src="icons[type]" mode="aspectFit" />
     </view>
     <view class="state-title">
       {{ title }}
@@ -47,7 +47,7 @@ const icons = {
   background: #dedede;
   box-shadow: none;
 }
-.state-icon image {
+.state-icon-image {
   width: 86rpx;
   height: 86rpx;
   filter: grayscale(1) brightness(2.1);

@@ -15,6 +15,7 @@ export interface CampusNotification {
   read: boolean
   targetType?: 'POST' | 'PRODUCT' | 'SYSTEM'
   targetId?: number
+  targetImage?: string
 }
 
 export interface CampusNotificationPage {

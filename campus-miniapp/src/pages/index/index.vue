@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import type { CampusPost } from '@/mock/campus';
 import type { CampusHomeCategory, CampusHomeConfig } from '@/services/api/content';
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import PrototypeTabBar from '@/components/PrototypeTabBar/index.vue';
@@ -30,6 +31,8 @@ const PROTOTYPE_CATEGORY_ICONS: Record<string, string> = {
   errand: '/static/images/home-prototype/category-errand.png',
   fun: '/static/images/home-prototype/category-fun.png',
   job: '/static/images/home-prototype/category-job.png',
+  confession: '/static/images/home-prototype/category-confession.png',
+  groupbuy: '/static/images/home-prototype/category-groupbuy.png',
 };
 
 const activeCategoryKey = ref('recommend');
@@ -56,7 +59,7 @@ const contentStore = useCampusContentStore();
 const notificationStore = useCampusNotificationStore();
 const userStore = useUserStore();
 const statusBarHeight = ref(0);
-const menuButtonRightInset = ref(104);
+const menuButtonRightInset = ref(116);
 
 interface MenuButtonRect {
   left: number
@@ -74,25 +77,39 @@ const activeCategory = computed<CampusHomeCategory>(() => categories.value.find(
   || categories.value[0]
   || DEFAULT_HOME_CONFIG.categories[0]);
 const visiblePosts = computed(() => contentStore.allPosts);
-const recommendationConfessions = computed(() => activeCategoryKey.value === 'recommend'
-  ? visiblePosts.value.filter(post => post.channel === '表白')
+function postHasImage(post: CampusPost) {
+  return Boolean(post.coverImage || post.images?.some(Boolean));
+}
+
+function categoryDisplayTitle(category: CampusHomeCategory) {
+  return ({
+    idle: '二手闲置',
+    errand: '代拿代办',
+    fun: '校园趣事',
+    job: '兼职信息',
+    confession: '表白墙',
+    groupbuy: '商家团购',
+  } as Record<string, string>)[category.key] || category.title;
+}
+
+const recommendationNotes = computed(() => activeCategoryKey.value === 'recommend'
+  ? visiblePosts.value.filter(post => !postHasImage(post))
   : []);
 const gridPosts = computed(() => activeCategoryKey.value === 'recommend'
-  ? visiblePosts.value.filter(post => post.channel !== '表白')
+  ? visiblePosts.value.filter(postHasImage)
   : visiblePosts.value);
 const leftPosts = computed(() => gridPosts.value.filter((_, index) => index % 2 === 0));
 const rightPosts = computed(() => gridPosts.value.filter((_, index) => index % 2 === 1));
 const useWideFeed = computed(() => ['job', 'groupbuy'].includes(activeCategoryKey.value));
-
 function updateNavigationLayout() {
-  const systemInfo = uni.getSystemInfoSync();
+  const systemInfo = uni.getWindowInfo();
   const runtime = uni as typeof uni & {
     getMenuButtonBoundingClientRect?: () => MenuButtonRect
   };
   const menuButton = runtime.getMenuButtonBoundingClientRect?.();
   statusBarHeight.value = Math.max(systemInfo.statusBarHeight || 0, menuButton?.top || 0);
   if (menuButton?.left && systemInfo.windowWidth)
-    menuButtonRightInset.value = Math.max(92, systemInfo.windowWidth - menuButton.left + 8);
+    menuButtonRightInset.value = Math.max(104, systemInfo.windowWidth - menuButton.left + 18);
 }
 
 if (!tenantStore.currentTenant || !campusTenants.some(item => item.id === tenantStore.tenantId))
@@ -136,12 +153,16 @@ function centerCategory(category: CampusHomeCategory) {
   if (index < 0)
     return;
 
-  const { windowWidth = 375 } = uni.getSystemInfoSync();
+  const { windowWidth = 375 } = uni.getWindowInfo();
   const rpxToPx = windowWidth / 750;
-  const itemWidth = 150 * rpxToPx;
-  const stripPadding = 15 * rpxToPx;
-  const stripWidth = categories.value.length * itemWidth + stripPadding * 2;
-  const centeredLeft = stripPadding + index * itemWidth + itemWidth / 2 - windowWidth / 2;
+  const itemWidth = 123.08 * rpxToPx;
+  const itemGap = 18.59 * rpxToPx;
+  const stripPadding = 30.77 * rpxToPx;
+  const itemStep = itemWidth + itemGap;
+  const stripWidth = categories.value.length * itemWidth
+    + Math.max(0, categories.value.length - 1) * itemGap
+    + stripPadding * 2;
+  const centeredLeft = stripPadding + index * itemStep + itemWidth / 2 - windowWidth / 2;
   const maxScrollLeft = Math.max(0, stripWidth - windowWidth);
   categoryScrollLeft.value = Math.round(Math.min(Math.max(centeredLeft, 0), maxScrollLeft));
 }
@@ -215,6 +236,7 @@ async function retry() {
 onLoad(() => updateNavigationLayout());
 onShow(async () => {
   updateNavigationLayout();
+  await userStore.initUserInfo();
   await loadConfig();
   const requestedChannel = uni.getStorageSync('campus-home-channel');
   if (requestedChannel) {
@@ -249,6 +271,9 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
 
         <button class="message-entry" aria-label="消息通知" @click="goMessages">
           <image src="/static/images/home-prototype/bell.svg" mode="aspectFit" />
+          <text v-if="notificationStore.unreadCount > 0" class="message-unread-badge">
+            {{ notificationStore.unreadCount > 99 ? '99+' : notificationStore.unreadCount }}
+          </text>
         </button>
       </view>
 
@@ -271,7 +296,7 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
               </text>
             </view>
             <text v-if="categoryTitleVisible(category)" class="category-title">
-              {{ category.title }}
+              {{ categoryDisplayTitle(category) }}
             </text>
           </button>
         </view>
@@ -317,14 +342,15 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
 
       <view v-else-if="state === 'empty'" class="empty-state">
         <view class="empty-visual">
-          <text>🔎</text>
+          <image src="/static/icons/ui/home-empty.svg" mode="aspectFit" />
         </view>
         <text class="empty-title">
           这里还没有新内容
         </text>
-        <text class="empty-copy">
-          做第一个分享校园生活的人吧，真实内容会优先推荐给同校同学
-        </text>
+        <view class="empty-copy">
+          <text>做第一个分享校园生活的人吧，真实内容</text>
+          <text>会优先推荐给同校同学</text>
+        </view>
         <button class="empty-action" @click="goPublish(activeCategory.publishType)">
           去发布
         </button>
@@ -360,18 +386,18 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
 
       <template v-else>
         <scroll-view
-          v-if="recommendationConfessions.length" class="confession-scroll"
+          v-if="recommendationNotes.length" class="confession-scroll"
           scroll-x :show-scrollbar="false" enhanced
         >
           <view class="confession-track">
             <CampusPostCard
-              v-for="post in recommendationConfessions" :key="post.id"
-              :post="post" variant="confession"
+              v-for="post in recommendationNotes" :key="post.id"
+              :post="post" variant="note"
             />
           </view>
         </scroll-view>
 
-        <view class="feed-grid" :class="{ 'confession-grid': activeCategoryKey === 'confession' }">
+        <view class="feed-grid compact-grid">
           <view class="feed-column">
             <CampusPostCard
               v-for="post in leftPosts" :key="post.id" :post="post"
@@ -544,6 +570,26 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   height: 48rpx;
 }
 
+.message-unread-badge {
+  position: absolute;
+  top: 5rpx;
+  right: -2rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 28rpx;
+  height: 28rpx;
+  padding: 0 7rpx;
+  border: 3rpx solid #d9fae5;
+  border-radius: 14rpx;
+  color: #fff;
+  background: #ff4747;
+  font-size: 18rpx;
+  font-weight: 600;
+  line-height: 25rpx;
+}
+
 .category-scroll {
   position: relative;
   z-index: 1;
@@ -555,8 +601,9 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
 .category-strip {
   display: inline-flex;
   height: 178rpx;
-  padding: 2rpx 15rpx 12rpx;
+  padding: 2rpx 30.77rpx 12rpx;
   align-items: flex-start;
+  column-gap: 18.59rpx;
 }
 
 .category-item {
@@ -564,7 +611,7 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   flex: 0 0 auto;
   align-items: center;
   justify-content: flex-start;
-  width: 150rpx;
+  width: 123.08rpx;
   height: 168rpx;
   padding: 0;
   flex-direction: column;
@@ -574,8 +621,8 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 102rpx;
-  height: 104rpx;
+  width: 84.62rpx;
+  height: 84.62rpx;
   border: 1rpx solid transparent;
   border-radius: 34rpx;
   transition:
@@ -598,21 +645,26 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
 }
 
 .category-image {
-  width: 102rpx;
-  height: 102rpx;
+  width: 84.62rpx;
+  height: 84.62rpx;
 }
 
 .category-title {
-  margin-top: 1rpx;
-  color: #303331;
-  font-size: 28rpx;
-  line-height: 40rpx;
+  width: 123.08rpx;
+  height: 30.77rpx;
+  margin-top: 15.38rpx;
+  color: #646464;
+  font-family: 'PingFang SC', sans-serif;
+  font-size: 26.92rpx;
+  font-weight: 500;
+  line-height: 30.77rpx;
+  text-align: center;
   white-space: nowrap;
 }
 
 .category-item.active .category-title {
-  color: #171a18;
-  font-weight: 650;
+  color: #1f1f1f;
+  font-weight: 500;
 }
 
 .notice-bar {
@@ -758,16 +810,6 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   gap: 38rpx;
 }
 
-.confession-grid :deep(.variant-confession) {
-  width: 100%;
-  height: 336rpx;
-  margin-bottom: 24rpx;
-}
-
-.confession-grid :deep(.confession-card) {
-  padding-left: 40rpx;
-}
-
 .feed-grid {
   display: grid;
   padding: 0 32rpx;
@@ -776,8 +818,14 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   align-items: start;
 }
 
+.feed-grid.compact-grid {
+  padding: 0 30.77rpx;
+  column-gap: 23.08rpx;
+  grid-template-columns: repeat(2, 332.69rpx);
+}
+
 .feed-list {
-  padding: 4rpx 30rpx 0;
+  padding: 4rpx 30.77rpx 0;
 }
 
 .feed-column {
@@ -854,24 +902,7 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   height: 170rpx;
 }
 
-.empty-visual::after {
-  position: absolute;
-  left: 34rpx;
-  bottom: 20rpx;
-  width: 140rpx;
-  height: 28rpx;
-  border-radius: 50%;
-  background: rgba(105, 115, 110, 0.08);
-  content: '';
-  filter: blur(7rpx);
-}
-
-.empty-visual text {
-  position: relative;
-  z-index: 1;
-  font-size: 112rpx;
-  transform: rotate(-10deg);
-}
+.empty-visual image { width: 176rpx; height: 176rpx; }
 
 .empty-title {
   color: #252927;
@@ -886,6 +917,7 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   font-size: 23rpx;
   line-height: 1.55;
 }
+.empty-copy text { display: block; }
 
 .empty-action {
   height: 61rpx;

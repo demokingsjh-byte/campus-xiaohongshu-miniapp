@@ -3,7 +3,10 @@ package cn.iocoder.yudao.module.campus.service.notification;
 import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.module.campus.controller.app.notification.vo.CampusNotificationRespVO;
+import cn.iocoder.yudao.module.infra.api.file.FileApi;
+import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -24,9 +27,11 @@ import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionU
 public class CampusNotificationServiceImpl implements CampusNotificationService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final FileApi fileApi;
 
-    public CampusNotificationServiceImpl(NamedParameterJdbcTemplate jdbcTemplate) {
+    public CampusNotificationServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi) {
         this.jdbcTemplate = jdbcTemplate;
+        this.fileApi = fileApi;
     }
 
     @Override
@@ -81,7 +86,12 @@ public class CampusNotificationServiceImpl implements CampusNotificationService 
     @Override
     public void createInteraction(Long recipientUserId, Long tenantId, Long actorUserId, String actorNickname,
                                   String eventType, String title, String content, String targetType, Long targetId) {
-        if (recipientUserId == null || actorUserId == null || recipientUserId.equals(actorUserId))
+        // 本人给自己内容点赞也属于“我的获赞”，需要生成真实明细供数量和列表共同使用。
+        // 其他本人触发的评论、回复等通知仍不重复提醒自己。
+        boolean selfLike = recipientUserId != null && recipientUserId.equals(actorUserId)
+                && ("LIKE".equals(eventType) || "COMMENT_LIKE".equals(eventType));
+        if (recipientUserId == null || actorUserId == null
+                || (recipientUserId.equals(actorUserId) && !selfLike))
             return;
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("userId", recipientUserId).addValue("tenantId", tenantId)
@@ -98,8 +108,13 @@ public class CampusNotificationServiceImpl implements CampusNotificationService 
     }
 
     private String selectSql() {
-        return "SELECT n.id, n.type, n.event_type, n.actor_nickname, n.title, n.content, n.create_time,"
-                + " n.read_time, n.target_type, n.target_id FROM campus_notification n"
+        return "SELECT n.id, n.type, n.event_type, n.actor_nickname, u.avatar AS actor_avatar,"
+                + " n.title, n.content, n.create_time, n.read_time, n.target_type, n.target_id,"
+                + " p.images_json AS target_images"
+                + " FROM campus_notification n LEFT JOIN campus_miniapp_user u"
+                + " ON u.id = n.actor_user_id AND u.deleted = b'0'"
+                + " LEFT JOIN campus_post p ON p.id = n.target_id"
+                + " AND n.target_type IN ('POST', 'PRODUCT') AND p.deleted = b'0'"
                 + " WHERE n.user_id = :userId AND n.deleted = b'0'";
     }
 
@@ -108,10 +123,27 @@ public class CampusNotificationServiceImpl implements CampusNotificationService 
         LocalDateTime createdAt = toLocalDateTime(row.get("create_time"));
         vo.setId(toLong(row.get("id"))); vo.setType(value(row, "type"));
         vo.setEventType(value(row, "event_type")); vo.setActorNickname(value(row, "actor_nickname"));
+        vo.setActorAvatar(refreshFileUrl(value(row, "actor_avatar")));
         vo.setTitle(value(row, "title")); vo.setContent(value(row, "content")); vo.setCreatedAt(createdAt);
         vo.setTime(relativeTime(createdAt)); vo.setRead(row.get("read_time") != null);
         vo.setTargetType(value(row, "target_type")); vo.setTargetId(toLongObject(row.get("target_id")));
+        vo.setTargetImage(refreshFileUrl(firstImage(value(row, "target_images"))));
         return vo;
+    }
+
+    private String firstImage(String imagesJson) {
+        if (StrUtil.isBlank(imagesJson)) return "";
+        List<String> images = JsonUtils.parseObjectQuietly(imagesJson, new TypeReference<List<String>>() { });
+        return images == null || images.isEmpty() ? "" : StrUtil.blankToDefault(images.get(0), "");
+    }
+
+    private String refreshFileUrl(String url) {
+        if (StrUtil.isBlank(url)) return "";
+        try {
+            return fileApi.presignGetUrl(url, null);
+        } catch (RuntimeException ex) {
+            return url;
+        }
     }
 
     private static void requireUserId(Long userId) {

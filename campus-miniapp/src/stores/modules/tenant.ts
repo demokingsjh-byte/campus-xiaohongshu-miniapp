@@ -13,6 +13,7 @@ import {
   setCampusPostLike,
 } from '@/services/api/content';
 import { clearCampusTenant, getCampusTenant, setCampusTenant } from '@/utils/tenant';
+import { resolveCampusAvatar, resolveCampusMediaUrl } from '@/utils/avatar';
 
 export type PublishPostInput = CampusPostCreateParams;
 
@@ -52,6 +53,16 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
   let postsRequestKey = '';
   let latestPostsRequestId = 0;
 
+  function normalizePostMedia(post: CampusPost): CampusPost {
+    const images = (post.images || []).map(resolveCampusMediaUrl).filter(Boolean);
+    return {
+      ...post,
+      avatar: resolveCampusAvatar(post.avatar),
+      images,
+      coverImage: resolveCampusMediaUrl(post.coverImage || images[0]),
+    };
+  }
+
   function replacePost(updated: CampusPost) {
     const replace = (list: CampusPost[]) => {
       const index = list.findIndex(item => item.id === updated.id);
@@ -75,7 +86,7 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
     loading.value = true;
     const request = (async () => {
       const page = await getCampusPostPage(requestParams);
-      const nextPosts = page.list || [];
+      const nextPosts = (page.list || []).map(normalizePostMedia);
       if (requestId === latestPostsRequestId)
         posts.value = nextPosts;
       return nextPosts;
@@ -93,18 +104,22 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
 
   async function loadMyPosts() {
     const page = await getMyCampusPostPage({ pageNo: 1, pageSize: 100 });
-    publishedPosts.value = page.list || [];
+    // “我的发布”接口返回的每一条内容都属于当前用户。即使详情接口暂时
+    // 没有返回 owner，也保留这份可靠的本人标记供详情页判断。
+    publishedPosts.value = (page.list || []).map(post => ({ ...normalizePostMedia(post), owner: true }));
     return publishedPosts.value;
   }
 
   async function loadFavorites() {
     const page = await getFavoriteCampusPostPage({ pageNo: 1, pageSize: 100 });
-    favoritePosts.value = page.list || [];
+    favoritePosts.value = (page.list || []).map(normalizePostMedia);
     return favoritePosts.value;
   }
 
   async function publishPost(input: PublishPostInput) {
-    const created = await createCampusPost(input);
+    // 发布接口成功返回的内容必然是当前用户创建的。
+    const createdResult = await createCampusPost(input);
+    const created = { ...normalizePostMedia(createdResult), owner: true };
     if (created.status === 1)
       posts.value = [created, ...posts.value.filter(item => item.id !== created.id)];
     publishedPosts.value = [created, ...publishedPosts.value.filter(item => item.id !== created.id)];
@@ -113,7 +128,7 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
   }
 
   async function loadPost(id: number) {
-    const post = await getCampusPost(id);
+    const post = normalizePostMedia(await getCampusPost(id));
     currentPost.value = post;
     replacePost(post);
     return post;
@@ -126,13 +141,13 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
   }
 
   async function setPostLike(id: number, active: boolean) {
-    const updated = await setCampusPostLike(id, active);
+    const updated = normalizePostMedia(await setCampusPostLike(id, active));
     replacePost(updated);
     return updated;
   }
 
   async function setPostCollect(id: number, active: boolean) {
-    const updated = await setCampusPostCollect(id, active);
+    const updated = normalizePostMedia(await setCampusPostCollect(id, active));
     replacePost(updated);
     if (active && !favoritePosts.value.some(item => item.id === id))
       favoritePosts.value.unshift(updated);
