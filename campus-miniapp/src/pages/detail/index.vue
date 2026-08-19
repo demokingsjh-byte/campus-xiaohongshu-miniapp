@@ -2,17 +2,18 @@
 import type { CampusPostComment } from '@/services/api/content';
 import StatePanel from '@/components/StatePanel/index.vue';
 import { campusPosts } from '@/mock/campus';
-import { createCampusContactRequest, createCampusPostComment, deleteCampusComment, getCampusPostCommentPage, reportCampusComment, reportCampusPost, setCampusCommentLike } from '@/services/api/content';
+import { createCampusContactRequest, createCampusPostComment, deleteCampusComment, getCampusPostCommentPage, getCampusUserFollowStatus, migrateLocalCampusFollows, reportCampusComment, reportCampusPost, setCampusCommentLike, setCampusUserFollow } from '@/services/api/content';
 import { uploadCampusCommentImage } from '@/services/api/file';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { resolveCampusAvatar, resolveCampusMediaUrl } from '@/utils/avatar';
-import { isCampusFollowing, recordCampusHistory, setCampusFollowing } from '@/utils/personalRecords';
+import { recordCampusHistory } from '@/utils/personalRecords';
 
 const postId = ref(2001);
 const liked = ref(false);
 const collected = ref(false);
 const followed = ref(false);
+const followBusy = ref(false);
 const interactionBusy = ref(false);
 const pageState = ref<'loading' | 'content' | 'error'>('loading');
 const comment = ref('');
@@ -157,7 +158,17 @@ onLoad(async (query) => {
     }
     liked.value = Boolean(loaded.liked);
     collected.value = Boolean(loaded.collected);
-    followed.value = isCampusFollowing(userStore.userInfo?.id, loaded);
+    followed.value = false;
+    const targetUserId = Number(loaded.userId || 0);
+    const currentUserId = Number(userStore.userInfo?.id || 0);
+    if (userStore.loggedIn && targetUserId > 0 && targetUserId !== currentUserId) {
+      try {
+        await migrateLocalCampusFollows(currentUserId);
+        followed.value = await getCampusUserFollowStatus(targetUserId);
+      } catch {
+        // 关注状态加载失败不阻塞帖子详情，用户点击时会再次请求服务端。
+      }
+    }
     if (userStore.loggedIn)
       recordCampusHistory(userStore.userInfo?.id, loaded);
     pageState.value = 'content';
@@ -536,12 +547,24 @@ async function toggleCollect() {
     interactionBusy.value = false;
   }
 }
-function toggleFollow() {
-  if (!ensureLogin())
+async function toggleFollow() {
+  if (!ensureLogin() || followBusy.value)
     return;
-  followed.value = !followed.value;
-  setCampusFollowing(userStore.userInfo?.id, post.value, followed.value);
-  uni.showToast({ title: followed.value ? '已关注' : '已取消关注', icon: 'none' });
+  const targetUserId = Number(post.value.userId || 0);
+  if (!targetUserId) {
+    uni.showToast({ title: '该用户信息不完整，暂时无法关注', icon: 'none' });
+    return;
+  }
+  followBusy.value = true;
+  const active = !followed.value;
+  try {
+    followed.value = await setCampusUserFollow(targetUserId, active);
+    uni.showToast({ title: followed.value ? '已关注' : '已取消关注', icon: 'none' });
+  } catch {
+    uni.showToast({ title: '关注操作失败，请重试', icon: 'none' });
+  } finally {
+    followBusy.value = false;
+  }
 }
 function managePost() {
   uni.showActionSheet({

@@ -188,6 +188,9 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
         namedParameterJdbcTemplate.update("UPDATE campus_post_interaction"
                 + " SET updater = '', update_time = NOW(), deleted = b'1'"
                 + " WHERE user_id = :userId AND deleted = b'0'", params);
+        namedParameterJdbcTemplate.update("UPDATE campus_user_follow"
+                + " SET updater = '', update_time = NOW(), deleted = b'1'"
+                + " WHERE (user_id = :userId OR follow_user_id = :userId) AND deleted = b'0'", params);
         namedParameterJdbcTemplate.update("UPDATE campus_post_comment"
                 + " SET content = '', updater = '', update_time = NOW(), deleted = b'1'"
                 + " WHERE user_id = :userId AND deleted = b'0'", params);

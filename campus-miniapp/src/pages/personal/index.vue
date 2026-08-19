@@ -1,16 +1,15 @@
 <script lang="ts" setup>
 import type { CampusNotification } from '@/services/api/notification';
+import type { CampusFollowUser } from '@/services/api/content';
 import StatePanel from '@/components/StatePanel/index.vue';
+import { getCampusFollowingPage, migrateLocalCampusFollows, setCampusUserFollow } from '@/services/api/content';
 import { getCampusNotificationPage } from '@/services/api/notification';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { resolveCampusAvatar, resolveCampusMediaUrl } from '@/utils/avatar';
 import {
   clearCampusHistory,
-  getCampusFollowingRecords,
   getCampusHistoryRecords,
-  removeCampusFollowingRecord,
-  type CampusFollowingRecord,
   type CampusHistoryRecord,
 } from '@/utils/personalRecords';
 
@@ -26,7 +25,7 @@ const followingTab = ref<'全部' | '互关' | '关注'>('全部');
 const likeTab = ref<'全部' | '赞过' | '商品获赞' | '评论获赞' | '我的评论'>('全部');
 const followingTabs = ['全部', '互关', '关注'] as const;
 const likeTabs = ['全部', '赞过', '商品获赞', '评论获赞', '我的评论'] as const;
-const followingRecords = ref<CampusFollowingRecord[]>([]);
+const followingRecords = ref<CampusFollowUser[]>([]);
 const historyRecords = ref<CampusHistoryRecord[]>([]);
 const notifications = ref<CampusNotification[]>([]);
 const statusBarHeight = ref(0);
@@ -40,7 +39,7 @@ const titles: Record<PageMode, string> = {
 
 const filteredFollowing = computed(() => {
   if (followingTab.value === '互关')
-    return [];
+    return followingRecords.value.filter(item => item.mutual);
   const normalized = keyword.value.trim().toLocaleLowerCase();
   return followingRecords.value.filter(item => !normalized || item.nickname.toLocaleLowerCase().includes(normalized));
 });
@@ -84,7 +83,9 @@ async function loadData() {
       return;
     }
     if (mode.value === 'following') {
-      followingRecords.value = getCampusFollowingRecords(userStore.userInfo?.id);
+      await migrateLocalCampusFollows(userStore.userInfo?.id);
+      const page = await getCampusFollowingPage({ pageNo: 1, pageSize: 100 });
+      followingRecords.value = page.list || [];
     } else if (mode.value === 'history') {
       historyRecords.value = getCampusHistoryRecords(userStore.userInfo?.id);
     } else {
@@ -139,7 +140,7 @@ function followingTabLabel(tab: typeof followingTabs[number]) {
   if (tab === '全部')
     return `全部 ${followingRecords.value.length}`;
   if (tab === '互关')
-    return '互关(0)';
+    return `互关(${followingRecords.value.filter(item => item.mutual).length})`;
   return `关注(${followingRecords.value.length})`;
 }
 
@@ -147,9 +148,14 @@ function likeTabLabel(tab: typeof likeTabs[number]) {
   return `${tab}(${likeTabCounts.value[tab] || 0})`;
 }
 
-function unfollow(item: CampusFollowingRecord) {
-  followingRecords.value = removeCampusFollowingRecord(userStore.userInfo?.id, item.key);
-  uni.showToast({ title: '已取消关注', icon: 'none' });
+async function unfollow(item: CampusFollowUser) {
+  try {
+    await setCampusUserFollow(item.userId, false);
+    followingRecords.value = followingRecords.value.filter(record => record.userId !== item.userId);
+    uni.showToast({ title: '已取消关注', icon: 'none' });
+  } catch {
+    uni.showToast({ title: '取消关注失败，请重试', icon: 'none' });
+  }
 }
 
 function clearHistory() {
@@ -243,7 +249,7 @@ function formatDate(timestamp: number) {
       />
 
       <view v-else-if="mode === 'following' && filteredFollowing.length" class="record-card following-list">
-        <view v-for="item in filteredFollowing" :key="item.key" class="following-row">
+        <view v-for="item in filteredFollowing" :key="item.userId" class="following-row">
           <image class="following-avatar" :src="resolveCampusAvatar(item.avatar)" mode="aspectFill" />
           <view class="record-main">
             <text class="record-title">{{ item.nickname }}</text>

@@ -2,11 +2,12 @@
 import type { CampusTradeOrder } from '@/services/api/content';
 import PrototypeTabBar from '@/components/PrototypeTabBar/index.vue';
 import { getDefaultTenant } from '@/mock/campus';
-import { getAllCampusTradeOrders } from '@/services/api/content';
+import { getAllCampusTradeOrders, getCampusFollowingCount, migrateLocalCampusFollows } from '@/services/api/content';
 import { getCampusNotificationPage } from '@/services/api/notification';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { DEFAULT_CAMPUS_AVATAR, resolveCampusAvatar } from '@/utils/avatar';
+import { getCache, setCache } from '@/utils/cache';
 import { getCampusFollowingRecords, getCampusHistoryRecords } from '@/utils/personalRecords';
 
 const userStore = useUserStore();
@@ -28,10 +29,38 @@ const followingCount = ref(0);
 const historyCount = ref(0);
 const certificationNote = computed(() => loggedIn.value ? (userStore.profileCompleted ? '已认证' : '待完善') : '登录后认证');
 const myOrders = ref<CampusTradeOrder[]>([]);
+const sellerOrders = ref<CampusTradeOrder[]>([]);
 const orderStatusCounts = computed(() => myOrders.value.reduce<Record<number, number>>((counts, order) => {
   counts[order.status] = (counts[order.status] || 0) + 1;
   return counts;
 }, {}));
+
+interface TradeBadgeCounts {
+  sold: number
+  bought: number
+  pending: number
+  paid: number
+}
+
+type SeenTradeBadge = 'sold' | 'bought' | 'paid';
+type TradeBadgeOrderIds = Record<keyof TradeBadgeCounts, number[]>;
+type TradeBadgeSeenIds = Record<SeenTradeBadge, number[]>;
+
+interface TradeBadgeCacheState {
+  current: TradeBadgeOrderIds
+  seen: TradeBadgeSeenIds
+}
+
+const EMPTY_TRADE_BADGES: TradeBadgeCounts = { sold: 0, bought: 0, pending: 0, paid: 0 };
+function emptyTradeBadgeCacheState(): TradeBadgeCacheState {
+  return {
+    current: { sold: [], bought: [], pending: [], paid: [] },
+    seen: { sold: [], bought: [], paid: [] },
+  };
+}
+
+const tradeBadgeCacheState = ref<TradeBadgeCacheState>(emptyTradeBadgeCacheState());
+const tradeBadgeCounts = ref<TradeBadgeCounts>({ ...EMPTY_TRADE_BADGES });
 const statusBarHeight = ref(0);
 const navigationStyle = computed(() => ({
   '--status-bar-height': `${statusBarHeight.value}px`,
@@ -71,24 +100,119 @@ onShow(async () => {
   }
   if (userStore.loggedIn) {
     syncProfileAvatar();
-    try {
-      await Promise.all([
-        contentStore.loadMyPosts(),
-        contentStore.loadFavorites(),
-        loadMyOrders(),
-        loadReceivedLikeCount(),
-      ]);
+    restoreTradeBadgeCache();
+    // 旧体验版后端可能尚未发布关注接口。迁移和各数据块独立加载，
+    // 避免某一个可选接口失败时把整个“我的”页面判定为加载失败。
+    await migrateLocalCampusFollows(userStore.userInfo?.id).catch(() => undefined);
+    const [postsResult, favoritesResult, ordersResult, likesResult, followingResult] = await Promise.allSettled([
+      contentStore.loadMyPosts(),
+      contentStore.loadFavorites(),
+      loadMyOrders(),
+      loadReceivedLikeCount(),
+      getCampusFollowingCount(),
+    ]);
+    if (ordersResult.status === 'fulfilled')
+      syncTradeBadgeCacheFromOrders();
+
+    if (followingResult.status === 'fulfilled') {
+      const serverFollowingCount = followingResult.value;
+      followingCount.value = Number(serverFollowingCount || 0);
+    } else {
+      // 部署切换期间回退到当前账号的旧本地记录；服务端上线后会自动迁移并覆盖。
       followingCount.value = getCampusFollowingRecords(userStore.userInfo?.id).length;
-      historyCount.value = getCampusHistoryRecords(userStore.userInfo?.id).length;
-    } catch {
-      uni.showToast({ title: '个人数据加载失败，请稍后重试', icon: 'none' });
     }
+    historyCount.value = getCampusHistoryRecords(userStore.userInfo?.id).length;
+
+    const primaryResults = [postsResult, favoritesResult, ordersResult, likesResult];
+    if (primaryResults.every(result => result.status === 'rejected'))
+      uni.showToast({ title: '个人数据加载失败，请稍后重试', icon: 'none' });
   }
 });
 
 async function loadMyOrders() {
-  const result = await getAllCampusTradeOrders('buyer');
-  myOrders.value = result.list;
+  const [buyerResult, sellerResult] = await Promise.all([
+    getAllCampusTradeOrders('buyer'),
+    getAllCampusTradeOrders('seller'),
+  ]);
+  myOrders.value = buyerResult.list;
+  sellerOrders.value = sellerResult.list;
+}
+
+function tradeBadgeCacheKey() {
+  return `campus-mine-trade-badges-v2:${userStore.userInfo?.id || 'guest'}`;
+}
+
+function normalizeOrderIds(value: unknown): number[] {
+  if (!Array.isArray(value))
+    return [];
+  return [...new Set(value.map(Number).filter(item => Number.isFinite(item) && item > 0))].slice(-500);
+}
+
+function normalizeTradeBadgeCacheState(value?: Partial<TradeBadgeCacheState> | null): TradeBadgeCacheState {
+  return {
+    current: {
+      sold: normalizeOrderIds(value?.current?.sold),
+      bought: normalizeOrderIds(value?.current?.bought),
+      pending: normalizeOrderIds(value?.current?.pending),
+      paid: normalizeOrderIds(value?.current?.paid),
+    },
+    seen: {
+      sold: normalizeOrderIds(value?.seen?.sold),
+      bought: normalizeOrderIds(value?.seen?.bought),
+      paid: normalizeOrderIds(value?.seen?.paid),
+    },
+  };
+}
+
+function refreshTradeBadgeCounts() {
+  const { current, seen } = tradeBadgeCacheState.value;
+  const unreadCount = (type: SeenTradeBadge) => {
+    const seenIds = new Set(seen[type]);
+    return current[type].filter(id => !seenIds.has(id)).length;
+  };
+  tradeBadgeCounts.value = {
+    sold: unreadCount('sold'),
+    bought: unreadCount('bought'),
+    // 待支付是当前状态数量，点击查看也不能清除。
+    pending: current.pending.length,
+    paid: unreadCount('paid'),
+  };
+}
+
+function saveTradeBadgeCache() {
+  refreshTradeBadgeCounts();
+  setCache(tradeBadgeCacheKey(), tradeBadgeCacheState.value);
+}
+
+function restoreTradeBadgeCache() {
+  try {
+    tradeBadgeCacheState.value = normalizeTradeBadgeCacheState(getCache<TradeBadgeCacheState>(tradeBadgeCacheKey()));
+    refreshTradeBadgeCounts();
+  } catch {
+    tradeBadgeCacheState.value = emptyTradeBadgeCacheState();
+    tradeBadgeCounts.value = { ...EMPTY_TRADE_BADGES };
+  }
+}
+
+function syncTradeBadgeCacheFromOrders() {
+  tradeBadgeCacheState.value.current = {
+    // 卖家订单付款后即产生“已卖出”提醒，完成后沿用同一订单 ID，不重复提醒。
+    sold: sellerOrders.value.filter(order => order.status === 1 || order.status === 2).map(order => order.id),
+    bought: myOrders.value.filter(order => order.status === 2).map(order => order.id),
+    pending: myOrders.value.filter(order => order.status === 0).map(order => order.id),
+    paid: myOrders.value.filter(order => order.status === 1).map(order => order.id),
+  };
+  saveTradeBadgeCache();
+}
+
+function markTradeBadgeSeen(type: SeenTradeBadge) {
+  const state = tradeBadgeCacheState.value;
+  state.seen[type] = normalizeOrderIds([...state.seen[type], ...state.current[type]]);
+  saveTradeBadgeCache();
+}
+
+function displayTradeBadge(value: number) {
+  return value > 99 ? '99+' : `${value}`;
 }
 
 async function loadReceivedLikeCount() {
@@ -138,12 +262,15 @@ function handleMenu(action: string, requiresLogin: boolean) {
     return;
   }
   if (action === 'orders') {
+    markTradeBadgeSeen('bought');
     uni.navigateTo({ url: '/pages/orders/index' });
   } else if (action === 'sold') {
+    markTradeBadgeSeen('sold');
     uni.navigateTo({ url: '/pages/orders/index?role=seller' });
   } else if (action === 'pending') {
     uni.navigateTo({ url: '/pages/orders/index?role=buyer&status=0' });
   } else if (action === 'paid') {
+    markTradeBadgeSeen('paid');
     uni.navigateTo({ url: '/pages/orders/index?role=buyer&status=1' });
   } else if (action === 'following') {
     uni.navigateTo({ url: '/pages/personal/index?mode=following' });
@@ -417,19 +544,22 @@ function handleMenu(action: string, requiresLogin: boolean) {
         </view>
         <view @click="handleMenu('sold', true)">
           <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-sold-clean.svg" mode="aspectFit" />
+          <text v-if="tradeBadgeCounts.sold" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.sold) }}</text>
           <text>已卖出</text>
         </view>
         <view @click="handleMenu('orders', true)">
           <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-bought-clean.svg" mode="aspectFit" />
+          <text v-if="tradeBadgeCounts.bought" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.bought) }}</text>
           <text>已买到</text>
         </view>
         <view @click="handleMenu('pending', true)">
           <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-pending-clean.svg" mode="aspectFit" />
-          <text v-if="orderStatusCounts[0]" class="prototype-trade-badge">{{ orderStatusCounts[0] > 99 ? '99+' : orderStatusCounts[0] }}</text>
+          <text v-if="tradeBadgeCounts.pending" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.pending) }}</text>
           <text>待支付</text>
         </view>
         <view @click="handleMenu('paid', true)">
           <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-paid-clean.svg" mode="aspectFit" />
+          <text v-if="tradeBadgeCounts.paid" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.paid) }}</text>
           <text>已支付</text>
         </view>
       </view>

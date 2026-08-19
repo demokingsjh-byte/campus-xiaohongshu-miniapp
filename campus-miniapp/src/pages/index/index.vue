@@ -92,8 +92,34 @@ function categoryDisplayTitle(category: CampusHomeCategory) {
   } as Record<string, string>)[category.key] || category.title;
 }
 
+function postCreatedTimestamp(post: CampusPost) {
+  if (post.createTime) {
+    const normalized = String(post.createTime).replace(' ', 'T');
+    const timestamp = Date.parse(normalized);
+    if (Number.isFinite(timestamp))
+      return timestamp;
+  }
+  const relative = String(post.time || '').trim();
+  const relativeMatch = relative.match(/^(\d+)\s*(分钟|小时|天)前$/);
+  if (relativeMatch) {
+    const value = Number(relativeMatch[1]);
+    const unitMs = relativeMatch[2] === '分钟'
+      ? 60 * 1000
+      : relativeMatch[2] === '小时'
+        ? 60 * 60 * 1000
+        : 24 * 60 * 60 * 1000;
+    return Date.now() - value * unitMs;
+  }
+  const timestamp = Date.parse(relative.replace(' ', 'T'));
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+// 推荐页便签只展示纯文字帖子，并按发布时间从新到旧排列。
 const recommendationNotes = computed(() => activeCategoryKey.value === 'recommend'
-  ? visiblePosts.value.filter(post => !postHasImage(post))
+  ? visiblePosts.value
+      .filter(post => !postHasImage(post))
+      .slice()
+      .sort((left, right) => postCreatedTimestamp(right) - postCreatedTimestamp(left) || right.id - left.id)
   : []);
 const gridPosts = computed(() => activeCategoryKey.value === 'recommend'
   ? visiblePosts.value.filter(postHasImage)
@@ -284,7 +310,8 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
         <view class="category-strip">
           <button
             v-for="category in categories" :key="category.key" class="category-item"
-            :class="{ active: activeCategoryKey === category.key }" @click="chooseCategory(category)"
+            :class="{ active: activeCategoryKey === category.key }" hover-class="none"
+            @click="chooseCategory(category)"
           >
             <view v-if="categoryIconVisible(category)" class="category-icon-wrap">
               <image
@@ -566,8 +593,10 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
 }
 
 .message-entry > image {
-  width: 40rpx;
-  height: 48rpx;
+  width: 32rpx;
+  height: 34rpx;
+  transform: rotate(8.3deg);
+  transform-origin: center;
 }
 
 .message-unread-badge {
@@ -614,7 +643,15 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   width: 123.08rpx;
   height: 168rpx;
   padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  line-height: normal;
   flex-direction: column;
+}
+
+.category-item::after {
+  border: 0;
 }
 
 .category-icon-wrap {

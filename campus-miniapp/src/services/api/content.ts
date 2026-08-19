@@ -1,8 +1,24 @@
 import type { CampusPost } from '@/mock/campus';
 import { request } from '@/utils/http';
+import { getCampusFollowingRecords } from '@/utils/personalRecords';
 
 export interface CampusPostPage {
   list: CampusPost[]
+  total: number
+}
+
+export interface CampusFollowUser {
+  userId: number
+  nickname: string
+  avatar?: string
+  schoolName?: string
+  campusName?: string
+  mutual?: boolean
+  followedAt?: string
+}
+
+export interface CampusFollowPage {
+  list: CampusFollowUser[]
   total: number
 }
 
@@ -143,6 +159,64 @@ export interface CampusTradePaymentStatus {
 }
 
 const POST_BASE = '/campus/post';
+const FOLLOW_BASE = '/campus/follow';
+
+export function setCampusUserFollow(targetUserId: number, active: boolean) {
+  return request.Put<boolean>(`${FOLLOW_BASE}/set`, {}, {
+    params: { targetUserId, active },
+    meta: { silentError: true },
+  });
+}
+
+export function getCampusUserFollowStatus(targetUserId: number) {
+  return request.Get<boolean>(`${FOLLOW_BASE}/status`, {
+    params: { targetUserId },
+    cacheFor: 0,
+    meta: { silentError: true },
+  });
+}
+
+export function getCampusFollowingCount() {
+  return request.Get<number>(`${FOLLOW_BASE}/count`, {
+    cacheFor: 0,
+    meta: { silentError: true },
+  });
+}
+
+export function getCampusFollowingPage(params: { pageNo?: number, pageSize?: number } = {}) {
+  return request.Get<CampusFollowPage>(`${FOLLOW_BASE}/page`, {
+    params: { pageNo: 1, pageSize: 100, ...params },
+    cacheFor: 0,
+    meta: { silentError: true },
+  });
+}
+
+/** 首次升级时把旧版本保存在本机的关注关系迁移到服务端。 */
+export async function migrateLocalCampusFollows(currentUserId?: number) {
+  const userId = Number(currentUserId || 0);
+  if (!userId)
+    return;
+  const marker = `campus-follow-server-migrated-v1:${userId}`;
+  if (uni.getStorageSync(marker))
+    return;
+  const records = [
+    ...getCampusFollowingRecords(userId),
+    ...getCampusFollowingRecords(undefined),
+  ];
+  const targetIds = [...new Set(records
+    .map(item => Number(item.userId || 0))
+    .filter(targetUserId => targetUserId > 0 && targetUserId !== userId))];
+  let completed = true;
+  for (const targetUserId of targetIds) {
+    try {
+      await setCampusUserFollow(targetUserId, true);
+    } catch {
+      completed = false;
+    }
+  }
+  if (completed)
+    uni.setStorageSync(marker, Date.now());
+}
 
 export function createCampusPost(params: CampusPostCreateParams) {
   return request.Post<CampusPost>(`${POST_BASE}/create`, params);

@@ -377,10 +377,10 @@ function openPolicy(type: 'privacy' | 'agreement') {
           仅在你主动授权后获取，并持久化绑定到当前校园账号
         </view>
       </view>
-      <view class="form-section-head">
-        <text>基本资料</text><text>请填写真实校园信息</text>
-      </view>
       <view class="profile-form">
+        <view class="form-section-head">
+          <text>基本资料</text><text>请填写真实校园信息</text>
+        </view>
         <label>
           <view class="field-name">
             <image src="/static/icons/ui/profile.svg" mode="aspectFit" /><text>昵称</text>
@@ -1086,7 +1086,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .login-nav {
   height: 112rpx;
   color: #202321;
-  font-size: 34rpx;
+  font-size: 30.77rpx;
   font-weight: 600;
 }
 
@@ -1116,14 +1116,14 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .profile-heading {
   margin-top: 0;
   color: #202321;
-  font-size: 38rpx;
+  font-size: 30.77rpx;
   font-weight: 600;
 }
 
 .profile-summary {
   margin-top: 20rpx;
   color: #969a97;
-  font-size: 27rpx;
+  font-size: 23.08rpx;
 }
 
 .avatar-card,
@@ -1165,14 +1165,14 @@ function openPolicy(type: 'privacy' | 'agreement') {
 
 .avatar-title {
   color: #202321;
-  font-size: 29rpx;
+  font-size: 26.92rpx;
   font-weight: 600;
 }
 
 .avatar-description {
   margin-top: 18rpx;
   color: #969a97;
-  font-size: 25rpx;
+  font-size: 23.08rpx;
 }
 
 .wechat-avatar-button {
@@ -1183,7 +1183,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   color: #14200a;
   background: #95f51f;
   box-shadow: none;
-  font-size: 28rpx;
+  font-size: 23.08rpx;
   font-weight: 600;
 }
 
@@ -1194,11 +1194,11 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .avatar-consent-tip {
   padding: 16rpx 20rpx 24rpx;
   color: #999d9a;
-  font-size: 21rpx;
+  font-size: 19.23rpx;
 }
 
 .phone-card {
-  margin-bottom: 32rpx;
+  margin-bottom: 24rpx;
   padding: 28rpx 24rpx 24rpx;
 }
 
@@ -1212,14 +1212,14 @@ function openPolicy(type: 'privacy' | 'agreement') {
 
 .phone-title {
   color: #202321;
-  font-size: 30rpx;
+  font-size: 26.92rpx;
   font-weight: 600;
 }
 
 .phone-description {
   margin-top: 16rpx;
   color: #969a97;
-  font-size: 25rpx;
+  font-size: 23.08rpx;
 }
 
 .phone-button {
@@ -1229,7 +1229,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   border-radius: 28rpx;
   color: #202321;
   background: #f4ffe9;
-  font-size: 27rpx;
+  font-size: 23.08rpx;
   font-weight: 550;
 }
 
@@ -1240,31 +1240,30 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .form-section-head {
   margin: 0;
   padding: 26rpx 24rpx 18rpx;
-  border-radius: 32rpx 32rpx 0 0;
   background: #fff;
 }
 
 .form-section-head text:first-child {
   color: #202321;
-  font-size: 31rpx;
+  font-size: 26.92rpx;
   font-weight: 600;
 }
 
 .form-section-head text:last-child {
   color: #ff4d55;
-  font-size: 23rpx;
+  font-size: 19.23rpx;
 }
 
 .profile-form {
-  border-radius: 0 0 32rpx 32rpx;
+  border-radius: 32rpx;
 }
 
 .profile-form label {
-  min-height: 108rpx;
+  min-height: 96rpx;
   padding: 0 24rpx;
   border-bottom: 0;
   color: #202321;
-  font-size: 28rpx;
+  font-size: 26.92rpx;
   font-weight: 550;
 }
 
@@ -1288,12 +1287,13 @@ function openPolicy(type: 'privacy' | 'agreement') {
   color: #969a97;
   background: transparent;
   box-shadow: none;
-  font-size: 27rpx;
+  font-size: 23.08rpx;
   font-weight: 500;
 }
 
 .picker text {
   color: #969a97;
+  font-size: 26.92rpx;
 }
 
 .wechat-btn {
@@ -1310,7 +1310,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   color: #14200a;
   background: #95f51f;
   box-shadow: none;
-  font-size: 30rpx;
+  font-size: 26.92rpx;
   font-weight: 600;
 }
 

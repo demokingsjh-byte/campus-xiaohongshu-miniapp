@@ -76,6 +76,11 @@ const fallbackEmoji = computed(() => ({
 const isFreshIdle = computed(() => props.post.tags?.some(tag => /全新|未拆|九成新/.test(tag)) || false);
 // “想要”使用真实点赞数，不再用浏览量或默认值补数。
 const wantCount = computed(() => Number(props.post.likes || 0));
+// 便签热度只汇总真实互动数据，不使用人为权重或固定假数据。
+const hotCount = computed(() => ['views', 'likes', 'collects', 'comments'].reduce((total, key) => {
+  const value = Number(props.post[key as keyof CampusPost] || 0);
+  return total + (Number.isFinite(value) ? Math.max(0, value) : 0);
+}, 0));
 
 function openDetail(id: number) {
   const ownerQuery = props.ownerContext || props.post.owner === true ? '&mine=1' : '';
@@ -99,7 +104,7 @@ function openDetail(id: number) {
     role="button"
     :aria-label="`${post.title}，查看详情`" @click="openDetail(post.id)"
   >
-    <template v-if="displayVariant === 'confession' && !hasImage">
+    <template v-if="isNoteCard || (displayVariant === 'confession' && !hasImage)">
       <view class="confession-card">
         <image
           class="notebook-hole notebook-hole-top"
@@ -125,9 +130,12 @@ function openDetail(id: number) {
           </text>
         </view>
         <view class="confession-bottom">
-          <view class="confession-note-stamp">
-            <view class="stamp-sheet" />
-            <view class="stamp-fold" />
+          <image
+            class="confession-note-quote"
+            src="/static/images/home-prototype/quote.png" mode="aspectFit"
+          />
+          <view v-if="isNoteCard" class="note-heat">
+            <text>🔥</text><text>热度 {{ hotCount }}</text>
           </view>
           <view v-if="showConfessionAction" class="confession-action" @click.stop="openDetail(post.id)">
             <text>去表白</text><text class="confession-action-heart">♥</text>
@@ -748,32 +756,25 @@ function openDetail(id: number) {
   margin-top: auto;
 }
 
-.confession-note-stamp {
-  position: relative;
-  overflow: hidden;
-  width: 54rpx;
-  height: 48rpx;
-  border: 3rpx dotted #e7c9dc;
-  background: #fff8fc;
-  box-sizing: border-box;
+.confession-note-quote {
+  width: 50rpx;
+  height: 38.46rpx;
+  opacity: 1;
 }
 
-.stamp-sheet {
-  position: absolute;
-  right: 4rpx;
-  bottom: 3rpx;
-  width: 34rpx;
-  height: 30rpx;
-  background: repeating-linear-gradient(90deg, #f8d9ea 0 7rpx, #fff3fa 7rpx 13rpx);
+.note-heat {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 38.46rpx;
+  margin-left: auto;
+  color: #8b8b8b;
+  font-size: 23.08rpx;
+  line-height: 26.92rpx;
 }
 
-.stamp-fold {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 12rpx;
-  height: 12rpx;
-  background: linear-gradient(135deg, transparent 50%, #e7c9dc 51%);
+.note-heat text + text {
+  margin-left: 6rpx;
 }
 
 .confession-action {
