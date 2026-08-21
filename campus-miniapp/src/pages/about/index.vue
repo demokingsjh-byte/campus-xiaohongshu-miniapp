@@ -286,8 +286,10 @@ function handleMenu(action: string, requiresLogin: boolean) {
     uni.navigateTo({ url: '/pages/search/index?favorites=1' });
   } else if (action === 'profile') {
     goLogin('edit');
-  } else {
+  } else if (action === 'settings') {
     uni.navigateTo({ url: '/pages/settings/index' });
+  } else if (action === 'help') {
+    uni.navigateTo({ url: '/pages/help/index' });
   }
 }
 </script>
@@ -539,27 +541,37 @@ function handleMenu(action: string, requiresLogin: boolean) {
       </view>
       <view class="prototype-trade-grid">
         <view @click="handleMenu('published', true)">
-          <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-published-clean.svg" mode="aspectFit" />
+          <view class="prototype-trade-icon-wrap">
+            <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-published-clean.svg" mode="aspectFit" />
+          </view>
           <text>已发布</text>
         </view>
         <view @click="handleMenu('sold', true)">
-          <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-sold-clean.svg" mode="aspectFit" />
-          <text v-if="tradeBadgeCounts.sold" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.sold) }}</text>
+          <view class="prototype-trade-icon-wrap">
+            <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-sold-clean.svg" mode="aspectFit" />
+            <text v-if="tradeBadgeCounts.sold" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.sold) }}</text>
+          </view>
           <text>已卖出</text>
         </view>
         <view @click="handleMenu('orders', true)">
-          <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-bought-clean.svg" mode="aspectFit" />
-          <text v-if="tradeBadgeCounts.bought" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.bought) }}</text>
+          <view class="prototype-trade-icon-wrap">
+            <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-bought-clean.svg" mode="aspectFit" />
+            <text v-if="tradeBadgeCounts.bought" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.bought) }}</text>
+          </view>
           <text>已买到</text>
         </view>
         <view @click="handleMenu('pending', true)">
-          <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-pending-clean.svg" mode="aspectFit" />
-          <text v-if="tradeBadgeCounts.pending" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.pending) }}</text>
+          <view class="prototype-trade-icon-wrap">
+            <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-pending-clean.svg" mode="aspectFit" />
+            <text v-if="tradeBadgeCounts.pending" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.pending) }}</text>
+          </view>
           <text>待支付</text>
         </view>
         <view @click="handleMenu('paid', true)">
-          <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-paid-clean.svg" mode="aspectFit" />
-          <text v-if="tradeBadgeCounts.paid" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.paid) }}</text>
+          <view class="prototype-trade-icon-wrap">
+            <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-paid-clean.svg" mode="aspectFit" />
+            <text v-if="tradeBadgeCounts.paid" class="prototype-trade-badge">{{ displayTradeBadge(tradeBadgeCounts.paid) }}</text>
+          </view>
           <text>已支付</text>
         </view>
       </view>
@@ -1302,6 +1314,10 @@ function handleMenu(action: string, requiresLogin: boolean) {
   box-sizing: border-box;
 }
 
+.prototype-trade-card {
+  padding-bottom: 20rpx;
+}
+
 .prototype-section-title {
   padding: 0 2rpx;
   font-size: 34rpx;
@@ -1311,39 +1327,54 @@ function handleMenu(action: string, requiresLogin: boolean) {
 
 .prototype-trade-grid {
   display: grid;
+  width: calc(100% + 48rpx);
   margin-top: 4rpx;
+  margin-left: -24rpx;
   grid-template-columns: repeat(5, 1fr);
 }
 
 .prototype-trade-grid > view {
-  position: relative;
   display: flex;
   align-items: center;
+  justify-self: center;
   flex-direction: column;
-  font-size: 25rpx;
+  width: 92rpx;
+  height: 81rpx;
+  color: #1f1f1f;
+  font-size: 23rpx;
+  line-height: 27rpx;
+  box-sizing: border-box;
+}
+
+.prototype-trade-icon-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  width: 46rpx;
+  height: 46rpx;
+  margin-bottom: 8rpx;
 }
 
 .prototype-trade-icon {
   display: block;
-  width: 82rpx;
-  height: 82rpx;
-  margin-bottom: 2rpx;
+  width: 100%;
+  height: 100%;
 }
 
 .prototype-trade-badge {
   position: absolute;
-  top: 0;
-  left: calc(50% + 10rpx);
-  min-width: 28rpx;
-  height: 28rpx;
-  padding: 0 7rpx;
-  border: 3rpx solid #fff;
-  border-radius: 16rpx;
+  top: -8rpx;
+  right: -22rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 8rpx;
+  border: 2rpx solid #fff;
+  border-radius: 17rpx;
   box-sizing: border-box;
   color: #fff;
   background: #ff4747;
-  font-size: 18rpx;
-  line-height: 22rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  line-height: 28rpx;
   text-align: center;
 }
 
@@ -1378,5 +1409,42 @@ function handleMenu(action: string, requiresLogin: boolean) {
 
 .prototype-mine-safe {
   height: calc(190rpx + env(safe-area-inset-bottom));
+}
+
+/* 蓝湖：服务与设置卡片及三行统一间距。 */
+.prototype-service-card {
+  width: 688rpx;
+  height: 396rpx;
+  margin: 32rpx 31rpx 0;
+  padding: 26rpx 23rpx 0;
+  border-radius: 31rpx;
+}
+
+.prototype-service-card .prototype-service-row {
+  width: 642rpx;
+  height: 73rpx;
+  margin-top: 31rpx;
+  padding: 0 4rpx;
+  border-radius: 0;
+  grid-template-columns: 58rpx 1fr 28rpx;
+  box-sizing: border-box;
+}
+
+.prototype-service-card .prototype-section-title + .prototype-service-row {
+  margin-top: 18rpx;
+}
+
+.prototype-service-card .prototype-service-row > text:nth-child(2) {
+  margin-left: 16rpx;
+  font-size: 30rpx;
+}
+
+.prototype-service-card .prototype-service-row > text:last-child {
+  font-size: 40rpx;
+}
+
+.prototype-service-card .prototype-service-icon {
+  width: 58rpx;
+  height: 58rpx;
 }
 </style>

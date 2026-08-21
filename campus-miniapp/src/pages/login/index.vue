@@ -309,6 +309,12 @@ function openPolicy(type: 'privacy' | 'agreement') {
     </view>
 
     <view v-else-if="step === 'profile'" class="profile-content">
+      <image
+        v-if="editing"
+        class="profile-decoration"
+        src="/static/images/profile-folder-decoration-tight.png"
+        mode="scaleToFill"
+      />
       <view class="profile-intro">
         <text class="profile-kicker">
           {{ editing ? '校园身份' : '第 2 步 / 2' }}
@@ -384,7 +390,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
         <label>
           <view class="field-name">
             <image src="/static/icons/ui/profile.svg" mode="aspectFit" /><text>昵称</text>
-          </view><input v-model="form.nickname" type="nickname" placeholder="请输入微信昵称">
+          </view><input class="nickname-input" v-model="form.nickname" type="nickname" placeholder="请输入微信昵称"><text class="field-chevron">›</text>
         </label>
         <picker :range="schoolOptions" @change="selectSchool">
           <label>
@@ -1077,7 +1083,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
 /* 蓝湖原型：登录与修改校园资料 */
 .login-page {
   min-height: 100vh;
-  padding: 0 32rpx 170rpx;
+  padding: 0 30.77rpx 170rpx;
   overflow: visible;
   color: #202321;
   background: linear-gradient(180deg, #edfbf0 0%, #f4f4f4 22%, #f4f4f4 100%);
@@ -1105,7 +1111,20 @@ function openPolicy(type: 'privacy' | 'agreement') {
   padding-top: 10rpx;
 }
 
+.profile-decoration {
+  position: absolute;
+  z-index: 2;
+  top: 178.85rpx;
+  left: 523.08rpx;
+  width: 211.54rpx;
+  height: 188.46rpx;
+  border-radius: 0;
+  pointer-events: none;
+}
+
 .profile-intro {
+  position: relative;
+  z-index: 3;
   padding: 20rpx 0 6rpx;
 }
 
@@ -1137,6 +1156,8 @@ function openPolicy(type: 'privacy' | 'agreement') {
 }
 
 .avatar-card {
+  position: relative;
+  z-index: 1;
   margin: 24rpx 0 32rpx;
 }
 
@@ -1229,8 +1250,11 @@ function openPolicy(type: 'privacy' | 'agreement') {
   border-radius: 28rpx;
   color: #202321;
   background: #f4ffe9;
-  font-size: 23.08rpx;
-  font-weight: 550;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 26.92rpx;
+  font-weight: 400;
+  line-height: 46.15rpx;
+  text-align: center;
 }
 
 .phone-consent-tip {
@@ -1238,20 +1262,37 @@ function openPolicy(type: 'privacy' | 'agreement') {
 }
 
 .form-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
   margin: 0;
-  padding: 26rpx 24rpx 18rpx;
+  padding: 26rpx 23.08rpx 18rpx;
   background: #fff;
 }
 
 .form-section-head text:first-child {
-  color: #202321;
+  width: 403.85rpx;
+  height: 38.46rpx;
+  color: #1f1f1f;
+  font-family: "PingFang SC", sans-serif;
   font-size: 26.92rpx;
-  font-weight: 600;
+  font-weight: 400;
+  line-height: 38.46rpx;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .form-section-head text:last-child {
-  color: #ff4d55;
-  font-size: 19.23rpx;
+  width: 207.69rpx;
+  height: 38.46rpx;
+  color: #ff4747;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 23.08rpx;
+  font-weight: 400;
+  line-height: 38.46rpx;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .profile-form {
@@ -1259,17 +1300,27 @@ function openPolicy(type: 'privacy' | 'agreement') {
 }
 
 .profile-form label {
-  min-height: 96rpx;
-  padding: 0 24rpx;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-height: 100rpx;
+  padding: 0 23.08rpx;
   border-bottom: 0;
-  color: #202321;
-  font-size: 26.92rpx;
-  font-weight: 550;
+  color: #1f1f1f;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 30.77rpx;
+  font-weight: 400;
+  line-height: 42.31rpx;
+  white-space: nowrap;
 }
 
 .field-name {
   min-width: 150rpx;
-  color: #202321;
+  color: #1f1f1f;
+  font-size: 30.77rpx;
+  font-weight: 400;
+  line-height: 42.31rpx;
+  white-space: nowrap;
 }
 
 .field-name image,
@@ -1279,39 +1330,68 @@ function openPolicy(type: 'privacy' | 'agreement') {
 
 .profile-form input,
 .picker {
+  min-width: 0;
   min-height: 68rpx;
   margin-left: 20rpx;
   padding: 0;
   border: 0;
   border-radius: 0;
-  color: #969a97;
+  color: #8b8b8b;
   background: transparent;
   box-shadow: none;
-  font-size: 23.08rpx;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 30.77rpx;
   font-weight: 500;
+  line-height: 42.31rpx;
+  white-space: nowrap;
 }
 
 .picker text {
-  color: #969a97;
-  font-size: 26.92rpx;
+  color: #8b8b8b;
+  font-size: 30.77rpx;
+  line-height: 42.31rpx;
+}
+
+.nickname-input {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto !important;
+  height: 42.31rpx;
+  min-height: 42.31rpx !important;
+  margin-left: 20rpx !important;
+  text-align: right !important;
+}
+
+.field-chevron {
+  width: 24.61rpx;
+  margin-left: 10rpx;
+  color: #8b8b8b;
+  font-size: 30.77rpx;
+  font-weight: 500;
+  line-height: 42.31rpx;
+  text-align: right;
 }
 
 .wechat-btn {
   position: fixed;
   z-index: 40;
-  right: 32rpx;
+  right: 30.77rpx;
   bottom: calc(22rpx + env(safe-area-inset-bottom));
-  left: 32rpx;
+  left: 30.77rpx;
   width: auto;
   height: 84rpx;
   margin: 0;
   border: 0;
   border-radius: 28rpx;
-  color: #14200a;
+  color: #1f1f1f;
   background: #95f51f;
   box-shadow: none;
   font-size: 26.92rpx;
   font-weight: 600;
+}
+
+.wechat-btn text {
+  color: #1f1f1f;
 }
 
 .done-icon {

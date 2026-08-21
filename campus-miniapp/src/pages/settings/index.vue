@@ -13,6 +13,12 @@ const userStore = useUserStore();
 const contentStore = useCampusContentStore();
 const busy = ref(false);
 const consent = ref(getPrivacyConsent());
+const statusBarHeight = ref(0);
+const navBarHeight = ref(44);
+const navigationStyle = computed(() => ({
+  '--status-bar-height': `${statusBarHeight.value}px`,
+  '--nav-bar-height': `${navBarHeight.value}px`,
+}));
 const loggedIn = computed(() => userStore.loggedIn);
 const consentTime = computed(() => {
   if (!consent.value?.agreedAt)
@@ -24,6 +30,24 @@ const consentTime = computed(() => {
 onShow(() => {
   consent.value = getPrivacyConsent();
 });
+
+onMounted(() => {
+  const runtime = uni as any;
+  const windowInfo = runtime.getWindowInfo?.() || runtime.getSystemInfoSync?.() || {};
+  const menuButton = runtime.getMenuButtonBoundingClientRect?.();
+  statusBarHeight.value = windowInfo.statusBarHeight || 0;
+  if (menuButton?.height && menuButton?.top) {
+    navBarHeight.value = menuButton.height + 2 * Math.max(0, menuButton.top - statusBarHeight.value);
+  }
+});
+
+function goBack() {
+  if (getCurrentPages().length > 1) {
+    uni.navigateBack();
+    return;
+  }
+  uni.reLaunch({ url: '/pages/about/index' });
+}
 
 function clearLocalRecords() {
   uni.showModal({
@@ -135,153 +159,86 @@ function deleteAccount() {
 </script>
 
 <template>
-  <view class="settings-page">
-    <view class="privacy-hero">
-      <view class="shield">
-        <view class="shield-check" />
-      </view>
-      <view class="hero-main">
-        <view class="hero-title">
-          隐私保护中心
+  <view class="settings-screen" :style="navigationStyle">
+    <view class="settings-nav">
+      <view class="settings-nav-bar">
+        <view class="settings-nav-back" @click="goBack">
+          <image src="/static/icons/ui/back.svg" mode="aspectFit" />
         </view>
-        <view class="hero-desc">
-          你的信息，由你掌控
-        </view>
-      </view>
-      <view class="status-chip" :class="{ inactive: !consent }">
-        {{ consent ? '已同意' : '未同意' }}
+        <text class="settings-nav-title">设置与隐私</text>
+        <view class="settings-nav-capsule-space" />
       </view>
     </view>
 
-    <view class="section-label">
-      透明说明
-    </view>
-    <view class="settings-card">
+    <view class="settings-page">
+    <view class="settings-card privacy-card">
+      <view class="section-label">
+        透明说明
+      </view>
       <view class="setting-row" @click="openPolicyPage('privacy')">
-        <view class="row-icon blue">
-          <image src="/static/icons/ui/shield.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>隐私政策</text><span>查看信息收集、使用与保存说明</span>
+        <view class="row-main">
+          <text class="row-title">隐私政策</text>
+          <text class="row-subtitle">查看信息收集、使用与说明</text>
         </view><text class="arrow">
           ›
         </text>
       </view>
       <view class="setting-row" @click="openWechatPrivacyContract">
-        <view class="row-icon cyan">
-          <image src="/static/icons/ui/shield.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>微信隐私保护指引</text><span>查看微信平台备案的正式指引</span>
+        <view class="row-main">
+          <text class="row-title">查看隐私保护指引</text>
+          <text class="row-subtitle">查看信息收集、使用与说明</text>
         </view><text class="arrow">
           ›
         </text>
       </view>
       <view class="setting-row" @click="openPolicyPage('permissions')">
-        <view class="row-icon indigo">
-          <image src="/static/icons/ui/permissions.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>权限与信息清单</text><span>头像、图片、登录标识的调用时机</span>
-        </view><text class="arrow">
-          ›
-        </text>
-      </view>
-      <view class="setting-row" @click="openPolicyPage('agreement')">
-        <view class="row-icon gray">
-          <image src="/static/icons/ui/document.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>用户协议</text><span>账号、内容与交易规则</span>
-        </view><text class="arrow">
-          ›
-        </text>
-      </view>
-      <view class="setting-row" @click="openPolicyPage('community')">
-        <view class="row-icon orange">
-          <image src="/static/icons/ui/community.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>社区发布规范</text><span>校园内容与交易安全边界</span>
+        <view class="row-main">
+          <text class="row-title">权限信息与清单</text>
+          <text class="row-subtitle">查看信息收集、使用与说明</text>
         </view><text class="arrow">
           ›
         </text>
       </view>
     </view>
 
-    <view class="section-label">
-      数据与授权
-    </view>
-    <view class="settings-card">
+    <view class="settings-card authorization-card">
+      <view class="section-label">
+        数据与授权
+      </view>
       <view class="setting-row static-row">
-        <view class="row-icon soft">
-          <image src="/static/icons/ui/document.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>当前隐私版本</text><span>版本 {{ PRIVACY_POLICY_VERSION }} · {{ consentTime }}</span>
+        <view class="row-main">
+          <text class="row-title">当前隐私状态</text>
+          <text class="row-subtitle">查看信息收集、使用与说明</text>
         </view><text class="value">
           {{ consent ? '有效' : '未记录' }}
-        </text>
+        </text><text class="arrow">›</text>
       </view>
       <view class="setting-row static-row">
-        <view class="row-icon soft">
-          <image src="/static/icons/mine/heart.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>个性化推荐</text><span>当前未启用跨校或广告画像推荐</span>
+        <view class="row-main">
+          <text class="row-title">个性化推荐</text>
+          <text class="row-subtitle">查看信息收集、使用与说明</text>
         </view><text class="value quiet">
           未启用
-        </text>
+        </text><text class="arrow">›</text>
       </view>
       <view class="setting-row" @click="clearLocalRecords">
-        <view class="row-icon soft">
-          <image src="/static/icons/ui/trash.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>清理本地数据</text><span>搜索记录、草稿和本机偏好</span>
+        <view class="row-main">
+          <text class="row-title">清理本地数据</text>
+          <text class="row-subtitle">查看信息收集、使用与说明</text>
         </view><text class="arrow">
           ›
         </text>
       </view>
-      <view v-if="consent" class="setting-row" @click="withdrawConsent">
-        <view class="row-icon soft">
-          <image src="/static/icons/ui/logout.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>撤回隐私同意</text><span>退出登录并停止后续非必要处理</span>
+      <view class="setting-row" :class="{ disabled: !consent }" @click="consent && withdrawConsent()">
+        <view class="row-main">
+          <text class="row-title">撤回隐私同意</text>
+          <text class="row-subtitle">查看信息收集、使用与说明</text>
         </view><text class="arrow">
           ›
         </text>
       </view>
     </view>
-
-    <view class="section-label">
-      账号与安全
-    </view>
-    <view class="settings-card">
-      <button class="contact-row" open-type="contact">
-        <view class="row-icon soft">
-          <image src="/static/icons/mine/help.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>隐私问题与反馈</text><span>联系客服，提交查阅、更正或投诉请求</span>
-        </view><text class="arrow">
-          ›
-        </text>
-      </button>
-      <view v-if="loggedIn" class="setting-row" @click="logout">
-        <view class="row-icon soft">
-          <image src="/static/icons/ui/logout.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>退出登录</text><span>保留账号和已发布内容</span>
-        </view><text class="arrow">
-          ›
-        </text>
-      </view>
-      <view v-if="loggedIn" class="setting-row danger" :class="{ disabled: busy }" @click="!busy && deleteAccount()">
-        <view class="row-icon danger-icon">
-          <image src="/static/icons/ui/trash.svg" mode="aspectFit" />
-        </view><view class="row-main">
-          <text>注销账号</text><span>永久删除或匿名化账号关联信息</span>
-        </view><text class="arrow">
-          ›
-        </text>
-      </view>
-    </view>
-
-    <view class="footer-note">
-      游客无需登录即可浏览公开内容。云点校园不申请通讯录、后台定位、麦克风或蓝牙权限。
-    </view>
+  </view>
   </view>
 </template>
 
@@ -425,12 +382,13 @@ function deleteAccount() {
   flex-direction: column;
   min-width: 0;
 }
-.row-main text {
+.row-title {
   font-size: 26rpx;
   font-weight: 650;
   line-height: 1.35;
 }
-.row-main span {
+.row-subtitle {
+  display: block;
   margin-top: var(--yd-copy-gap);
   overflow: hidden;
   color: #858992;
@@ -472,78 +430,156 @@ function deleteAccount() {
 }
 
 /* 蓝湖原型：设置与隐私 */
-.settings-page {
-  padding: 28rpx 32rpx calc(60rpx + env(safe-area-inset-bottom));
-  color: #202321;
+.settings-screen {
+  min-height: 100vh;
   background: #f4f4f4;
 }
 
-.privacy-hero {
-  padding: 28rpx 24rpx;
-  border: 0;
-  border-radius: 32rpx;
-  background: #fff;
-  box-shadow: none;
-  backdrop-filter: none;
+.settings-nav {
+  padding-top: var(--status-bar-height);
+  background: #edfbf0;
 }
 
-.shield {
-  color: #14200a;
-  background: #95f51f;
-  box-shadow: none;
+.settings-nav-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--nav-bar-height);
 }
 
-.shield-check {
-  border-color: #14200a;
-}
-
-.hero-title {
-  color: #202321;
-  font-size: 30rpx;
+.settings-nav-title {
+  color: #1d1b18;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 36rpx;
   font-weight: 600;
+  line-height: 48rpx;
 }
 
-.status-chip {
-  color: #3ba61e;
-  background: #edffd9;
+.settings-nav-back {
+  position: absolute;
+  left: 31rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 64rpx;
+  height: 64rpx;
+}
+
+.settings-nav-back image {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.settings-nav-capsule-space {
+  position: absolute;
+  right: 0;
+  width: 190rpx;
+  height: 64rpx;
+}
+
+.settings-page {
+  padding: 31rpx 31rpx calc(60rpx + env(safe-area-inset-bottom));
+  color: #1f1f1f;
+  background: #f4f4f4;
+  box-sizing: border-box;
 }
 
 .section-label {
-  color: #777c79;
-  font-size: 23rpx;
+  display: flex;
+  flex: 0 0 72rpx;
+  align-items: center;
+  min-height: 72rpx;
+  margin: 0;
+  padding: 0 24rpx;
+  color: #1d1b18;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 30.77rpx;
+  font-weight: 500;
+  line-height: 42.31rpx;
 }
 
 .settings-card {
+  display: flex;
+  flex-direction: column;
+  width: 688rpx;
+  overflow: hidden;
   border: 0;
-  border-radius: 30rpx;
+  border-radius: 31rpx;
   background: #fff;
   box-shadow: none;
   backdrop-filter: none;
+  box-sizing: border-box;
 }
 
-.setting-row,
-.contact-row {
-  min-height: 106rpx;
-  padding: 18rpx 24rpx;
-  border-bottom-color: #eef0ee;
+.privacy-card {
+  height: 448rpx;
 }
 
-.row-icon {
-  border-radius: 18rpx;
-  background: #edffd9;
+.authorization-card {
+  height: 569rpx;
 }
 
-.row-main text {
-  color: #202321;
-  font-size: 27rpx;
-  font-weight: 550;
+.settings-card + .settings-card {
+  margin-top: 31rpx;
 }
 
-.row-main span {
-  color: #999d9a;
+.setting-row {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  width: 100%;
+  min-height: 0;
+  padding: 0 24rpx;
+  border-bottom: 0;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.setting-row:active {
+  background: transparent;
+}
+
+.row-title {
+  display: block;
+  color: #1d1b18;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 30.77rpx;
+  font-weight: 500;
+  line-height: 42.31rpx;
+}
+
+.row-subtitle {
+  display: block;
+  margin-top: 8rpx;
+  color: #8b8b8b;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 23.08rpx;
+  font-weight: 400;
+  line-height: 32.69rpx;
+}
+
+.arrow {
+  width: 20rpx;
+  margin-left: 12rpx;
+  color: #9b9b9b;
+  font-size: 34rpx;
+  font-weight: 300;
+  line-height: 42rpx;
+  text-align: right;
 }
 
 .value {
-  color: #48b827;
+  margin-left: 16rpx;
+  color: #45b82f;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 30.77rpx;
+  font-weight: 500;
+  line-height: 42.31rpx;
+  white-space: nowrap;
+}
+
+.value.quiet {
+  color: #8b8b8b;
 }
 </style>
