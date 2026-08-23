@@ -9,6 +9,7 @@ import { openPolicyPage } from '@/utils/privacy';
 
 const activeType = ref('idle');
 const images = ref<string[]>([]);
+const customTag = ref('');
 const choosingImages = ref(false);
 const submitting = ref(false);
 const showSuccess = ref(false);
@@ -49,7 +50,7 @@ watch(schoolName, () => {
 });
 
 const typeDetails: Record<string, { eyebrow: string, hint: string, placeholder: string, tags: string[], modes: string[] }> = {
-  idle: { eyebrow: '闲置交易', hint: '真实图片和成色描述能更快成交', placeholder: '品牌、型号、成色、购买时间、瑕疵和取货方式...', tags: ['宿舍自提', '可小刀', '九成新', '全新未拆', '毕业出', '校内交易'], modes: ['校内自提', '送到宿舍', '快递邮寄'] },
+  idle: { eyebrow: '闲置交易', hint: '真实图片和成色描述能更快成交', placeholder: '品牌、型号、成色、购买时间、瑕疵和取货方式', tags: ['宿舍自提', '可小刀', '九成新', '全新未拆', '毕业出', '校内交易'], modes: ['校内自提', '送到宿舍', '快递邮寄'] },
   help: { eyebrow: '同学互助', hint: '把时间、地点和具体需求写清楚', placeholder: '需要什么帮助、截止时间、地点和答谢方式...', tags: ['急', '有偿', '奶茶答谢', '今天', '女生优先'], modes: ['线上回应', '当面帮助'] },
   ride: { eyebrow: '拼车出行', hint: '请注明时间、路线、人数和行李情况', placeholder: '出发时间、上车点、目的地、空位和行李要求...', tags: ['高铁站', '火车站', '女生优先', '可带行李', '周末'], modes: ['费用均摊', '司机接单'] },
   shop: { eyebrow: '校园探店', hint: '实拍、价格和真实体验最有参考价值', placeholder: '推荐菜品、价格、排队情况、位置和真实感受...', tags: ['学生折扣', '人均30', '东门', '不踩雷', '适合聚餐'], modes: ['到店消费', '外卖可点'] },
@@ -90,6 +91,10 @@ const currentType = computed(() => {
   return { ...item, title: selectableTypeTitle(activeType.value) };
 });
 const currentDetail = computed(() => typeDetails[activeType.value]);
+const displayTags = computed(() => Array.from(new Set([
+  ...form.tags,
+  ...currentDetail.value.tags,
+])));
 const showPrice = computed(() => ['idle', 'help', 'ride', 'shop', 'job'].includes(activeType.value));
 const isConfession = computed(() => activeType.value === 'confession');
 
@@ -143,6 +148,7 @@ function openPublisherProfile() {
 function chooseType(key: string) {
   activeType.value = key;
   form.tags = [];
+  customTag.value = '';
   form.tradeMode = typeDetails[key].modes[0];
   Object.keys(errors).forEach(keyName => errors[keyName] = '');
 }
@@ -223,6 +229,28 @@ function toggleTag(tag: string) {
     form.tags.push(tag);
   else
     uni.showToast({ title: '最多选择 3 个标签', icon: 'none' });
+}
+function addCustomTag() {
+  const tag = customTag.value
+    .replace(/^#+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 10);
+  if (!tag) {
+    uni.showToast({ title: '请输入标签内容', icon: 'none' });
+    return;
+  }
+  if (form.tags.includes(tag)) {
+    customTag.value = '';
+    uni.showToast({ title: '这个标签已经添加', icon: 'none' });
+    return;
+  }
+  if (form.tags.length >= 3) {
+    uni.showToast({ title: '最多添加 3 个标签', icon: 'none' });
+    return;
+  }
+  form.tags.push(tag);
+  customTag.value = '';
 }
 function selectFrom(key: 'location' | 'visibleRange', options: string[], event: any) {
   form[key] = options[Number(event.detail.value)];
@@ -393,7 +421,7 @@ function reset() {
 
     <view class="content-card card-block">
       <view class="block-head media-head">
-        <text>添加图片（可选）</text><text>{{ images.length }}/9 · 首图为封面</text>
+        <text>添加图片</text><text>{{ images.length }}/9 首图为封面图(可拖拽图片更改封面)</text>
       </view>
       <view class="uploader-grid">
         <view v-for="(image, index) in images" :key="image" class="image-item" @click="setCover(index)">
@@ -406,8 +434,9 @@ function reset() {
           </text>
         </view>
         <view v-if="images.length < 9" class="add-image" :class="{ 'wide-add': !images.length, 'disabled': choosingImages }" @click="addImage">
-          <view class="camera-icon">
-            <i />
+          <view class="upload-image-symbol">
+            <image src="/static/icons/ui/comment-image.svg" mode="aspectFit" />
+            <text>+</text>
           </view>
           <view class="add-image-copy">
             <text>{{ choosingImages ? '正在打开相册…' : '添加真实图片' }}</text>
@@ -421,14 +450,22 @@ function reset() {
 
       <view class="editor-divider" />
       <view class="title-editor">
-        <input v-model="form.title" maxlength="30" :class="{ invalid: errors.title }" :placeholder="isConfession ? '例如：TO：图书馆三楼遇到的你' : '填写标题会更容易被看到'">
+        <input
+          v-model="form.title" maxlength="30" :class="{ invalid: errors.title }"
+          :placeholder="isConfession ? '例如：TO：图书馆三楼遇到的你' : '填写标题更容易被看到'"
+          placeholder-style="font-family: PingFang SC; font-weight: 400; font-size: 30.77rpx; color: #C6CDCE; line-height: 38.46rpx;"
+        >
         <text>{{ form.title.length }}/30</text>
       </view>
       <view v-if="errors.title" class="error">
         {{ errors.title }}
       </view>
       <view class="editor-divider compact-divider" />
-      <textarea v-model="form.content" maxlength="500" class="content-editor" :class="{ invalid: errors.content }" :placeholder="currentDetail.placeholder" />
+      <textarea
+        v-model="form.content" maxlength="500" class="content-editor" :class="{ invalid: errors.content }"
+        :placeholder="currentDetail.placeholder"
+        placeholder-style="font-family: PingFang SC; font-weight: 400; font-size: 23.08rpx; color: #C6CDCE; line-height: 26.92rpx;"
+      />
       <view class="content-tools">
         <text>{{ currentDetail.hint }}</text><text>{{ form.content.length }}/500</text>
       </view>
@@ -440,10 +477,18 @@ function reset() {
       <view class="block-head tag-head">
         <text>添加标签</text><text>最多可选3个标签</text>
       </view>
+      <view class="custom-tag-entry">
+        <image class="custom-tag-hash" src="/static/icons/publish/tag-hot.svg" mode="aspectFit" />
+        <input
+          v-model="customTag" maxlength="10" confirm-type="done"
+          placeholder="输入自定义标签" @confirm="addCustomTag"
+        >
+        <text class="custom-tag-action" @click="addCustomTag">添加</text>
+      </view>
       <view class="tag-scroll">
         <view class="tag-track">
-          <view v-for="tag in currentDetail.tags" :key="tag" class="tag-chip" :class="{ active: form.tags.includes(tag) }" @click="toggleTag(tag)">
-            <text class="tag-hash">#</text><text>{{ tag }}</text>
+          <view v-for="tag in displayTags" :key="tag" class="tag-chip" :class="{ active: form.tags.includes(tag) }" @click="toggleTag(tag)">
+            <image class="tag-hash" src="/static/icons/publish/tag-hot.svg" mode="aspectFit" /><text>{{ tag }}</text>
           </view>
         </view>
       </view>
@@ -1265,7 +1310,7 @@ function reset() {
 .type-symbol {
   width: 76rpx;
   height: 76rpx;
-  filter: drop-shadow(0 7rpx 8rpx rgba(47, 70, 54, 0.09));
+  filter: none;
 }
 
 .type-title {
@@ -1411,6 +1456,49 @@ function reset() {
   justify-content: center;
 }
 
+.custom-tag-entry {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 64rpx;
+  margin-bottom: 16rpx;
+  padding: 0 18rpx;
+  border: 1rpx solid #ededed;
+  border-radius: 20rpx;
+  background: #f7f7f7;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.custom-tag-hash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30rpx;
+  height: 30rpx;
+  border-radius: 50%;
+  color: #fff;
+  background: #222522;
+  font-size: 19rpx;
+  line-height: 30rpx;
+}
+
+.custom-tag-entry input {
+  flex: 1;
+  height: 64rpx;
+  margin-left: 12rpx;
+  color: #1f1f1f;
+  font-size: 24rpx;
+  line-height: 64rpx;
+}
+
+.custom-tag-action {
+  margin-left: 16rpx;
+  color: #58b900;
+  font-size: 24rpx;
+  font-weight: 500;
+}
+
 .tag-hash {
   display: inline-flex;
   align-items: center;
@@ -1530,6 +1618,246 @@ function reset() {
   box-shadow: none;
   backdrop-filter: none;
   box-sizing: border-box;
+}
+
+/* 蓝湖稿为纯色平面卡片，发布页不使用投影或模糊阴影。 */
+.publish-page .card-block,
+.publish-page button,
+.publish-page image {
+  box-shadow: none;
+}
+
+/* 灰色填充统一改为白底，只用轻边框区分可操作区域。 */
+.publish-page .type-card,
+.publish-page .content-card,
+.publish-page .trade-card,
+.publish-page .setting-card,
+.publish-page .add-image,
+.publish-page .custom-tag-entry,
+.publish-page .tag-chip,
+.publish-page .trade-card .price-main,
+.publish-page .original-price {
+  background: #fff;
+}
+
+.publish-page .add-image,
+.publish-page .custom-tag-entry,
+.publish-page .tag-chip,
+.publish-page .trade-card .price-main,
+.publish-page .original-price {
+  border: 1rpx solid #eeeeee;
+}
+
+.publish-page .tag-chip.active {
+  border-color: #97f820;
+  background: #97f820;
+}
+
+.publish-page .mode-list > view.active {
+  border-color: #ffe8c6;
+  background: #fff7ea;
+}
+
+.media-head > text:last-child {
+  flex: 0 0 auto;
+  font-size: 20rpx;
+  white-space: nowrap;
+}
+
+.title-editor > text {
+  display: none;
+}
+
+/* 微信原生 input/textarea 会带默认灰底，设计稿要求编辑区域为纯白。 */
+.publish-page .title-editor,
+.publish-page .title-editor input,
+.publish-page .content-editor,
+.publish-page textarea {
+  background: #fff !important;
+  background-color: #fff !important;
+}
+
+.publish-page .editor-divider {
+  background: #fff;
+}
+
+/* 自定义标签、交易信息和联系方式区域保持纯白。 */
+.publish-page .custom-tag-entry,
+.publish-page .custom-tag-entry input,
+.publish-page .trade-card,
+.publish-page .price-row,
+.publish-page .price-main,
+.publish-page .price-main input,
+.publish-page .original-price,
+.publish-page .original-price input,
+.publish-page .setting-card,
+.publish-page .contact-row,
+.publish-page .contact-row .setting-main,
+.publish-page .contact-row input {
+  background: #fff !important;
+  background-color: #fff !important;
+}
+
+/* 蓝湖明确参数：内容编辑区横向位置与宽度。 */
+.publish-page {
+  padding-right: 30.77rpx;
+  padding-left: 30.77rpx;
+}
+
+.content-card {
+  padding-right: 23.08rpx;
+  padding-left: 23.08rpx;
+}
+
+.upload-image-symbol {
+  position: relative;
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.upload-image-symbol image {
+  width: 48rpx;
+  height: 48rpx;
+}
+
+.upload-image-symbol text {
+  position: absolute;
+  right: -2rpx;
+  bottom: -1rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: 3rpx;
+  color: #8b8b8b;
+  background: #fff;
+  font-size: 18rpx;
+  line-height: 18rpx;
+}
+
+.title-editor {
+  width: 642.31rpx;
+  height: 38.46rpx;
+  min-height: 38.46rpx;
+}
+
+.title-editor input {
+  width: 642.31rpx;
+  height: 38.46rpx;
+  min-height: 38.46rpx;
+  padding: 0;
+  color: #1f1f1f;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 30.77rpx;
+  font-weight: 400;
+  line-height: 38.46rpx;
+  text-align: left;
+}
+
+.compact-divider {
+  height: 0;
+  margin: 23.08rpx 0 0;
+  background: transparent;
+}
+
+.content-editor {
+  width: 642.31rpx;
+  padding: 0;
+  color: #1f1f1f;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 23.08rpx;
+  font-weight: 400;
+  line-height: 26.92rpx;
+  text-align: left;
+}
+
+.content-tools {
+  justify-content: flex-end;
+}
+
+.content-tools > text:first-child {
+  display: none;
+}
+
+/* 蓝湖明确参数：图片说明文字。 */
+.media-head {
+  height: 38.46rpx;
+  min-height: 38.46rpx;
+}
+
+.media-head > text:last-child {
+  width: 409.62rpx;
+  height: 38.46rpx;
+  color: #8b8b8b;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 23.08rpx;
+  font-weight: 400;
+  line-height: 38.46rpx;
+  text-align: left;
+}
+
+/* 蓝湖明确参数：添加标签标题。 */
+.tag-head > text:first-child {
+  width: 446.15rpx;
+  height: 38.46rpx;
+  color: #1f1f1f;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 30.77rpx;
+  font-weight: 400;
+  line-height: 38.46rpx;
+  text-align: left;
+}
+
+.custom-tag-hash,
+.tag-hash {
+  flex: 0 0 auto;
+  border-radius: 0;
+  background: transparent;
+}
+
+.custom-tag-hash {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.tag-hash {
+  width: 32rpx;
+  height: 32rpx;
+}
+
+/* 蓝湖明确参数：发布设置四行。 */
+.setting-card {
+  padding-right: 23.08rpx;
+  padding-left: 23.08rpx;
+}
+
+.setting-row {
+  width: 100%;
+  height: 103.85rpx;
+  min-height: 103.85rpx;
+  padding-left: 0;
+  box-sizing: border-box;
+}
+
+.setting-main > text:first-child {
+  height: 42.31rpx;
+  color: #1d1b18;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 30.77rpx;
+  font-weight: 500;
+  line-height: 42.31rpx;
+  text-align: left;
+}
+
+.setting-row.last-row .setting-main,
+.setting-row.last-row .setting-main > text:first-child {
+  margin-left: 0;
+  padding-left: 0;
+}
+
+:deep(.prototype-tabbar) {
+  box-shadow: none;
 }
 
 .success-mark {

@@ -167,10 +167,10 @@ onLoad(async (query) => {
         />
         <view v-else class="result-grid">
           <view class="column">
-            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" :owner-context="onlyMine" />
+            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" :owner-context="onlyMine" :collection-context="favoritesMode" />
           </view>
           <view class="column">
-            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" :owner-context="onlyMine" />
+            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" :owner-context="onlyMine" :collection-context="favoritesMode" />
           </view>
         </view>
       </template>
@@ -197,9 +197,9 @@ onLoad(async (query) => {
             {{ onlyMine ? `我的发布共 ${results.length} 条` : (favoritesMode ? `我的收藏共 ${results.length} 条` : `找到 ${results.length} 条与“${keyword}”相关的内容`) }}
           </view><view class="result-grid">
             <view class="column">
-              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" :owner-context="onlyMine" />
+              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" :owner-context="onlyMine" :collection-context="favoritesMode" />
             </view><view class="column">
-              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" :owner-context="onlyMine" />
+              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" :owner-context="onlyMine" :collection-context="favoritesMode" />
             </view>
           </view>
         </template>
@@ -697,5 +697,132 @@ onLoad(async (query) => {
 .result-grid {
   padding: 0 30.77rpx 40rpx;
   column-gap: 23.08rpx;
+}
+
+/* 搜索首页视觉整理：纯白卡片、稳定安全区和更清晰的热搜层级。 */
+.search-status {
+  height: 72rpx;
+  min-height: 72rpx;
+  height: calc(var(--status-bar-height) + 24rpx);
+}
+
+.search-top {
+  padding: 18rpx 30rpx 28rpx;
+}
+
+.search-input {
+  height: 80rpx;
+  padding: 0 24rpx;
+  border: 0;
+  border-radius: 40rpx;
+  background: #fff !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.search-input input {
+  height: 80rpx;
+  margin-left: 12rpx;
+  background: #fff !important;
+  color: #1f1f1f;
+  font-size: 28rpx;
+  line-height: 80rpx;
+}
+
+.search-text {
+  height: 80rpx;
+  font-size: 28rpx;
+}
+
+.back:active,
+.search-text:active {
+  background: transparent;
+}
+
+.discover {
+  padding: 18rpx 30rpx 48rpx;
+}
+
+.discover-section {
+  margin-top: 20rpx;
+  padding: 30rpx 28rpx 32rpx;
+  border: 0;
+  border-radius: 28rpx;
+  background: #fff !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.discover-head b {
+  color: #1f1f1f;
+  font-size: 32rpx;
+  font-weight: 500;
+  line-height: 44rpx;
+}
+
+.discover-head text {
+  color: #8b8b8b;
+  font-size: 23rpx;
+  line-height: 36rpx;
+}
+
+.chip-list {
+  gap: 16rpx;
+  margin-top: 22rpx;
+}
+
+.chip-list text {
+  min-height: 60rpx;
+  padding: 12rpx 24rpx;
+  border: 1rpx solid #eeeeee;
+  border-radius: 30rpx;
+  color: #646464;
+  background: #fff !important;
+  box-shadow: none !important;
+  font-size: 24rpx;
+  line-height: 36rpx;
+  box-sizing: border-box;
+}
+
+.recent-empty {
+  margin-top: 24rpx;
+  font-size: 24rpx;
+  line-height: 36rpx;
+}
+
+.hot-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx 42rpx;
+  margin-top: 22rpx;
+}
+
+.hot-list > view {
+  min-width: 0;
+  min-height: 88rpx;
+  font-size: 29rpx;
+  line-height: 40rpx;
+}
+
+.rank {
+  flex: 0 0 42rpx;
+  width: 42rpx;
+  font-size: 27rpx;
+  font-weight: 600;
+}
+
+.hot-list span {
+  overflow: hidden;
+  color: #303330;
+  font-size: 29rpx;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hot-list i {
+  margin-left: 8rpx;
+  font-size: 19rpx;
 }
 </style>

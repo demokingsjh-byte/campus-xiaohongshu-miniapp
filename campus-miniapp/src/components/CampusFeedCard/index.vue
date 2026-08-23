@@ -6,9 +6,11 @@ const props = withDefaults(defineProps<{
   post: CampusPost
   variant?: string
   ownerContext?: boolean
+  collectionContext?: boolean
 }>(), {
   variant: '',
   ownerContext: false,
+  collectionContext: false,
 });
 
 const channelVariants: Record<string, string> = {
@@ -42,8 +44,11 @@ const hasImage = computed(() => Boolean(props.post.coverImage || props.post.imag
 const isWideCategoryCard = computed(() => ['job', 'groupbuy'].includes(props.variant));
 const isCompactGridCard = computed(() => props.variant !== 'note' && !isWideCategoryCard.value);
 const isTextNoteCard = computed(() => displayVariant.value === 'confession' && !hasImage.value);
-// 只在表白墙分类页显示，首页推荐卡片不显示；本人发布的内容也不引导自己表白。
-const showConfessionAction = computed(() => props.variant === 'confession' && !props.ownerContext && props.post.owner !== true);
+const usesStructuredMetaLayout = computed(() => isRecommendCard.value
+  || ['idle', 'errand', 'fun'].includes(props.variant)
+  || props.collectionContext);
+// 表白墙分类页的每张帖子都保持统一的“去表白”布局；首页推荐和个人管理页不显示。
+const showConfessionAction = computed(() => props.variant === 'confession' && !props.ownerContext);
 
 const categoryLabels: Record<string, string> = {
   idle: '二手',
@@ -64,6 +69,15 @@ const dealDiscount = computed(() => {
 });
 const dealDistance = computed(() => props.post.tags?.find(tag => /^\d+(?:\.\d+)?(?:m|km)$/i.test(tag)) || props.post.campusName || '校内');
 const urgentLabel = computed(() => props.post.tags?.find(tag => /急招|急/.test(tag)) || '急招');
+const jobSalary = computed(() => {
+  const price = String(props.post.price || '面议').trim().replace(/^[¥￥]\s*/, '');
+  if (price === '面议' || price.includes('元'))
+    return price;
+  const separator = price.indexOf('/');
+  return separator >= 0
+    ? `${price.slice(0, separator)}元${price.slice(separator)}`
+    : `${price}元`;
+});
 
 const fallbackEmoji = computed(() => ({
   idle: '📦',
@@ -94,6 +108,8 @@ function openDetail(id: number) {
     :class="[
       `variant-${displayVariant}`,
       {
+        'recommend-card': isRecommendCard,
+        'structured-meta-card': usesStructuredMetaLayout,
         'compact-grid-card': isCompactGridCard,
         'wide-category-card': isWideCategoryCard,
         'note-card': isNoteCard,
@@ -169,7 +185,7 @@ function openDetail(id: number) {
         </view>
         <view class="job-side">
           <text class="job-salary">
-            <text>¥</text>{{ post.price || '面议' }}
+            {{ jobSalary }}
           </text>
           <view class="job-apply">
             申请
@@ -250,11 +266,14 @@ function openDetail(id: number) {
         <view class="post-title">
           {{ post.title }}
         </view>
-        <view v-if="displayVariant === 'idle' || (isCompactGridCard && post.price)" class="trade-line">
-          <view class="price">
+        <view
+          v-if="usesStructuredMetaLayout"
+          class="trade-line"
+        >
+          <view v-if="post.price" class="price">
             <text class="currency">
               ￥
-            </text><text class="price-value">{{ post.price || '面议' }}</text>
+            </text><text class="price-value">{{ post.price }}</text>
           </view>
           <text class="want-count">
             {{ wantCount }}人想要
@@ -1274,31 +1293,54 @@ function openDetail(id: number) {
 }
 
 .job-author-copy {
+  position: relative;
   display: flex;
   height: 69.23rpx;
   margin-left: 13.46rpx;
-  justify-content: center;
+  justify-content: flex-start;
   flex-direction: column;
 }
 
 .job-author-copy text:first-child {
+  position: absolute;
+  top: 3.84rpx;
+  left: 0;
+  width: auto;
+  min-width: 92.31rpx;
+  height: 26.92rpx;
   color: #1f1f1f;
-  font-size: 23.08rpx;
-  line-height: 26.92rpx;
-}
-
-.job-author-copy text:last-child {
-  color: #02bd43;
+  font-family: 'PingFang SC', sans-serif;
   font-size: 23.08rpx;
   font-weight: 400;
   line-height: 26.92rpx;
+  overflow: visible;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.job-author-copy text:last-child {
+  position: absolute;
+  top: 38.46rpx;
+  left: 0;
+  width: auto;
+  min-width: 92.31rpx;
+  height: 26.92rpx;
+  color: #02bd43;
+  font-family: 'PingFang SC', sans-serif;
+  font-size: 23.08rpx;
+  font-weight: 400;
+  line-height: 26.92rpx;
+  overflow: visible;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .variant-job .job-location {
   position: absolute;
   top: 19.23rpx;
   right: 11.54rpx;
-  width: 169.23rpx;
+  width: auto;
+  min-width: 169.23rpx;
   height: 30.77rpx;
   margin: 0;
   padding: 0;
@@ -1308,20 +1350,26 @@ function openDetail(id: number) {
   font-size: 26.92rpx;
   font-weight: 400;
   line-height: 30.77rpx;
+  overflow: visible;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .variant-job .job-salary {
   position: absolute;
   top: 23.07rpx;
-  right: 23.08rpx;
+  left: 453.85rpx;
+  width: 223.07rpx;
   height: 38.46rpx;
   color: #ff4d4f;
+  font-family: 'PingFang SC', sans-serif;
   font-size: 30.77rpx;
+  font-weight: 400;
   line-height: 38.46rpx;
-}
-
-.variant-job .job-salary text {
-  font-size: 23.08rpx;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .job-urgent {
@@ -1353,5 +1401,235 @@ function openDetail(id: number) {
   font-size: 26.92rpx;
   font-weight: 400;
   line-height: 30.77rpx;
+}
+/* ==================================================
+   三行信息卡统一调整区域
+   影响：首页推荐、二手闲置、代拿代办、校园趣事、我的收藏
+   ================================================== */
+
+/* 1. 整张帖子卡片 */
+.post-card.structured-meta-card {
+  width: 332.69rpx;
+
+  /*
+   卡片总高度
+   原始计算：图片 330 + 内容 193.08 = 523.08
+  */
+  height: 523.08rpx;
+
+  margin-bottom: 23.08rpx;
+}
+
+/* 2. 图片区域 */
+.post-card.structured-meta-card .cover {
+  width: 332.69rpx;
+
+  /* 修改图片显示高度 */
+  height: 330rpx;
+
+  /* 推荐保持为 0 */
+  padding-top: 0;
+
+  /* 修改图片圆角 */
+  border-radius: 15.38rpx;
+}
+
+/* 3. 图片本身 */
+.post-card.structured-meta-card .cover-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 4. 标题、价格、作者所在区域 */
+.post-card.structured-meta-card .card-body {
+  display: flex;
+  box-sizing: border-box;
+  width: 332.69rpx;
+
+  /* 内容区域高度 */
+  height: 193.08rpx;
+
+  /*
+   左右内边距。
+   第一个数是上下，第二个数是左右。
+   数字越大，标题和价格越靠中间。
+  */
+  padding: 15.38rpx 15.38rpx 13.46rpx;
+  justify-content: space-between;
+  flex-direction: column;
+}
+
+/* 5. 标题 */
+.post-card.structured-meta-card .post-title {
+  display: block;
+  overflow: hidden;
+  flex: 0 0 40rpx;
+  box-sizing: border-box;
+  width: 301.92rpx;
+  height: 40rpx;
+  max-height: 40rpx;
+
+  /*
+   第一个数控制标题距离图片的距离：
+   数字越大，标题越往下。
+  */
+  margin: 0;
+
+  padding: 0;
+
+  color: #1f1f1f;
+
+  /* 标题大小 */
+  font-size: 30rpx;
+
+  font-weight: 600;
+
+  /* 每一行的高度 */
+  line-height: 40rpx;
+
+  /*
+   最多显示两行。
+   改成 1 就只显示一行。
+   改成 3 就最多显示三行。
+  */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-line-clamp: 1;
+
+  /*
+   精确移动标题：
+   第一个数字：左右，正数往右，负数往左。
+   第二个数字：上下，正数往下，负数往上。
+  */
+  transform: translate(0, 0);
+}
+
+/* 6. 价格所在的整行 */
+.post-card.structured-meta-card .trade-line {
+  position: relative;
+  display: block;
+  flex: 0 0 34.62rpx;
+  width: 301.92rpx;
+  height: 34.62rpx;
+
+  /*
+   控制价格与标题之间的距离。
+   数字越大，价格越往下。
+  */
+  margin: 0;
+}
+
+/* 7. 价格数字 */
+.post-card.structured-meta-card .price {
+  position: absolute;
+
+  /*
+   精确控制价格位置。
+   top 越大，价格越往下。
+   left 越大，价格越往右。
+   可以使用负数。
+  */
+  top: 0;
+  left: 0;
+
+  height: 34.62rpx;
+  color: #ff4747;
+
+  /* 价格数字大小 */
+  font-size: 38.46rpx;
+
+  font-weight: 700;
+  line-height: 34.62rpx;
+}
+
+/* 8. 价格前面的 ￥ 符号 */
+.post-card.structured-meta-card .currency {
+  width: 23.08rpx;
+  height: 26.92rpx;
+  margin-right: 0;
+
+  /* ￥符号大小 */
+  font-size: 23.08rpx;
+
+  font-weight: 400;
+  line-height: 26.92rpx;
+}
+
+/* 9. “几人想要”文字 */
+.post-card.structured-meta-card .want-count {
+  position: absolute;
+
+  /* 上下位置，越大越往下 */
+  top: 9.62rpx;
+
+  /* 左右位置，越大越靠右 */
+  right: 0;
+
+  padding: 0;
+  color: #8b8b8b;
+
+  /* 文字大小 */
+  font-size: 23.08rpx;
+
+  line-height: 26.92rpx;
+}
+
+/* 10. 作者信息行 */
+.post-card.structured-meta-card .author-row {
+  flex: 0 0 46.15rpx;
+  width: 301.92rpx;
+  height: 46.15rpx;
+
+  /*
+   作者行距离价格的距离。
+   数字越大，作者越往下。
+  */
+  margin: 0;
+
+  /*
+   精确移动作者行：
+   第一个数字控制左右；
+   第二个数字控制上下。
+  */
+  transform: translate(0, 0);
+}
+
+/* 表白墙图片帖：标题、作者、去表白按钮三段式布局。 */
+.post-card.compact-grid-card.has-confession-action .card-body {
+  display: flex;
+  box-sizing: border-box;
+  padding: 15.38rpx 15.38rpx 13.46rpx;
+  justify-content: space-between;
+  flex-direction: column;
+}
+
+.post-card.compact-grid-card.has-confession-action .post-title {
+  display: block;
+  overflow: hidden;
+  flex: 0 0 40rpx;
+  width: 301.92rpx;
+  height: 40rpx;
+  max-height: 40rpx;
+  margin: 0;
+  line-height: 40rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-line-clamp: 1;
+}
+
+.post-card.compact-grid-card.has-confession-action .author-row {
+  flex: 0 0 46.15rpx;
+  width: 301.92rpx;
+  height: 46.15rpx;
+  margin: 0;
+}
+
+.post-card.compact-grid-card.has-confession-action .confession-image-action {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  align-self: flex-end;
+  flex: 0 0 62rpx;
 }
 </style>

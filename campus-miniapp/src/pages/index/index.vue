@@ -344,13 +344,13 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
       >
         <view class="share-copy">
           <view class="share-title">
-            <text class="share-hash">
-              #
-            </text>
-            <text>分享新鲜事</text>
+            <image
+              class="share-title-art"
+              src="/static/images/home-prototype/share-title-transparent.png" mode="aspectFit"
+            />
           </view>
           <text class="share-subtitle">
-            {{ homeConfig.notice || '记录真实、有用的校园生活' }}
+            记录真实、有用的校园生活
           </text>
         </view>
         <view class="share-action">
@@ -732,39 +732,30 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   align-items: center;
   justify-content: space-between;
   height: 128rpx;
-  margin: 16rpx 32rpx 32rpx;
-  padding: 0 24rpx 0 28rpx;
+  margin: 16rpx 30.77rpx 32rpx;
+  padding: 0 30.77rpx 0 26.92rpx;
   border-radius: 32rpx;
   background:
-    linear-gradient(45deg, rgba(15, 211, 242, 0.24) 25%, transparent 25%, transparent 75%, rgba(15, 211, 242, 0.24) 75%)
-      0 0 / 58rpx 58rpx,
-    linear-gradient(45deg, rgba(15, 211, 242, 0.24) 25%, transparent 25%, transparent 75%, rgba(15, 211, 242, 0.24) 75%)
-      29rpx 29rpx / 58rpx 58rpx,
-    linear-gradient(100deg, #71edf5 0%, #62ecf2 55%, #70eef3 100%);
+    linear-gradient(45deg, rgba(7, 210, 239, 0.22) 25%, transparent 25%, transparent 75%, rgba(7, 210, 239, 0.22) 75%)
+      0 0 / 65rpx 65rpx,
+    linear-gradient(45deg, rgba(7, 210, 239, 0.22) 25%, transparent 25%, transparent 75%, rgba(7, 210, 239, 0.22) 75%)
+      32.5rpx 32.5rpx / 65rpx 65rpx,
+    linear-gradient(100deg, #70eef5 0%, #64edf3 55%, #70eef3 100%);
   box-sizing: border-box;
 }
 
-.share-fresh-card::before,
-.share-fresh-card::after {
-  position: absolute;
-  left: -20rpx;
-  width: 270rpx;
-  height: 4rpx;
-  border-radius: 4rpx;
-  background: #dfff37;
-  content: '';
-  opacity: 0.9;
-  transform: rotate(-20deg);
-}
-
 .share-fresh-card::before {
-  top: 59rpx;
-}
-
-.share-fresh-card::after {
-  top: 82rpx;
-  left: 18rpx;
-  width: 180rpx;
+  position: absolute;
+  top: -51rpx;
+  left: -50rpx;
+  width: 286rpx;
+  height: 118rpx;
+  border: 4rpx solid transparent;
+  border-bottom-color: #dfff37;
+  border-radius: 50%;
+  content: '';
+  opacity: 0.94;
+  transform: rotate(-12deg);
 }
 
 .share-copy {
@@ -776,31 +767,21 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
 }
 
 .share-title {
-  display: flex;
-  align-items: center;
-  color: #182021;
-  font-size: 30rpx;
-  font-weight: 700;
-  line-height: 38rpx;
+  display: block;
+  flex: 0 0 auto;
+  width: 174.66rpx;
+  height: 56.97rpx;
 }
 
-.share-hash {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 38rpx;
-  height: 38rpx;
-  margin-right: 5rpx;
-  border-radius: 50%;
-  color: #fff;
-  background: #202324;
-  font-size: 24rpx;
-  font-weight: 800;
+.share-title-art {
+  display: block;
+  width: 174.66rpx;
+  height: 56.97rpx;
 }
 
 .share-subtitle {
   overflow: hidden;
-  margin-top: 9rpx;
+  margin-top: 0;
   color: #1aa6b3;
   font-size: 25rpx;
   text-overflow: ellipsis;
@@ -816,7 +797,23 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   margin-left: 12rpx;
 }
 
+.share-action::before {
+  position: absolute;
+  z-index: 0;
+  top: -29rpx;
+  right: 47rpx;
+  width: 45rpx;
+  height: 75rpx;
+  border-radius: 80% 12% 80% 12%;
+  background: linear-gradient(145deg, rgba(222, 255, 54, 0.48), rgba(83, 198, 155, 0.05));
+  content: '';
+  opacity: 0.55;
+  transform: rotate(-24deg);
+}
+
 .share-action image {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 161rpx;
   height: 64rpx;
@@ -824,6 +821,7 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
 
 .share-action text {
   position: absolute;
+  z-index: 2;
   top: 0;
   right: 10rpx;
   width: 117rpx;
