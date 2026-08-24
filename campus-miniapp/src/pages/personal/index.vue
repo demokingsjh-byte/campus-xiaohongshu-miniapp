@@ -133,6 +133,10 @@ function interactionDescription(item: CampusNotification) {
     return isProductNotification(item) ? '赞了你的商品' : '赞了你的内容';
   if (item.eventType === 'COLLECT')
     return '收藏了你的内容';
+  if (item.eventType === 'COMMENT')
+    return `评论：${item.content || '评论了你的内容'}`;
+  if (item.eventType === 'REPLY')
+    return `回复我：${item.content || '回复了你的评论'}`;
   return item.content || item.title;
 }
 
@@ -323,8 +327,10 @@ function formatDate(timestamp: number) {
   align-items: center;
   justify-content: center;
   height: 88rpx;
-  font-size: 31rpx;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 36rpx;
   font-weight: 600;
+  line-height: 48rpx;
 }
 
 .nav-back {
@@ -349,7 +355,8 @@ function formatDate(timestamp: number) {
   padding: 0 24rpx;
   border: 1rpx solid #e6e6e6;
   border-radius: 24rpx;
-  background: #fafafa;
+  background: #fff;
+  box-shadow: none;
 }
 
 .search-box image { width: 32rpx; height: 32rpx; opacity: .58; }
@@ -377,7 +384,8 @@ function formatDate(timestamp: number) {
 .personal-content { background: #fff; }
 .record-card { background: #fff; }
 
-.is-following-empty .personal-content { min-height: calc(100vh - var(--status-bar-height) - 166rpx); background: #f7f7f7; }
+.is-following-empty .personal-header { padding-bottom: 24rpx; background: #edfbf0; }
+.is-following-empty .personal-content { min-height: calc(100vh - var(--status-bar-height) - 190rpx); background: #f4f4f4; }
 .following-empty-state {
   display: flex;
   align-items: center;

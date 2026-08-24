@@ -22,6 +22,7 @@ const loading = ref(true);
 const busy = ref(false);
 const paymentPending = ref(false);
 const paymentTimedOut = ref(false);
+const showPurchaseSuccess = ref(false);
 const remainingSeconds = ref(0);
 const loadError = ref(false);
 const userStore = useUserStore();
@@ -248,6 +249,7 @@ async function syncPaymentStatus(maxAttempts = 5) {
 async function applyPaidOrder(paidAt?: string) {
   if (!order.value)
     return;
+  const wasPaid = order.value.status === 1;
   try {
     order.value = await getCampusTradeOrder(order.value.id);
   } catch {
@@ -267,6 +269,18 @@ async function applyPaidOrder(paidAt?: string) {
   } catch {
     contact.value = undefined;
   }
+  if (!wasPaid)
+    openPurchaseSuccess();
+}
+
+function openPurchaseSuccess() {
+  showPurchaseSuccess.value = true;
+  uni.setNavigationBarTitle({ title: '' });
+  uni.setNavigationBarColor({ frontColor: '#000000', backgroundColor: '#edfbf0' });
+}
+
+function buyAgain() {
+  uni.switchTab({ url: '/pages/index/index' });
 }
 
 async function loadContact() {
@@ -283,7 +297,6 @@ async function pay() {
     const params = await createCampusTradePayment(order.value.id);
     if (params.status === 1) {
       await applyPaidOrder();
-      uni.showToast({ title: '支付成功', icon: 'success' });
       return;
     }
     if (!params.packageValue)
@@ -302,7 +315,6 @@ async function pay() {
       });
       return;
     }
-    uni.showToast({ title: '支付成功', icon: 'success' });
   } catch (error: any) {
     const message = String(error?.errMsg || error?.message || '').toLowerCase();
     if (message.includes('cancel')) {
@@ -317,9 +329,7 @@ async function pay() {
       paymentPending.value = true;
       startPaymentPolling();
       const paid = await syncPaymentStatus(4);
-      if (paid) {
-        uni.showToast({ title: '支付成功', icon: 'success' });
-      } else if (!paymentPending.value) {
+      if (!paid && !paymentPending.value) {
         uni.showToast({ title: '微信支付未完成，请重新支付', icon: 'none' });
       } else {
         const detail = String(error?.errMsg || error?.message || '微信支付调用失败，请稍后刷新支付状态').slice(0, 120);
@@ -341,9 +351,7 @@ async function refreshPaymentStatus() {
   try {
     paymentPending.value = true;
     const paid = await syncPaymentStatus(4);
-    if (paid) {
-      uni.showToast({ title: '支付成功', icon: 'success' });
-    } else if (order.value?.status === 0 && paymentPending.value) {
+    if (!paid && order.value?.status === 0 && paymentPending.value) {
       uni.showToast({ title: paymentTimedOut.value ? '支付状态暂未确认，请稍后刷新' : '支付状态仍在确认，请稍后刷新', icon: 'none' });
     } else if (order.value?.status === 0) {
       uni.showToast({ title: '微信支付未完成，请重新支付', icon: 'none' });
@@ -421,8 +429,16 @@ function copyContact() {
 </script>
 
 <template>
-  <view class="checkout-page">
-    <view v-if="loading" class="state">
+  <view class="checkout-page" :class="{ 'purchase-success-page': showPurchaseSuccess }">
+    <view v-if="showPurchaseSuccess" class="purchase-success-state">
+      <view class="purchase-success-title">
+        <view class="purchase-success-check">✓</view>
+        <text>购买成功</text>
+      </view>
+      <text class="purchase-success-desc">您已成功购买/发布一件商品</text>
+      <button class="purchase-again" @click="buyAgain">在发/买一件</button>
+    </view>
+    <view v-else-if="loading" class="state">
       订单信息加载中…
     </view>
     <view v-else-if="loadError" class="state">
@@ -819,6 +835,76 @@ function copyContact() {
 
 .pay-button::after,
 .cancel-button::after {
+  border: 0;
+}
+
+.checkout-page.purchase-success-page {
+  padding: 0;
+  background: #f4f4f4;
+}
+
+.purchase-success-state {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding-top: 188rpx;
+  flex-direction: column;
+}
+
+.purchase-success-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.purchase-success-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38rpx;
+  height: 38rpx;
+  margin-right: 18rpx;
+  border-radius: 50%;
+  color: #1f1f1f;
+  background: #95f51f;
+  font-size: 27rpx;
+  font-weight: 700;
+  line-height: 38rpx;
+}
+
+.purchase-success-title text {
+  color: #1f1f1f;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 42rpx;
+  font-weight: 600;
+  line-height: 52rpx;
+}
+
+.purchase-success-desc {
+  margin-top: 34rpx;
+  color: #999d9a;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 27rpx;
+  line-height: 38rpx;
+}
+
+.purchase-again {
+  min-width: 204rpx;
+  height: 64rpx;
+  margin-top: 30rpx;
+  padding: 0 26rpx;
+  border: 2rpx solid #dedfdd;
+  border-radius: 23rpx;
+  color: #1f1f1f;
+  background: #f4f4f4;
+  box-shadow: none;
+  font-size: 27rpx;
+  font-weight: 500;
+  line-height: 60rpx;
+}
+
+.purchase-again::after {
   border: 0;
 }
 </style>

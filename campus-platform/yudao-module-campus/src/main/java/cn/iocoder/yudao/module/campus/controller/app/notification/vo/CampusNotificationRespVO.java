@@ -14,6 +14,7 @@ public class CampusNotificationRespVO {
     private String eventType;
     private String actorNickname;
     private String actorAvatar;
+    private Boolean mutual;
     private String title;
     private String content;
     private LocalDateTime createdAt;

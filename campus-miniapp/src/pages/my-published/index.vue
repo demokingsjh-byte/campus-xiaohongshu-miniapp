@@ -106,6 +106,14 @@ function goBack() {
   uni.navigateBack();
 }
 
+function goBuy() {
+  uni.switchTab({ url: '/pages/index/index' });
+}
+
+function goPublish() {
+  uni.reLaunch({ url: '/pages/publish/index' });
+}
+
 function formatTime(value?: unknown) {
   if (value === undefined || value === null || value === '')
     return '';
@@ -163,7 +171,7 @@ function draftTitle() {
         v-for="tab in tabs" :key="tab.label" :class="{ active: activeTab === tab.label }"
         @click="activeTab = tab.label"
       >
-        {{ tab.label }}({{ tab.count }})
+        {{ tab.label }}{{ tab.label === '在卖' ? ` ${tab.count}` : `(${tab.count})` }}
       </text>
     </view>
 
@@ -222,8 +230,15 @@ function draftTitle() {
       </view>
     </view>
 
+    <view v-else-if="activeTab === '在卖'" class="published-empty-state">
+      <image src="/static/icons/ui/published-empty.svg" mode="aspectFit" />
+      <text>暂无订单信息</text>
+      <button @click="goBuy">去购买</button>
+      <button @click="goPublish">去发布</button>
+    </view>
+
     <StatePanel
-      v-else :title="activeTab === '在卖' ? '还没有发布内容' : activeTab === '草稿' ? '没有保存的草稿' : '没有已下架内容'"
+      v-else :title="activeTab === '草稿' ? '没有保存的草稿' : '没有已下架内容'"
       description="这里只展示当前账号实际存在的记录"
     />
 
@@ -279,6 +294,50 @@ function draftTitle() {
 .publish-tabs text { padding: 10rpx 18rpx; border-radius: 14rpx; color: #8b8b8b; background: #fff; font-size: 25rpx; }
 .publish-tabs text.active { color: #1f1f1f; background: #8cf51a; font-weight: 600; }
 .publish-list { display: flex; gap: 22rpx; flex-direction: column; }
+
+.published-empty-state {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding-top: 210rpx;
+  flex-direction: column;
+}
+
+.published-empty-state image {
+  width: 232rpx;
+  height: 202rpx;
+}
+
+.published-empty-state > text {
+  margin-top: 38rpx;
+  color: #999d9a;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 27rpx;
+  line-height: 38rpx;
+}
+
+.published-empty-state button {
+  width: 140rpx;
+  height: 64rpx;
+  margin: 28rpx 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 23rpx;
+  color: #1f1f1f;
+  background: #95f51f;
+  box-shadow: none;
+  font-size: 27rpx;
+  font-weight: 600;
+  line-height: 64rpx;
+}
+
+.published-empty-state button + button {
+  margin-top: 76rpx;
+}
+
+.published-empty-state button::after {
+  border: 0;
+}
 
 .publish-card { overflow: hidden; border-radius: 28rpx; background: #fff; }
 .publish-main { display: flex; padding: 24rpx 24rpx 14rpx; }

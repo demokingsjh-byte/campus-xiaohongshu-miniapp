@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstants;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.campus.controller.app.follow.vo.CampusFollowUserRespVO;
+import cn.iocoder.yudao.module.campus.service.notification.CampusNotificationService;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -25,10 +26,13 @@ public class CampusFollowServiceImpl implements CampusFollowService {
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
     private final FileApi fileApi;
+    private final CampusNotificationService campusNotificationService;
 
-    public CampusFollowServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi) {
+    public CampusFollowServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi,
+                                   CampusNotificationService campusNotificationService) {
         this.jdbcTemplate = jdbcTemplate;
         this.fileApi = fileApi;
+        this.campusNotificationService = campusNotificationService;
     }
 
     @Override
@@ -45,6 +49,7 @@ public class CampusFollowServiceImpl implements CampusFollowService {
                 .addValue("targetUserId", targetUserId)
                 .addValue("operator", String.valueOf(userId));
         if (active) {
+            boolean alreadyFollowing = isFollowing(userId, targetUserId);
             Long targetTenantId = findActiveUserTenantId(targetUserId);
             if (targetTenantId == null)
                 throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "被关注用户不存在");
@@ -58,6 +63,11 @@ public class CampusFollowServiceImpl implements CampusFollowService {
                             + " create_time, update_time, deleted) VALUES (:userId, :targetUserId, :tenantId, :operator,"
                             + " :operator, NOW(), NOW(), b'0') ON DUPLICATE KEY UPDATE tenant_id = VALUES(tenant_id),"
                             + " updater = VALUES(updater), update_time = NOW(), deleted = b'0'", params);
+            if (!alreadyFollowing) {
+                String actorNickname = findActiveUserNickname(userId);
+                campusNotificationService.createInteraction(targetUserId, userTenantId, userId, actorNickname,
+                        "FOLLOW", actorNickname + "关注了你", "关注了你", "SYSTEM", null);
+            }
         } else {
             jdbcTemplate.update("UPDATE campus_user_follow SET deleted = b'1', updater = :operator, update_time = NOW()"
                     + " WHERE user_id = :userId AND follow_user_id = :targetUserId AND deleted = b'0'", params);
@@ -114,6 +124,13 @@ public class CampusFollowServiceImpl implements CampusFollowService {
                         + " WHERE id = :id AND deleted = b'0' LIMIT 1",
                 new MapSqlParameterSource("id", userId), Long.class);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private String findActiveUserNickname(Long userId) {
+        List<String> rows = jdbcTemplate.queryForList("SELECT nickname FROM campus_miniapp_user"
+                        + " WHERE id = :id AND deleted = b'0' LIMIT 1",
+                new MapSqlParameterSource("id", userId), String.class);
+        return rows.isEmpty() ? "校园同学" : StrUtil.blankToDefault(rows.get(0), "校园同学");
     }
 
     private CampusFollowUserRespVO toResp(Map<String, Object> row) {

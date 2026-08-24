@@ -411,7 +411,10 @@ function reset() {
       <scroll-view scroll-x class="type-scroll" :show-scrollbar="false">
         <view class="type-track">
           <view v-for="item in selectablePublishTypes" :key="item.key" class="type-item" :class="{ active: activeType === item.key }" @click="chooseType(item.key)">
-            <image class="type-symbol" :src="typeIcons[item.key]" mode="aspectFit" /><text class="type-title">
+            <view class="type-symbol-wrap">
+              <image class="type-symbol" :src="typeIcons[item.key]" mode="aspectFit" />
+            </view>
+            <text class="type-title">
               {{ selectableTypeTitle(item.key) }}
             </text>
           </view>
@@ -742,13 +745,13 @@ function reset() {
   font-weight: 650;
 }
 .type-item.active {
-  border-color: rgba(16, 167, 121, 0.42);
-  color: var(--yd-green-dark);
-  background: var(--yd-mint);
+  border-color: transparent;
+  color: #181b19;
+  background: transparent;
 }
 .type-item.active .type-title {
-  color: var(--yd-green-dark);
-  font-weight: 750;
+  color: #1f1f1f;
+  font-weight: 500;
 }
 .media-head {
   margin-bottom: 18rpx;
@@ -1307,17 +1310,36 @@ function reset() {
   flex-direction: column;
 }
 
+.type-symbol-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84.62rpx;
+  height: 84.62rpx;
+  border: 1rpx solid transparent;
+  border-radius: 34rpx;
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+
 .type-symbol {
-  width: 76rpx;
-  height: 76rpx;
+  width: 84.62rpx;
+  height: 84.62rpx;
   filter: none;
 }
 
 .type-title {
-  margin: 7rpx 0 0;
-  color: #252826;
-  font-size: 25rpx;
+  width: 123.08rpx;
+  height: 30.77rpx;
+  margin: 15.38rpx 0 0;
+  color: #646464;
+  font-family: 'PingFang SC', sans-serif;
+  font-size: 26.92rpx;
   font-weight: 500;
+  line-height: 30.77rpx;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .type-item.active {
@@ -1326,13 +1348,16 @@ function reset() {
   background: transparent;
 }
 
-.type-item.active .type-symbol {
-  transform: translateY(-3rpx) scale(1.06);
+.type-item.active .type-symbol-wrap {
+  border-color: rgba(255, 255, 255, 0.82);
+  background: linear-gradient(145deg, rgba(211, 255, 195, 0.9), rgba(239, 255, 231, 0.55));
+  box-shadow: 0 10rpx 24rpx rgba(94, 223, 87, 0.14);
+  transform: translateY(-2rpx);
 }
 
 .type-item.active .type-title {
-  color: #181b19;
-  font-weight: 650;
+  color: #1f1f1f;
+  font-weight: 500;
 }
 
 .content-card {

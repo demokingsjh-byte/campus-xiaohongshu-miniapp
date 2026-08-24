@@ -40,7 +40,7 @@ const avatarStatusText = computed(() => {
 });
 const navigationTitle = computed(() => {
   if (editing.value)
-    return '修改校园资料';
+    return '校园认证';
   if (step.value === 'profile')
     return '完善校园资料';
   if (step.value === 'done')
@@ -323,7 +323,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
           {{ editing ? '更新你的校园资料' : '完善你的校园资料' }}
         </text>
         <text class="profile-summary">
-          用于校内内容匹配与身份展示，你可以随时修改
+          用于匹配和身份展示，你可以随时修改
         </text>
       </view>
       <view class="avatar-card">
@@ -1092,8 +1092,10 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .login-nav {
   height: 112rpx;
   color: #202321;
-  font-size: 30.77rpx;
+  font-family: "PingFang SC", sans-serif;
+  font-size: 36rpx;
   font-weight: 600;
+  line-height: 48rpx;
 }
 
 .back {
@@ -1114,10 +1116,11 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .profile-decoration {
   position: absolute;
   z-index: 2;
-  top: 178.85rpx;
-  left: 523.08rpx;
-  width: 211.54rpx;
-  height: 188.46rpx;
+  top: 210rpx;
+  right: 30.77rpx;
+  left: auto;
+  width: 164rpx;
+  height: 146rpx;
   border-radius: 0;
   pointer-events: none;
 }
@@ -1135,14 +1138,17 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .profile-heading {
   margin-top: 0;
   color: #202321;
-  font-size: 30.77rpx;
+  font-size: 38.46rpx;
   font-weight: 600;
+  line-height: 46.15rpx;
 }
 
 .profile-summary {
+  max-width: 510rpx;
   margin-top: 20rpx;
   color: #969a97;
-  font-size: 23.08rpx;
+  font-size: 26.92rpx;
+  line-height: 38.46rpx;
 }
 
 .avatar-card,
@@ -1186,14 +1192,16 @@ function openPolicy(type: 'privacy' | 'agreement') {
 
 .avatar-title {
   color: #202321;
-  font-size: 26.92rpx;
+  font-size: 30.77rpx;
   font-weight: 600;
+  line-height: 42.31rpx;
 }
 
 .avatar-description {
   margin-top: 18rpx;
   color: #969a97;
-  font-size: 23.08rpx;
+  font-size: 26.92rpx;
+  line-height: 38.46rpx;
 }
 
 .wechat-avatar-button {
@@ -1204,8 +1212,9 @@ function openPolicy(type: 'privacy' | 'agreement') {
   color: #14200a;
   background: #95f51f;
   box-shadow: none;
-  font-size: 23.08rpx;
+  font-size: 26.92rpx;
   font-weight: 600;
+  line-height: 38.46rpx;
 }
 
 .wechat-avatar-button image {
@@ -1215,7 +1224,8 @@ function openPolicy(type: 'privacy' | 'agreement') {
 .avatar-consent-tip {
   padding: 16rpx 20rpx 24rpx;
   color: #999d9a;
-  font-size: 19.23rpx;
+  font-size: 23.08rpx;
+  line-height: 32.69rpx;
 }
 
 .phone-card {
@@ -1233,14 +1243,16 @@ function openPolicy(type: 'privacy' | 'agreement') {
 
 .phone-title {
   color: #202321;
-  font-size: 26.92rpx;
+  font-size: 30.77rpx;
   font-weight: 600;
+  line-height: 42.31rpx;
 }
 
 .phone-description {
   margin-top: 16rpx;
   color: #969a97;
-  font-size: 23.08rpx;
+  font-size: 26.92rpx;
+  line-height: 38.46rpx;
 }
 
 .phone-button {
@@ -1272,11 +1284,12 @@ function openPolicy(type: 'privacy' | 'agreement') {
 }
 
 .form-section-head text:first-child {
-  width: 403.85rpx;
+  width: auto;
   height: 38.46rpx;
+  flex: 1 1 auto;
   color: #1f1f1f;
   font-family: "PingFang SC", sans-serif;
-  font-size: 26.92rpx;
+  font-size: 30.77rpx;
   font-weight: 400;
   line-height: 38.46rpx;
   text-align: left;
@@ -1284,11 +1297,12 @@ function openPolicy(type: 'privacy' | 'agreement') {
 }
 
 .form-section-head text:last-child {
-  width: 207.69rpx;
+  width: auto;
   height: 38.46rpx;
+  flex: 0 0 auto;
   color: #ff4747;
   font-family: "PingFang SC", sans-serif;
-  font-size: 23.08rpx;
+  font-size: 26.92rpx;
   font-weight: 400;
   line-height: 38.46rpx;
   text-align: left;
@@ -1337,7 +1351,7 @@ function openPolicy(type: 'privacy' | 'agreement') {
   border: 0;
   border-radius: 0;
   color: #8b8b8b;
-  background: transparent;
+  background: #fff;
   box-shadow: none;
   font-family: "PingFang SC", sans-serif;
   font-size: 30.77rpx;
@@ -1359,6 +1373,10 @@ function openPolicy(type: 'privacy' | 'agreement') {
   height: 42.31rpx;
   min-height: 42.31rpx !important;
   margin-left: 20rpx !important;
+  overflow: visible;
+  color: #8b8b8b !important;
+  background: #fff !important;
+  box-shadow: none !important;
   text-align: right !important;
 }
 

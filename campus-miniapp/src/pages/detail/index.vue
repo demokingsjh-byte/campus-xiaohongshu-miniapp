@@ -54,6 +54,11 @@ const channelIcons: Record<string, string> = {
 const channelIcon = computed(() => channelIcons[post.value.channel] || '/static/icons/mine/cloud.svg');
 const isConfession = computed(() => post.value.channel === '表白' || post.value.type === 'confession');
 const isIdlePost = computed(() => post.value.channel === '二手' || post.value.type === 'idle');
+const hasMarkedPrice = computed(() => String(post.value.price ?? '').trim().length > 0);
+const postHotCount = computed(() => [post.value.views, post.value.likes, post.value.collects, post.value.comments].reduce((total, current) => {
+  const value = Number(current || 0);
+  return total + (Number.isFinite(value) ? Math.max(0, value) : 0);
+}, 0));
 const postImages = computed(() => {
   const images = Array.isArray(post.value.images) ? post.value.images.filter(Boolean) : [];
   const coverImage = typeof post.value.coverImage === 'string' ? post.value.coverImage.trim() : '';
@@ -673,7 +678,7 @@ function reportPost() {
             <image src="/static/icons/ui/wechat-green.svg" mode="aspectFit" />
           </button>
         </view>
-        <view v-if="post.price" class="price">
+        <view v-if="hasMarkedPrice" class="price">
           <text>¥</text>{{ post.price }}
         </view><view class="title">
           {{ post.title }}
@@ -701,7 +706,7 @@ function reportPost() {
         </view>
         <view class="detail-actions">
           <view class="detail-action" :class="{ active: liked }" @click="toggleLike">
-            <text class="detail-heart">{{ liked ? '♥' : '♡' }}</text><text>{{ post.likes || 0 }}人想要</text>
+            <text class="detail-heart">{{ liked ? '♥' : '♡' }}</text><text>{{ hasMarkedPrice ? `${post.likes || 0}人想要` : `热度 ${postHotCount}` }}</text>
           </view>
           <view class="detail-action" :class="{ active: collected }" @click="toggleCollect">
             <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>{{ post.collects || 0 }}人收藏</text>
@@ -835,7 +840,7 @@ function reportPost() {
         </view>
         <view
           class="prototype-bottom-action" :class="{ active: liked }"
-          :aria-label="`想要，当前${post.likes || 0}人`" @click="toggleLike"
+          :aria-label="hasMarkedPrice ? `想要，当前${post.likes || 0}人` : `点赞，当前${post.likes || 0}人`" @click="toggleLike"
         >
           <text>{{ liked ? '♥' : '♡' }}</text><text>{{ post.likes || 0 }}</text>
         </view>

@@ -8,7 +8,7 @@
     { "name": "PostDetail", "path": "pages/detail/index", "style": { "navigationBarTitleText": "内容详情" }, "meta": { "ignoreAuth": true } },
     { "name": "Checkout", "path": "pages/checkout/index", "style": { "navigationBarTitleText": "确认购买" } },
     { "name": "Search", "path": "pages/search/index", "style": { "navigationStyle": "custom" }, "meta": { "ignoreAuth": true } },
-    { "name": "Messages", "path": "pages/messages/index", "style": { "navigationBarTitleText": "消息通知" }, "meta": { "ignoreAuth": true } },
+    { "name": "Messages", "path": "pages/messages/index", "style": { "navigationStyle": "custom" }, "meta": { "ignoreAuth": true } },
     { "name": "PersonalRecords", "path": "pages/personal/index", "style": { "navigationStyle": "custom" }, "meta": { "ignoreAuth": true } },
     { "name": "MyPublished", "path": "pages/my-published/index", "style": { "navigationStyle": "custom" }, "meta": { "ignoreAuth": true } },
     { "name": "PrivacySettings", "path": "pages/settings/index", "style": { "navigationStyle": "custom" }, "meta": { "ignoreAuth": true } },

@@ -303,8 +303,6 @@ page .detail-page .comments-card,
 page .messages-page .message-card,
 page .messages-page .security-card,
 page .mine-page .glass-card,
-page .login-page .avatar-card,
-page .login-page .profile-form,
 page .settings-page .settings-card,
 page .policy-page .policy-card {
   border: 1rpx solid var(--color-border) !important;
@@ -317,8 +315,7 @@ page .policy-page .policy-card {
 
 page .search-page .search-input,
 page .publish-page input,
-page .publish-page textarea,
-page .login-page input {
+page .publish-page textarea {
   border-color: transparent !important;
   color: var(--color-text) !important;
   background: rgba(118, 118, 128, 0.09) !important;
@@ -342,8 +339,6 @@ page .detail-page .bottom-bar {
 
 page .publish-page .publish-btn,
 page .detail-page .send,
-page .login-page .wechat-btn,
-page .login-page .save-button,
 page .mine-page .login-button,
 page .settings-page .primary-action {
   border-radius: var(--radius-md) !important;
@@ -356,13 +351,11 @@ page .channel.active,
 page .tabs .active,
 page .message-tabs .active,
 page .filters .active,
-page .tag-chip.active,
-page .type-item.active {
+page .tag-chip.active {
   color: var(--color-primary) !important;
 }
 
 page .tag-chip.active,
-page .type-item.active,
 page .filters .active {
   border-color: rgba(16, 167, 121, 0.22) !important;
   background: var(--color-primary-soft) !important;
@@ -370,8 +363,7 @@ page .filters .active {
 
 page .settings-page .setting-row,
 page .messages-page .message-row,
-page .mine-page .menu-row,
-page .login-page .profile-form > label {
+page .mine-page .menu-row {
   border-color: var(--color-divider) !important;
 }
 

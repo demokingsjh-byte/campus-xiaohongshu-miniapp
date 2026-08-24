@@ -88,6 +88,7 @@ const fallbackEmoji = computed(() => ({
 }[displayVariant.value] || props.post.coverEmoji || '📌'));
 
 const isFreshIdle = computed(() => props.post.tags?.some(tag => /全新|未拆|九成新/.test(tag)) || false);
+const hasMarkedPrice = computed(() => String(props.post.price ?? '').trim().length > 0);
 // “想要”使用真实点赞数，不再用浏览量或默认值补数。
 const wantCount = computed(() => Number(props.post.likes || 0));
 // 便签热度只汇总真实互动数据，不使用人为权重或固定假数据。
@@ -270,14 +271,17 @@ function openDetail(id: number) {
           v-if="usesStructuredMetaLayout"
           class="trade-line"
         >
-          <view v-if="post.price" class="price">
+          <view v-if="hasMarkedPrice" class="price">
             <text class="currency">
               ￥
             </text><text class="price-value">{{ post.price }}</text>
           </view>
-          <text class="want-count">
+          <text v-if="hasMarkedPrice" class="want-count">
             {{ wantCount }}人想要
           </text>
+          <view v-else class="post-heat">
+            <text>🔥</text><text>热度 {{ hotCount }}</text>
+          </view>
         </view>
         <view class="author-row">
           <image class="avatar" :src="resolveCampusAvatar(post.avatar)" mode="aspectFill" lazy-load />
@@ -502,6 +506,19 @@ function openDetail(id: number) {
   width: 25rpx;
   height: 21rpx;
   margin-right: 7rpx;
+}
+
+.post-heat {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-bottom: 5rpx;
+  color: #a0a2a3;
+  font-size: 21rpx;
+}
+
+.post-heat text + text {
+  margin-left: 5rpx;
 }
 
 .post-card.compact-grid-card {
@@ -1593,6 +1610,22 @@ function openDetail(id: number) {
    第二个数字控制上下。
   */
   transform: translate(0, 0);
+}
+
+.post-card.structured-meta-card .post-heat {
+  position: absolute;
+  top: 5rpx;
+  right: 0;
+  height: 26.92rpx;
+  margin: 0;
+  padding: 0;
+  color: #8b8b8b;
+  font-size: 23.08rpx;
+  line-height: 26.92rpx;
+}
+
+.post-card.structured-meta-card .post-heat text + text {
+  margin-left: 6rpx;
 }
 
 /* 表白墙图片帖：标题、作者、去表白按钮三段式布局。 */

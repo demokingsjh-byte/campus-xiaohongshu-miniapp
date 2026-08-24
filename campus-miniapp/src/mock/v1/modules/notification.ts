@@ -11,6 +11,7 @@ interface MockNotification {
   eventType: string
   actorNickname?: string
   actorAvatar?: string
+  mutual?: boolean
   title: string
   content: string
   createdAt: string
@@ -25,6 +26,7 @@ function seedNotifications(): MockNotification[] {
     { id: 9002, userId: 10001, type: 'INTERACTION', eventType: 'LIKE', actorNickname: '3 位同学', title: '3 位同学赞了你的内容', content: '毕业出九成新折叠桌和台灯', createdAt: '2026-07-23T07:56:00+08:00', read: false, targetType: 'POST', targetId: 2102 },
     { id: 9003, userId: 10001, type: 'SYSTEM', eventType: 'SYSTEM_NOTICE', title: '校园认证已通过', content: '你已获得当前学校的同校认证标识。', createdAt: '2026-07-22T10:00:00+08:00', read: true, targetType: 'SYSTEM' },
     { id: 9004, userId: 10001, type: 'INTERACTION', eventType: 'REPLY', actorNickname: '赶高铁', title: '赶高铁回复了你', content: '可以的，周五 18:20 东门见。', createdAt: '2026-07-18T18:20:00+08:00', read: true, targetType: 'POST', targetId: 2003 },
+    { id: 9005, userId: 10001, type: 'INTERACTION', eventType: 'FOLLOW', actorNickname: '夕夕', mutual: true, title: '夕夕关注了你', content: '关注了你', createdAt: '2026-07-17T16:20:00+08:00', read: false, targetType: 'SYSTEM' },
   ];
 }
 

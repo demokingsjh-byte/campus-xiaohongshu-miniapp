@@ -109,6 +109,8 @@ public class CampusNotificationServiceImpl implements CampusNotificationService 
 
     private String selectSql() {
         return "SELECT n.id, n.type, n.event_type, n.actor_nickname, u.avatar AS actor_avatar,"
+                + " EXISTS(SELECT 1 FROM campus_user_follow f WHERE f.user_id = n.user_id"
+                + " AND f.follow_user_id = n.actor_user_id AND f.deleted = b'0') AS mutual,"
                 + " n.title, n.content, n.create_time, n.read_time, n.target_type, n.target_id,"
                 + " p.images_json AS target_images"
                 + " FROM campus_notification n LEFT JOIN campus_miniapp_user u"
@@ -124,6 +126,7 @@ public class CampusNotificationServiceImpl implements CampusNotificationService 
         vo.setId(toLong(row.get("id"))); vo.setType(value(row, "type"));
         vo.setEventType(value(row, "event_type")); vo.setActorNickname(value(row, "actor_nickname"));
         vo.setActorAvatar(refreshFileUrl(value(row, "actor_avatar")));
+        vo.setMutual(toBoolean(row.get("mutual")));
         vo.setTitle(value(row, "title")); vo.setContent(value(row, "content")); vo.setCreatedAt(createdAt);
         vo.setTime(relativeTime(createdAt)); vo.setRead(row.get("read_time") != null);
         vo.setTargetType(value(row, "target_type")); vo.setTargetId(toLongObject(row.get("target_id")));
@@ -164,6 +167,12 @@ public class CampusNotificationServiceImpl implements CampusNotificationService 
     private static long toLong(Object value) {
         Long parsed = toLongObject(value);
         return parsed == null ? 0L : parsed;
+    }
+
+    private static boolean toBoolean(Object value) {
+        if (value instanceof Boolean) return (Boolean) value;
+        if (value instanceof Number) return ((Number) value).intValue() != 0;
+        return "1".equals(String.valueOf(value)) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     private static LocalDateTime toLocalDateTime(Object value) {

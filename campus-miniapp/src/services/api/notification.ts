@@ -8,6 +8,7 @@ export interface CampusNotification {
   eventType: string
   actorNickname?: string
   actorAvatar?: string
+  mutual?: boolean
   title: string
   content: string
   createdAt?: string
