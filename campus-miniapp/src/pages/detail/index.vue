@@ -401,6 +401,12 @@ function previewCommentImages(images: string[], current: string) {
   uni.previewImage({ urls: images, current });
 }
 
+function previewPostImage(current: string) {
+  if (!postImages.value.length)
+    return;
+  uni.previewImage({ urls: postImages.value, current });
+}
+
 function repliesOf(parentId: number) {
   return comments.value.filter(item => Number(item.parentId) === Number(parentId));
 }
@@ -644,7 +650,10 @@ function reportPost() {
       <swiper v-if="showCoverImage || !isConfession" class="media" indicator-dots indicator-active-color="#10A779">
         <template v-if="showCoverImage">
           <swiper-item v-for="image in postImages" :key="image">
-            <image class="detail-photo" :src="image" mode="aspectFill" @error="handleCoverImageError" />
+            <image
+              class="detail-photo" :src="image" mode="aspectFill"
+              @click.stop="previewPostImage(image)" @error="handleCoverImageError"
+            />
           </swiper-item>
         </template>
         <swiper-item v-else>

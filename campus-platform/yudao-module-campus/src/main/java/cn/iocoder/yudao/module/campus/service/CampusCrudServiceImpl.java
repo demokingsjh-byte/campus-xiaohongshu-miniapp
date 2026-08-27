@@ -100,6 +100,11 @@ public class CampusCrudServiceImpl implements CampusCrudService {
     public void delete(String resource, Long id) {
         LogRecordContext.putVariable("campusDataId", id);
         CampusResourceMeta meta = CampusResourceRegistry.get(resource);
+        if ("home-category".equals(resource)) {
+            namedParameterJdbcTemplate.update("DELETE FROM " + meta.getTableName() + " WHERE id = :id",
+                    new MapSqlParameterSource(ID, id));
+            return;
+        }
         if ("comment".equals(resource)) {
             deleteCommentTree(id);
             return;
@@ -120,6 +125,11 @@ public class CampusCrudServiceImpl implements CampusCrudService {
         LogRecordContext.putVariable("campusDataId", ids.get(0));
         LogRecordContext.putVariable("campusDataIds", CollUtil.join(ids, ","));
         CampusResourceMeta meta = CampusResourceRegistry.get(resource);
+        if ("home-category".equals(resource)) {
+            namedParameterJdbcTemplate.update("DELETE FROM " + meta.getTableName() + " WHERE id IN (:ids)",
+                    new MapSqlParameterSource("ids", ids));
+            return;
+        }
         if ("comment".equals(resource)) {
             ids.forEach(this::deleteCommentTree);
             return;
@@ -150,8 +160,9 @@ public class CampusCrudServiceImpl implements CampusCrudService {
         Long total = namedParameterJdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM " + meta.getTableName() + where,
                 sqlParams, Long.class);
+        String orderBy = "home-category".equals(resource) ? "sort ASC, id ASC" : "id DESC";
         List<Map<String, Object>> list = namedParameterJdbcTemplate.queryForList(
-                "SELECT * FROM " + meta.getTableName() + where + " ORDER BY id DESC LIMIT :offset, :pageSize",
+                "SELECT * FROM " + meta.getTableName() + where + " ORDER BY " + orderBy + " LIMIT :offset, :pageSize",
                 sqlParams);
         return new PageResult<>(list, total == null ? 0 : total);
     }

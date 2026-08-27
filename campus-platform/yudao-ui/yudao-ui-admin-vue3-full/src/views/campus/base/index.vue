@@ -54,7 +54,12 @@
       <el-form-item>
         <el-button @click="handleQuery"><Icon icon="ep:search" class="mr-5px" />搜索</el-button>
         <el-button @click="resetQuery"><Icon icon="ep:refresh" class="mr-5px" />重置</el-button>
-        <el-button v-if="meta.allowCreate !== false" type="primary" plain @click="openForm('create')">
+        <el-button
+          v-if="meta.allowCreate !== false"
+          type="primary"
+          plain
+          @click="openForm('create')"
+        >
           <Icon icon="ep:plus" class="mr-5px" />新增
         </el-button>
       </el-form-item>
@@ -64,7 +69,12 @@
   <ContentWrap>
     <el-table v-loading="loading" :data="list">
       <el-table-column label="编号" align="center" prop="id" width="90" />
-      <el-table-column v-if="resource === 'miniapp-user'" label="微信头像" align="center" width="90">
+      <el-table-column
+        v-if="resource === 'miniapp-user'"
+        label="微信头像"
+        align="center"
+        width="90"
+      >
         <template #default="scope">
           <CampusImagePreview :value="scope.row.avatar" :size="42" />
         </template>
@@ -77,8 +87,16 @@
         align="center"
         :show-overflow-tooltip="true"
       >
-        <template v-if="column.type === 'image' || column.type === 'images'" #default="scope">
-          <CampusImagePreview :value="scope.row[column.prop]" />
+        <template v-if="column.type" #default="scope">
+          <CampusImagePreview
+            v-if="column.type === 'image' || column.type === 'images'"
+            :value="scope.row[column.prop]"
+          />
+          <el-switch
+            v-else-if="column.type === 'boolean'"
+            :model-value="booleanValue(scope.row[column.prop])"
+            @change="(value) => handleBooleanChange(scope.row, column.prop, Boolean(value))"
+          />
         </template>
       </el-table-column>
       <el-table-column label="创建时间" align="center" prop="create_time" width="180" />
@@ -102,8 +120,21 @@
     <el-form :model="formData" label-width="120px">
       <el-form-item v-for="field in meta.fields" :key="field.prop" :label="field.label">
         <el-select v-if="field.options" v-model="formData[field.prop]" class="!w-240px">
-          <el-option v-for="option in field.options" :key="String(option.value)" :label="option.label" :value="option.value" />
+          <el-option
+            v-for="option in field.options"
+            :key="String(option.value)"
+            :label="option.label"
+            :value="option.value"
+          />
         </el-select>
+        <UploadImg
+          v-else-if="field.type === 'image'"
+          v-model="formData[field.prop]"
+          :limit="1"
+          :is-show-tip="false"
+          height="88px"
+          width="88px"
+        />
         <el-input-number
           v-else-if="field.type === 'number'"
           v-model="formData[field.prop]"
@@ -135,7 +166,13 @@
 </template>
 
 <script setup lang="ts">
-import { createCampus, deleteCampus, getCampus, getCampusPage, updateCampus } from '@/api/campus/base'
+import {
+  createCampus,
+  deleteCampus,
+  getCampus,
+  getCampusPage,
+  updateCampus
+} from '@/api/campus/base'
 import CampusImagePreview from '@/components/CampusImagePreview/index.vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -145,7 +182,7 @@ type FieldType = 'text' | 'textarea' | 'number' | 'decimal' | 'boolean' | 'image
 
 interface SelectOption {
   label: string
-  value: string | number
+  value: string | number | boolean
 }
 
 interface FieldMeta {
@@ -221,6 +258,44 @@ const metas: Record<string, PageMeta> = {
       { label: '区县', prop: 'district' },
       { label: 'Logo', prop: 'logo_url' },
       { label: '状态', prop: 'status', type: 'number' }
+    ]
+  },
+  'home-category': {
+    title: '首页分类',
+    searchKey: 'title',
+    searchLabel: '分类名称',
+    filters: [
+      { label: '频道', prop: 'channel' },
+      {
+        label: '显示状态',
+        prop: 'enabled',
+        options: [
+          { label: '显示', value: true },
+          { label: '隐藏', value: false }
+        ]
+      },
+      { label: '校区租户ID', prop: 'tenant_id', type: 'number' }
+    ],
+    columns: [
+      { label: '分类图标', prop: 'icon_url', type: 'image' },
+      { label: '分类名称', prop: 'title' },
+      { label: '分类标识', prop: 'category_key' },
+      { label: '内容频道', prop: 'channel' },
+      { label: '是否显示', prop: 'enabled', type: 'boolean' },
+      { label: '排序', prop: 'sort' },
+      { label: '租户ID', prop: 'tenant_id' }
+    ],
+    fields: [
+      { label: '分类名称', prop: 'title' },
+      { label: '分类标识', prop: 'category_key' },
+      { label: '内容频道', prop: 'channel' },
+      { label: '分类图标', prop: 'icon_url', type: 'image' },
+      { label: '发布类型', prop: 'publish_type' },
+      { label: '是否显示', prop: 'enabled', type: 'boolean', defaultValue: true },
+      { label: '显示图标', prop: 'icon_visible', type: 'boolean', defaultValue: true },
+      { label: '显示名称', prop: 'title_visible', type: 'boolean', defaultValue: true },
+      { label: '排序', prop: 'sort', type: 'number', defaultValue: 100 },
+      { label: '校区租户ID（0为全局）', prop: 'tenant_id', type: 'number', defaultValue: 0 }
     ]
   },
   'tenant-profile': {
@@ -314,14 +389,18 @@ const metas: Record<string, PageMeta> = {
       { label: '用户ID', prop: 'user_id', type: 'number' },
       { label: '学校', prop: 'school_name' },
       { label: '校区', prop: 'campus_name' },
-      { label: '频道', prop: 'channel', options: [
-        { label: '二手', value: '二手' },
-        { label: '互助', value: '互助' },
-        { label: '拼车', value: '拼车' },
-        { label: '探店', value: '探店' },
-        { label: '失物', value: '失物' },
-        { label: '社团', value: '社团' }
-      ] },
+      {
+        label: '频道',
+        prop: 'channel',
+        options: [
+          { label: '二手', value: '二手' },
+          { label: '互助', value: '互助' },
+          { label: '拼车', value: '拼车' },
+          { label: '探店', value: '探店' },
+          { label: '失物', value: '失物' },
+          { label: '社团', value: '社团' }
+        ]
+      },
       { label: '租户ID', prop: 'tenant_id', type: 'number' }
     ],
     columns: [
@@ -344,11 +423,15 @@ const metas: Record<string, PageMeta> = {
       { label: '位置', prop: 'location' },
       { label: '交易/参与方式', prop: 'trade_mode' },
       { label: '可见范围', prop: 'visible_range' },
-      { label: '状态', prop: 'status', options: [
-        { label: '审核中', value: 0 },
-        { label: '已发布', value: 1 },
-        { label: '已下架', value: 2 }
-      ] },
+      {
+        label: '状态',
+        prop: 'status',
+        options: [
+          { label: '审核中', value: 0 },
+          { label: '已发布', value: 1 },
+          { label: '已下架', value: 2 }
+        ]
+      },
       { label: '租户ID', prop: 'tenant_id', type: 'number' }
     ]
   },
@@ -378,11 +461,15 @@ const metas: Record<string, PageMeta> = {
       { label: '状态', prop: 'status' }
     ],
     fields: [
-      { label: '状态', prop: 'status', options: [
-        { label: '待审核', value: 0 },
-        { label: '已发布', value: 1 },
-        { label: '已隐藏', value: 2 }
-      ] }
+      {
+        label: '状态',
+        prop: 'status',
+        options: [
+          { label: '待审核', value: 0 },
+          { label: '已发布', value: 1 },
+          { label: '已隐藏', value: 2 }
+        ]
+      }
     ]
   },
   'comment-report': {
@@ -412,11 +499,15 @@ const metas: Record<string, PageMeta> = {
       { label: '处理说明', prop: 'result_note' }
     ],
     fields: [
-      { label: '状态', prop: 'status', options: [
-        { label: '待处理', value: 0 },
-        { label: '已处理', value: 1 },
-        { label: '已驳回', value: 2 }
-      ] },
+      {
+        label: '状态',
+        prop: 'status',
+        options: [
+          { label: '待处理', value: 0 },
+          { label: '已处理', value: 1 },
+          { label: '已驳回', value: 2 }
+        ]
+      },
       { label: '处理说明', prop: 'result_note', type: 'textarea' }
     ]
   },
@@ -445,11 +536,15 @@ const metas: Record<string, PageMeta> = {
       { label: '处理说明', prop: 'result_note' }
     ],
     fields: [
-      { label: '处理状态', prop: 'status', options: [
-        { label: '待处理', value: 0 },
-        { label: '已处理', value: 1 },
-        { label: '已驳回', value: 2 }
-      ] },
+      {
+        label: '处理状态',
+        prop: 'status',
+        options: [
+          { label: '待处理', value: 0 },
+          { label: '已处理', value: 1 },
+          { label: '已驳回', value: 2 }
+        ]
+      },
       { label: '处理说明', prop: 'result_note', type: 'textarea' }
     ]
   },
@@ -482,11 +577,15 @@ const metas: Record<string, PageMeta> = {
       { label: '处理说明', prop: 'result_note' }
     ],
     fields: [
-      { label: '处理状态', prop: 'status', options: [
-        { label: '待处理', value: 0 },
-        { label: '已处理', value: 1 },
-        { label: '已驳回', value: 2 }
-      ] },
+      {
+        label: '处理状态',
+        prop: 'status',
+        options: [
+          { label: '待处理', value: 0 },
+          { label: '已处理', value: 1 },
+          { label: '已驳回', value: 2 }
+        ]
+      },
       { label: '处理说明', prop: 'result_note', type: 'textarea' }
     ]
   },
@@ -501,16 +600,24 @@ const metas: Record<string, PageMeta> = {
       { label: '学校', prop: 'school_name' },
       { label: '校区', prop: 'campus_name' },
       { label: '年级', prop: 'grade' },
-      { label: '身份', prop: 'role_type', options: [
-        { label: '学生', value: 'student' },
-        { label: '商家', value: 'merchant' },
-        { label: '代理', value: 'agent' }
-      ] },
-      { label: '性别', prop: 'gender', options: [
-        { label: '不公开', value: '不公开' },
-        { label: '男', value: '男' },
-        { label: '女', value: '女' }
-      ] },
+      {
+        label: '身份',
+        prop: 'role_type',
+        options: [
+          { label: '学生', value: 'student' },
+          { label: '商家', value: 'merchant' },
+          { label: '代理', value: 'agent' }
+        ]
+      },
+      {
+        label: '性别',
+        prop: 'gender',
+        options: [
+          { label: '不公开', value: '不公开' },
+          { label: '男', value: '男' },
+          { label: '女', value: '女' }
+        ]
+      },
       { label: '校区租户ID', prop: 'tenant_id', type: 'number' }
     ],
     columns: [
@@ -533,16 +640,24 @@ const metas: Record<string, PageMeta> = {
       { label: '学校名称', prop: 'school_name' },
       { label: '校区名称', prop: 'campus_name' },
       { label: '年级', prop: 'grade' },
-      { label: '性别', prop: 'gender', options: [
-        { label: '不公开', value: '不公开' },
-        { label: '男', value: '男' },
-        { label: '女', value: '女' }
-      ] },
-      { label: '身份类型', prop: 'role_type', options: [
-        { label: '学生', value: 'student' },
-        { label: '商家', value: 'merchant' },
-        { label: '代理', value: 'agent' }
-      ] },
+      {
+        label: '性别',
+        prop: 'gender',
+        options: [
+          { label: '不公开', value: '不公开' },
+          { label: '男', value: '男' },
+          { label: '女', value: '女' }
+        ]
+      },
+      {
+        label: '身份类型',
+        prop: 'role_type',
+        options: [
+          { label: '学生', value: 'student' },
+          { label: '商家', value: 'merchant' },
+          { label: '代理', value: 'agent' }
+        ]
+      },
       { label: '入口 scene', prop: 'source_scene' },
       { label: '邀请人ID', prop: 'inviter_user_id', type: 'number' },
       { label: '租户ID', prop: 'tenant_id', type: 'number' }
@@ -616,6 +731,23 @@ const submitForm = async () => {
     await getList()
   } finally {
     submitLoading.value = false
+  }
+}
+
+const booleanValue = (value: unknown) => {
+  if (value instanceof Uint8Array) return value.length > 0 && value[0] !== 0
+  return value === true || value === 1 || value === '1' || value === 'true'
+}
+
+const handleBooleanChange = async (row: Record<string, any>, prop: string, value: boolean) => {
+  const previous = booleanValue(row[prop])
+  row[prop] = value
+  try {
+    await updateCampus(resource.value, { id: row.id, [prop]: value })
+    message.success(value ? '已开启显示' : '已关闭显示')
+  } catch (error) {
+    row[prop] = previous
+    throw error
   }
 }
 

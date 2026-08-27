@@ -30,6 +30,8 @@ export interface CampusHomeCategory {
   publishType?: string
   iconVisible?: boolean
   titleVisible?: boolean
+  enabled?: boolean
+  sort?: number
 }
 
 export interface CampusHomeConfig {

@@ -15,13 +15,13 @@ const DEFAULT_HOME_CONFIG: CampusHomeConfig = {
   categoryIconVisible: true,
   categoryTitleVisible: true,
   categories: [
-    { key: 'recommend', title: '推荐', channel: '推荐', icon: '🚩' },
-    { key: 'idle', title: '二手闲置', channel: '二手', icon: '🧺', publishType: 'idle' },
-    { key: 'errand', title: '代拿代办', channel: '互助', icon: '🏃', publishType: 'help' },
-    { key: 'fun', title: '校园趣事', channel: '社团', icon: '🎒', publishType: 'club' },
-    { key: 'job', title: '兼职信息', channel: '兼职', icon: '🧰', publishType: 'job' },
-    { key: 'confession', title: '表白墙', channel: '表白', icon: '💗', publishType: 'confession' },
-    { key: 'groupbuy', title: '商家团购', channel: '探店', icon: '🏪', publishType: 'shop' },
+    { key: 'recommend', title: '推荐', channel: '推荐', icon: '🚩', enabled: true, sort: 10 },
+    { key: 'idle', title: '二手闲置', channel: '二手', icon: '🧺', publishType: 'idle', enabled: true, sort: 20 },
+    { key: 'errand', title: '代拿代办', channel: '互助', icon: '🏃', publishType: 'help', enabled: true, sort: 30 },
+    { key: 'fun', title: '校园趣事', channel: '社团', icon: '🎒', publishType: 'club', enabled: true, sort: 40 },
+    { key: 'job', title: '兼职信息', channel: '兼职', icon: '🧰', publishType: 'job', enabled: true, sort: 50 },
+    { key: 'confession', title: '表白墙', channel: '表白', icon: '💗', publishType: 'confession', enabled: true, sort: 60 },
+    { key: 'groupbuy', title: '商家团购', channel: '探店', icon: '🏪', publishType: 'shop', enabled: true, sort: 70 },
   ],
 };
 
@@ -39,7 +39,7 @@ const activeCategoryKey = ref('recommend');
 const homeConfig = ref<CampusHomeConfig>(DEFAULT_HOME_CONFIG);
 
 function categoryIconSource(category: CampusHomeCategory) {
-  return PROTOTYPE_CATEGORY_ICONS[category.key] || category.icon;
+  return PROTOTYPE_CATEGORY_ICONS[category.key] || category.icon || '';
 }
 
 function categoryIconVisible(category: CampusHomeCategory) {
@@ -70,9 +70,11 @@ const navigationStyle = computed(() => ({
   '--status-bar-height': `${statusBarHeight.value}px`,
   '--menu-button-right-inset': `${menuButtonRightInset.value}px`,
 }));
-const categories = computed(() => homeConfig.value.categories.length
-  ? homeConfig.value.categories
-  : DEFAULT_HOME_CONFIG.categories);
+const categories = computed(() => homeConfig.value.categories
+  .map((item, index) => ({ item, index }))
+  .filter(entry => entry.item.enabled !== false)
+  .sort((left, right) => Number(left.item.sort ?? left.index) - Number(right.item.sort ?? right.index))
+  .map(entry => entry.item));
 const activeCategory = computed<CampusHomeCategory>(() => categories.value.find(item => item.key === activeCategoryKey.value)
   || categories.value[0]
   || DEFAULT_HOME_CONFIG.categories[0]);
@@ -82,14 +84,7 @@ function postHasImage(post: CampusPost) {
 }
 
 function categoryDisplayTitle(category: CampusHomeCategory) {
-  return ({
-    idle: '二手闲置',
-    errand: '代拿代办',
-    fun: '校园趣事',
-    job: '兼职信息',
-    confession: '表白墙',
-    groupbuy: '商家团购',
-  } as Record<string, string>)[category.key] || category.title;
+  return category.title;
 }
 
 function postCreatedTimestamp(post: CampusPost) {
@@ -144,14 +139,17 @@ if (!tenantStore.currentTenant || !campusTenants.some(item => item.id === tenant
 async function loadConfig() {
   try {
     const response = await getCampusHomeConfig(tenantStore.tenantId || undefined);
-    if (response?.categories?.length) {
+    if (response) {
       homeConfig.value = {
         searchPlaceholder: response.searchPlaceholder || DEFAULT_HOME_CONFIG.searchPlaceholder,
         notice: response.notice || '',
         categoryIconVisible: response.categoryIconVisible !== false,
         categoryTitleVisible: response.categoryTitleVisible !== false,
-        categories: response.categories,
+        categories: response.categories || [],
       };
+      if (!categories.value.some(item => item.key === activeCategoryKey.value)) {
+        activeCategoryKey.value = categories.value[0]?.key || '';
+      }
     }
   } catch {
     homeConfig.value = DEFAULT_HOME_CONFIG;
@@ -319,7 +317,7 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
                 class="category-image" :src="categoryIconSource(category)" mode="aspectFit"
               />
               <text v-else class="category-emoji">
-                {{ category.icon }}
+                {{ categoryIconSource(category) }}
               </text>
             </view>
             <text v-if="categoryTitleVisible(category)" class="category-title">

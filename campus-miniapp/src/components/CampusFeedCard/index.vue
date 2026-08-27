@@ -200,6 +200,7 @@ function openDetail(id: number) {
         <image
           v-if="post.coverImage || post.images?.[0]" class="cover-image"
           :src="post.coverImage || post.images?.[0]" mode="aspectFill" lazy-load
+          @click.stop="openDetail(post.id)"
         />
         <view v-else class="cover-fallback">
           <text class="fallback-emoji">
@@ -240,6 +241,7 @@ function openDetail(id: number) {
         <image
           v-if="post.coverImage || post.images?.[0]" class="cover-image"
           :src="post.coverImage || post.images?.[0]" mode="aspectFill" lazy-load
+          @click.stop="openDetail(post.id)"
         />
         <view v-else class="cover-fallback">
           <text class="fallback-emoji">

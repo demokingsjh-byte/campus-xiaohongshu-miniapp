@@ -54,6 +54,12 @@ public class CampusHomeConfigRespVO {
         @Schema(description = "该分类是否显示文字；为空时默认显示", example = "true")
         private Boolean titleVisible;
 
+        @Schema(description = "分类是否启用；接口只返回启用分类", example = "true")
+        private Boolean enabled;
+
+        @Schema(description = "显示顺序，数值越小越靠前", example = "10")
+        private Integer sort;
+
     }
 
 }
