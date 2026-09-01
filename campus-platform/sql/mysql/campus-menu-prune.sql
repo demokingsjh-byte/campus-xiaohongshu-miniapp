@@ -57,6 +57,16 @@ WHERE parent_id = 900000
   AND deleted = b'0'
   AND TRIM(name) REGEXP '^[?]+$';
 
+-- “内容分类”是早期版本遗留的重复入口，旧路由会请求已废弃的 category 资源。
+-- 保留当前 900750“分类管理”，隐藏其他重复入口及其权限子菜单。
+INSERT IGNORE INTO campus_menu_hide (id)
+SELECT id
+FROM system_menu
+WHERE parent_id = 900000
+  AND id <> 900750
+  AND deleted = b'0'
+  AND (TRIM(name) = '内容分类' OR path IN ('category', 'content-category'));
+
 -- Include descendants. Repeat a few times because MySQL 5.7 has no recursive CTE.
 TRUNCATE TABLE campus_menu_next;
 INSERT IGNORE INTO campus_menu_next (id)

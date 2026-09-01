@@ -254,6 +254,8 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         String message = ex.getMessage();
         String details = (String.valueOf(code) + " " + String.valueOf(message)).toUpperCase();
         return details.contains("RESOURCE_NOT_FOUND")
+                || details.contains("RESOURCE_NOT_EXISTS")
+                || details.contains("REFUND_NOT_EXIST")
                 || details.contains("ORDER_NOT_EXIST")
                 || details.contains("ORDERNOTEXIST")
                 || details.contains("NOT FOUND");
@@ -480,7 +482,13 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             throw badRequest("只有已付款或已完成订单可以退款");
         }
         if (refundStatus == REFUND_PROCESSING) {
-            return syncRefund(orderId);
+            CampusTradeRefundRespVO synced = syncRefund(orderId);
+            if (synced.getRefundStatus() != REFUND_FAILED) {
+                return synced;
+            }
+            // 旧版本可能在真正调用微信前已经把订单标记为处理中。
+            // 当微信确认退款单不存在时，syncRefund 会将其改为失败，这里继续重新提交。
+            order = findAdminOrder(orderId);
         }
 
         String refundNo = stringValue(order.get("refund_no"));
@@ -504,23 +512,22 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             return intValue(current.get("refund_status")) == REFUND_PROCESSING
                     ? syncRefund(orderId) : refundResponse(current);
         }
-
         order = findAdminOrder(orderId);
-        int amountFen = decimalValue(order.get("amount")).movePointRight(2)
-                .setScale(0, RoundingMode.UNNECESSARY).intValueExact();
-        WxPayRefundV3Request request = new WxPayRefundV3Request()
-                .setOutRefundNo(refundNo)
-                .setReason(safeReason)
-                .setNotifyUrl(refundNotifyUrl())
-                .setAmount(new WxPayRefundV3Request.Amount()
-                        .setRefund(amountFen).setTotal(amountFen).setCurrency("CNY"));
-        String transactionId = stringValue(order.get("wx_transaction_id"));
-        if (StrUtil.isNotBlank(transactionId)) {
-            request.setTransactionId(transactionId);
-        } else {
-            request.setOutTradeNo(stringValue(order.get("order_no")));
-        }
         try {
+            int amountFen = decimalValue(order.get("amount")).movePointRight(2)
+                    .setScale(0, RoundingMode.UNNECESSARY).intValueExact();
+            WxPayRefundV3Request request = new WxPayRefundV3Request()
+                    .setOutRefundNo(refundNo)
+                    .setReason(safeReason)
+                    .setNotifyUrl(refundNotifyUrl())
+                    .setAmount(new WxPayRefundV3Request.Amount()
+                            .setRefund(amountFen).setTotal(amountFen).setCurrency("CNY"));
+            String transactionId = stringValue(order.get("wx_transaction_id"));
+            if (StrUtil.isNotBlank(transactionId)) {
+                request.setTransactionId(transactionId);
+            } else {
+                request.setOutTradeNo(stringValue(order.get("order_no")));
+            }
             log.info("Submitting WeChat refund, orderNo={}, refundNo={}, transactionId={}, amountFen={}, operator={}",
                     order.get("order_no"), refundNo, transactionId, amountFen, safeOperator);
             WxPayRefundV3Result result = createClient().refundV3(request);
@@ -530,7 +537,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             log.info("WeChat refund accepted, orderNo={}, refundNo={}, wxRefundId={}, status={}",
                     order.get("order_no"), refundNo, result.getRefundId(), result.getStatus());
             return refundResponse(findAdminOrder(orderId));
-        } catch (WxPayException | IOException ex) {
+        } catch (WxPayException | IOException | RuntimeException ex) {
             String error = summarizeWechatError(ex);
             markRefundFailed(orderId, error);
             log.error("WeChat refund submission failed, orderNo={}, refundNo={}, message={}",
@@ -561,11 +568,16 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                     order.get("order_no"), refundNo, result.getStatus());
         } catch (WxPayException | IOException ex) {
             String error = summarizeWechatError(ex);
-            jdbcTemplate.update("UPDATE campus_trade_order SET refund_error = :error,"
-                            + " updater = 'wechat-refund-query', update_time = NOW()"
-                            + " WHERE id = :id AND refund_status <> :success AND deleted = b'0'",
-                    new MapSqlParameterSource().addValue("id", orderId).addValue("error", error)
-                            .addValue("success", REFUND_SUCCESS));
+            if (ex instanceof WxPayException && isWechatOrderNotFound((WxPayException) ex)) {
+                // 微信侧不存在该退款单，说明本地“处理中”并不代表已成功提交，恢复为可重试状态。
+                markRefundFailed(orderId, error);
+            } else {
+                jdbcTemplate.update("UPDATE campus_trade_order SET refund_error = :error,"
+                                + " updater = 'wechat-refund-query', update_time = NOW()"
+                                + " WHERE id = :id AND refund_status <> :success AND deleted = b'0'",
+                        new MapSqlParameterSource().addValue("id", orderId).addValue("error", error)
+                                .addValue("success", REFUND_SUCCESS));
+            }
             log.error("WeChat refund query failed, orderNo={}, refundNo={}, message={}",
                     order.get("order_no"), refundNo, error, ex);
         }

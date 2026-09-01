@@ -74,11 +74,18 @@ public class CampusResourceRegistry {
     }
 
     public static CampusResourceMeta get(String resource) {
-        CampusResourceMeta meta = RESOURCES.get(resource);
+        CampusResourceMeta meta = RESOURCES.get(canonicalResource(resource));
         if (meta == null) {
             throw new IllegalArgumentException("不支持的校园资源：" + resource);
         }
         return meta;
+    }
+
+    private static String canonicalResource(String resource) {
+        if ("category".equals(resource) || "content-category".equals(resource)) {
+            return "home-category";
+        }
+        return resource;
     }
 
     private static CampusResourceMeta meta(String resource, String tableName, Set<String> writableColumns,

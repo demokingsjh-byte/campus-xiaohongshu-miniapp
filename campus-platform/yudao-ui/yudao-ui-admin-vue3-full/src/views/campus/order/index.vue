@@ -413,8 +413,15 @@ const submitRefund = async () => {
       orderId: refundOrder.value.id,
       reason: refundReason.value.trim()
     })
-    message.success(result.refundStatus === 2 ? '退款已成功' : '退款申请已提交，请稍后同步状态')
-    refundVisible.value = false
+    if (result.refundStatus === 2) {
+      message.success('退款已成功')
+      refundVisible.value = false
+    } else if (result.refundStatus === 3) {
+      message.error(result.refundError || '退款失败，请检查微信支付配置后重试')
+    } else {
+      message.success('退款申请已提交，请稍后同步状态')
+      refundVisible.value = false
+    }
     await refreshAll()
   } finally {
     refundLoading.value = false

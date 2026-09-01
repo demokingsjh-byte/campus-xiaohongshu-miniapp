@@ -682,6 +682,10 @@ const metas: Record<string, PageMeta> = {
   }
 }
 
+// 兼容线上数据库中曾经存在的“内容分类”旧菜单路由；两者共用同一套首页分类配置。
+metas.category = metas['home-category']
+metas['content-category'] = metas['home-category']
+
 const resource = computed(() => String(route.path.split('/').filter(Boolean).pop() || 'region'))
 const meta = computed(() => metas[resource.value] || metas.region)
 const loading = ref(false)
