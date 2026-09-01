@@ -18,6 +18,8 @@
 </template>
 
 <script setup lang="ts">
+import { resolveCampusMediaUrl } from '@/utils/campusMedia'
+
 defineOptions({ name: 'CampusImagePreview' })
 
 const props = withDefaults(defineProps<{ value?: unknown; size?: number }>(), { size: 48 })
@@ -43,6 +45,7 @@ const normalizeUrls = (value: unknown): string[] => {
     .split(',')
     .map((item) => item.trim())
     .filter((item) => /^(https?:\/\/|\/)/i.test(item))
+    .map(resolveCampusMediaUrl)
 }
 
 const urls = computed(() => Array.from(new Set(normalizeUrls(props.value))))

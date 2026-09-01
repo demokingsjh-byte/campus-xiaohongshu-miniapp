@@ -119,7 +119,12 @@
   <el-dialog v-model="dialogVisible" :title="dialogTitle" width="680px">
     <el-form :model="formData" label-width="120px">
       <el-form-item v-for="field in meta.fields" :key="field.prop" :label="field.label">
-        <el-select v-if="field.options" v-model="formData[field.prop]" class="!w-240px">
+        <CampusImagePreview
+          v-if="field.type === 'image-preview' || field.type === 'images-preview'"
+          :value="formData[field.prop]"
+          :size="104"
+        />
+        <el-select v-else-if="field.options" v-model="formData[field.prop]" class="!w-240px">
           <el-option
             v-for="option in field.options"
             :key="String(option.value)"
@@ -178,7 +183,16 @@ import { useRoute, useRouter } from 'vue-router'
 
 defineOptions({ name: 'CampusBase' })
 
-type FieldType = 'text' | 'textarea' | 'number' | 'decimal' | 'boolean' | 'image' | 'images'
+type FieldType =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'decimal'
+  | 'boolean'
+  | 'image'
+  | 'images'
+  | 'image-preview'
+  | 'images-preview'
 
 interface SelectOption {
   label: string
@@ -422,6 +436,7 @@ const metas: Record<string, PageMeta> = {
     fields: [
       { label: '标题', prop: 'title' },
       { label: '正文', prop: 'content', type: 'textarea' },
+      { label: '用户实拍图片', prop: 'images_json', type: 'images-preview' },
       { label: '价格', prop: 'price', type: 'decimal' },
       { label: '原价', prop: 'original_price', type: 'decimal' },
       { label: '总库存', prop: 'stock_total', type: 'number' },
@@ -651,7 +666,7 @@ const metas: Record<string, PageMeta> = {
     ],
     fields: [
       { label: '昵称', prop: 'nickname' },
-      { label: '头像', prop: 'avatar' },
+      { label: '微信头像', prop: 'avatar', type: 'image-preview' },
       { label: '手机号', prop: 'mobile' },
       { label: '国家区号', prop: 'phone_country_code' },
       { label: '学校名称', prop: 'school_name' },

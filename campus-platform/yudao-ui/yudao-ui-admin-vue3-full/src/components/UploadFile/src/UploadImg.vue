@@ -15,13 +15,13 @@
       :show-file-list="false"
     >
       <template v-if="modelValue">
-        <img :src="modelValue" class="upload-image" />
+        <img :src="previewUrl" class="upload-image" />
         <div class="upload-handle" @click.stop>
           <div v-if="!disabled" class="handle-icon" @click="editImg">
             <Icon icon="ep:edit" />
             <span v-if="showBtnText">{{ t('action.edit') }}</span>
           </div>
-          <div class="handle-icon" @click="imagePreview(modelValue)">
+          <div class="handle-icon" @click="imagePreview(previewUrl)">
             <Icon icon="ep:zoom-in" />
             <span v-if="showBtnText">{{ t('action.detail') }}</span>
           </div>
@@ -53,6 +53,7 @@ import { generateUUID } from '@/utils'
 import { propTypes } from '@/utils/propTypes'
 import { createImageViewer } from '@/components/ImageViewer'
 import { useUpload } from '@/components/UploadFile/src/useUpload'
+import { resolveCampusMediaUrl } from '@/utils/campusMedia'
 
 defineOptions({ name: 'UploadImg' })
 
@@ -88,6 +89,7 @@ const uploadStyle = computed(() => ({
   '--upload-height': props.height,
   '--upload-border-radius': props.borderradius
 }))
+const previewUrl = computed(() => resolveCampusMediaUrl(props.modelValue))
 
 const { t } = useI18n() // 国际化
 const message = useMessage() // 消息弹窗

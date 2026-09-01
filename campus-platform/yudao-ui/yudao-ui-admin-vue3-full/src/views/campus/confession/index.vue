@@ -44,8 +44,20 @@
       <el-table-column label="表白对象/标题" prop="title" min-width="200" show-overflow-tooltip />
       <el-table-column label="正文" prop="content" min-width="260" show-overflow-tooltip />
       <el-table-column label="发布用户" align="center" prop="user_id" width="100" />
-      <el-table-column label="学校" align="center" prop="school_name" width="150" show-overflow-tooltip />
-      <el-table-column label="校区" align="center" prop="campus_name" width="130" show-overflow-tooltip />
+      <el-table-column
+        label="学校"
+        align="center"
+        prop="school_name"
+        width="150"
+        show-overflow-tooltip
+      />
+      <el-table-column
+        label="校区"
+        align="center"
+        prop="campus_name"
+        width="130"
+        show-overflow-tooltip
+      />
       <el-table-column label="点赞" align="center" prop="like_count" width="80" />
       <el-table-column label="评论" align="center" prop="comment_count" width="80" />
       <el-table-column label="状态" align="center" width="100">
@@ -78,6 +90,9 @@
       </el-form-item>
       <el-form-item label="正文">
         <el-input v-model="formData.content" type="textarea" :rows="6" />
+      </el-form-item>
+      <el-form-item label="用户图片">
+        <CampusImagePreview :value="formData.images_json" :size="120" />
       </el-form-item>
       <el-form-item label="状态">
         <el-radio-group v-model="formData.status">
@@ -151,6 +166,7 @@ const openEdit = (row: Record<string, any>) => {
     id: row.id,
     title: row.title,
     content: row.content,
+    images_json: row.images_json,
     status: row.status
   }
   dialogVisible.value = true
