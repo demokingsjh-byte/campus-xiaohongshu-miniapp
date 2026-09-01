@@ -1,9 +1,9 @@
 <script lang="ts" setup>
-import type { CampusPostComment } from '@/services/api/content';
+import type { CampusPostComment, CampusTradeOrder } from '@/services/api/content';
 import StatePanel from '@/components/StatePanel/index.vue';
 import { campusPosts } from '@/mock/campus';
-import { createCampusContactRequest, createCampusPostComment, deleteCampusComment, getCampusPostCommentPage, getCampusUserFollowStatus, migrateLocalCampusFollows, reportCampusComment, reportCampusPost, setCampusCommentLike, setCampusUserFollow } from '@/services/api/content';
-import { uploadCampusCommentImage } from '@/services/api/file';
+import { acceptCampusErrandOrder, cancelCampusErrandOrder, confirmCampusErrandOrder, createCampusContactRequest, createCampusErrandOrder, createCampusPostComment, deleteCampusComment, disputeCampusErrandOrder, getCampusErrandOrderByPost, getCampusPostCommentPage, getCampusUserFollowStatus, migrateLocalCampusFollows, reportCampusComment, reportCampusPost, setCampusCommentLike, setCampusUserFollow, submitCampusErrandOrder } from '@/services/api/content';
+import { uploadCampusCommentImage, uploadCampusErrandEvidence } from '@/services/api/file';
 import { useCampusContentStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { resolveCampusAvatar, resolveCampusMediaUrl } from '@/utils/avatar';
@@ -39,6 +39,14 @@ const ownerContext = ref(false);
 const emojiList = ['😀', '😂', '🥹', '😍', '😎', '👍', '❤️', '👏', '🎉', '🤔', '😭', '🙏', '🐱', '✨', '😊', '🔥'];
 const expandedReplyCounts = ref<Record<number, number>>({});
 const contactSubmitting = ref(false);
+const errandOrder = ref<CampusTradeOrder>();
+const showErrandEvidenceComposer = ref(false);
+const errandEvidenceMode = ref<'complete' | 'dispute'>('complete');
+const errandEvidenceText = ref('');
+const errandEvidenceImages = ref<string[]>([]);
+const errandEvidenceSubmitting = ref(false);
+const nowTick = ref(Date.now());
+let errandClockTimer: ReturnType<typeof setInterval> | undefined;
 const coverImageFailed = ref(false);
 const contentStore = useCampusContentStore();
 const userStore = useUserStore();
@@ -54,6 +62,41 @@ const channelIcons: Record<string, string> = {
 const channelIcon = computed(() => channelIcons[post.value.channel] || '/static/icons/mine/cloud.svg');
 const isConfession = computed(() => post.value.channel === '表白' || post.value.type === 'confession');
 const isIdlePost = computed(() => post.value.channel === '二手' || post.value.type === 'idle');
+const isShopPost = computed(() => post.value.channel === '探店' || post.value.type === 'shop');
+const canNavigateToMerchant = computed(() => {
+  if (!isShopPost.value || post.value.merchantLatitude == null || post.value.merchantLongitude == null)
+    return false;
+  const latitude = Number(post.value.merchantLatitude);
+  const longitude = Number(post.value.merchantLongitude);
+  return Number.isFinite(latitude) && latitude >= -90 && latitude <= 90
+    && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180;
+});
+const downlisted = computed(() => post.value.downlisted === true);
+const soldOut = computed(() => isIdlePost.value
+  && (post.value.soldOut === true || Number(post.value.stockAvailable) <= 0));
+const saleCompleted = computed(() => {
+  if (!soldOut.value)
+    return false;
+  const total = Number(post.value.stockTotal);
+  const sold = Number(post.value.soldCount);
+  return post.value.stockTotal === undefined || post.value.soldCount === undefined
+    || (Number.isFinite(total) && Number.isFinite(sold) && sold >= total);
+});
+const stockSummary = computed(() => {
+  if (!isIdlePost.value || post.value.stockAvailable === undefined)
+    return '';
+  if (downlisted.value)
+    return '商品已下架';
+  return soldOut.value
+    ? (saleCompleted.value
+        ? `商品已卖出 · 已售 ${Number(post.value.soldCount || 0)} 件`
+        : '商品交易中 · 库存已由待付款订单锁定')
+    : `剩余 ${Number(post.value.stockAvailable || 0)} 件 · 已售 ${Number(post.value.soldCount || 0)} 件`;
+});
+const isErrandPost = computed(() => post.value.type === 'help');
+const currentUserId = computed(() => Number(userStore.userInfo?.id || 0));
+const isErrandHelper = computed(() => Boolean(errandOrder.value?.sellerId)
+  && Number(errandOrder.value?.sellerId) === currentUserId.value);
 const hasMarkedPrice = computed(() => String(post.value.price ?? '').trim().length > 0);
 const postHotCount = computed(() => [post.value.views, post.value.likes, post.value.collects, post.value.comments].reduce((total, current) => {
   const value = Number(current || 0);
@@ -113,10 +156,79 @@ const isOwnPost = computed(() => {
   const schoolMatches = Boolean(currentSchool && authorSchool && currentSchool === authorSchool);
   return avatarMatches || schoolMatches;
 });
+const canOpenErrandChat = computed(() => {
+  const order = errandOrder.value;
+  return Boolean(isErrandPost.value && order?.sellerId
+    && (isOwnPost.value || isErrandHelper.value)
+    && [1, 2].includes(Number(order.status))
+    && [2, 3, 4].includes(Number(order.fulfillmentStatus)));
+});
+const errandChatText = computed(() => isOwnPost.value ? '联系接单人' : '联系发布人');
+const errandConfirmRemainingText = computed(() => {
+  const expiresAt = errandOrder.value?.confirmExpiresAt;
+  if (!expiresAt)
+    return '';
+  const remaining = new Date(expiresAt).getTime() - nowTick.value;
+  if (remaining <= 0)
+    return '确认期已结束，等待系统自动结算';
+  const totalMinutes = Math.ceil(remaining / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `剩余 ${hours} 小时 ${minutes} 分钟`;
+});
+const errandStatusNote = computed(() => {
+  const order = errandOrder.value;
+  if (!order)
+    return '';
+  if (order.disputeStatus === 1)
+    return '申诉期间赏金保持冻结，等待平台核对双方凭证并裁决';
+  if (order.disputeStatus === 2)
+    return order.disputeResolution || '平台已裁决接单人完成任务，赏金已结算';
+  if (order.disputeStatus === 3)
+    return order.disputeResolution || '平台已裁决发布人胜诉，赏金将原路退款';
+  if (order.fulfillmentStatus === 1)
+    return '赏金已托管，等待同校学生接单；24 小时无人接单将自动退款';
+  if (order.fulfillmentStatus === 2)
+    return '接单人办理中，双方可通过任务会话沟通';
+  if (order.fulfillmentStatus === 3)
+    return `${errandConfirmRemainingText.value}；发布人可确认或申诉，逾期自动结算`;
+  if (order.fulfillmentStatus === 4)
+    return order.autoConfirmed ? '发布人超时未操作，系统已自动确认并结算收益' : '任务已确认，接单人收益已结算';
+  return '任务进度以订单状态为准';
+});
 const contentExpandable = computed(() => String(post.value?.content || '').trim().length > 60);
 const contactButtonText = computed(() => {
+  if (downlisted.value)
+    return '商品已下架';
+  if (isErrandPost.value) {
+    const order = errandOrder.value;
+    if (!order)
+      return isOwnPost.value ? '去支付赏金' : '等待发布人付款';
+    if (order.status === 0)
+      return isOwnPost.value ? '继续支付赏金' : '等待发布人付款';
+    if (order.disputeStatus === 1)
+      return '申诉处理中 · 赏金已冻结';
+    if (order.disputeStatus === 2)
+      return isErrandHelper.value ? `收益 ¥${Number(order.incomeAmount || order.amount || 0).toFixed(2)} 已到账` : '平台已完成裁决';
+    if (order.disputeStatus === 3)
+      return isOwnPost.value ? '平台已裁决退款' : '平台已完成裁决';
+    if (order.status === 1 && order.fulfillmentStatus === 5)
+      return order.refundStatus === 3 ? '退款失败，点击重试' : '任务已取消 · 退款处理中';
+    if (order.status === 3 || order.status === 4)
+      return isOwnPost.value ? '重新发布并付款' : '任务已取消';
+    if (order.fulfillmentStatus === 1)
+      return isOwnPost.value ? '等待接单 · 可取消退款' : '立即接单';
+    if (order.fulfillmentStatus === 2)
+      return isErrandHelper.value ? '已完成，提交给发布人' : (isOwnPost.value ? '接单人办理中' : '已被其他同学接单');
+    if (order.fulfillmentStatus === 3)
+      return isOwnPost.value ? '确认完成并结算收益' : (isErrandHelper.value ? '等待发布人确认' : '任务完成确认中');
+    if (order.fulfillmentStatus === 4)
+      return isErrandHelper.value ? `收益 ¥${Number(order.incomeAmount || order.amount || 0).toFixed(2)} 已到账` : '任务已完成';
+  }
   if (isOwnPost.value)
     return isIdlePost.value ? '管理商品' : '管理内容';
+  if (soldOut.value)
+    return saleCompleted.value ? '已卖出' : '交易中';
   return isIdlePost.value && Number(post.value?.price || 0) > 0 ? '立即购买' : '联系TA';
 });
 const composerTitle = computed(() => replyAuthor.value ? `回复 ${replyAuthor.value}` : (postAuthor.value ? `评论 ${postAuthor.value}` : '评论内容'));
@@ -176,6 +288,8 @@ onLoad(async (query) => {
     }
     if (userStore.loggedIn)
       recordCampusHistory(userStore.userInfo?.id, loaded);
+    if (loaded.type === 'help' && userStore.loggedIn)
+      await loadErrandOrder();
     pageState.value = 'content';
     await loadComments();
   } catch {
@@ -183,7 +297,42 @@ onLoad(async (query) => {
   }
 });
 
-onHide(() => resetCommentComposer());
+async function loadErrandOrder() {
+  try {
+    errandOrder.value = await getCampusErrandOrderByPost(postId.value);
+  } catch {
+    errandOrder.value = undefined;
+  }
+}
+
+function startErrandClock() {
+  if (errandClockTimer)
+    clearInterval(errandClockTimer);
+  nowTick.value = Date.now();
+  errandClockTimer = setInterval(() => {
+    nowTick.value = Date.now();
+  }, 30000);
+}
+
+function stopErrandClock() {
+  if (errandClockTimer) {
+    clearInterval(errandClockTimer);
+    errandClockTimer = undefined;
+  }
+}
+
+onHide(() => {
+  resetCommentComposer();
+  stopErrandClock();
+});
+
+onShow(() => {
+  startErrandClock();
+  if (isErrandPost.value && userStore.loggedIn)
+    void loadErrandOrder();
+});
+
+onUnload(() => stopErrandClock());
 
 onShareAppMessage(() => ({
   title: postAuthor.value ? `${postAuthor.value}发布的校园内容` : '校园内容分享',
@@ -493,7 +642,221 @@ async function changeCommentSort(sort: 'latest' | 'likes') {
   commentSort.value = sort;
   await loadComments();
 }
+async function handleErrandAction() {
+  if (!ensureLogin() || contactSubmitting.value)
+    return;
+  const needsOrderCreation = !errandOrder.value && isOwnPost.value;
+  contactSubmitting.value = true;
+  try {
+    let order = errandOrder.value;
+    if (!order) {
+      if (!isOwnPost.value) {
+        uni.showToast({ title: '发布人尚未完成赏金支付', icon: 'none' });
+        return;
+      }
+      order = await createCampusErrandOrder(postId.value);
+      errandOrder.value = order;
+    }
+    if (isOwnPost.value && order.status === 1 && order.fulfillmentStatus === 5) {
+      errandOrder.value = await cancelCampusErrandOrder(order.id);
+      uni.showToast({ title: errandOrder.value.refundStatus === 2 ? '赏金已退款' : '退款正在处理中', icon: 'none' });
+      return;
+    }
+    if (isOwnPost.value && (order.status === 0 || order.status === 3 || order.status === 4)) {
+      if (order.status !== 0)
+        order = await createCampusErrandOrder(postId.value);
+      uni.navigateTo({ url: `/pages/checkout/index?orderId=${order.id}&postId=${postId.value}&mode=errand` });
+      return;
+    }
+    if (order.status !== 1 && order.status !== 2) {
+      uni.showToast({ title: '任务当前不可操作', icon: 'none' });
+      return;
+    }
+    if (order.disputeStatus === 1) {
+      uni.showToast({ title: '申诉处理中，赏金已冻结', icon: 'none' });
+      return;
+    }
+    if (order.fulfillmentStatus === 1 && isOwnPost.value) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        uni.showModal({
+          title: '取消任务并退款',
+          content: '当前还没有同学接单，取消后赏金会按原支付路径退回。确定继续吗？',
+          confirmText: '取消并退款',
+          success: result => resolve(Boolean(result.confirm)),
+          fail: () => resolve(false),
+        });
+      });
+      if (!confirmed)
+        return;
+      errandOrder.value = await cancelCampusErrandOrder(order.id);
+      uni.showToast({ title: errandOrder.value.refundStatus === 2 ? '赏金已退款' : '退款申请已提交', icon: 'none' });
+      return;
+    }
+    if (order.fulfillmentStatus === 1) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        uni.showModal({
+          title: '确认接单',
+          content: `完成任务并由发布人确认后，你将获得 ¥${Number(order?.amount || 0).toFixed(2)} 收益。`,
+          confirmText: '确认接单',
+          success: result => resolve(Boolean(result.confirm)),
+          fail: () => resolve(false),
+        });
+      });
+      if (!confirmed)
+        return;
+      errandOrder.value = await acceptCampusErrandOrder(order.id);
+      uni.showToast({ title: '接单成功，请按要求完成任务', icon: 'success' });
+      setTimeout(() => openErrandChat(), 450);
+      return;
+    }
+    if (order.fulfillmentStatus === 2 && isErrandHelper.value) {
+      openErrandEvidenceComposer('complete');
+      return;
+    }
+    if (order.fulfillmentStatus === 3 && isOwnPost.value) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        uni.showModal({
+          title: '确认任务完成',
+          content: `确认后 ¥${Number(order?.amount || 0).toFixed(2)} 赏金将结算为接单人收益。`,
+          confirmText: '确认并结算',
+          success: result => resolve(Boolean(result.confirm)),
+          fail: () => resolve(false),
+        });
+      });
+      if (!confirmed)
+        return;
+      errandOrder.value = await confirmCampusErrandOrder(order.id);
+      uni.showToast({ title: '任务已完成，收益已结算', icon: 'success' });
+      return;
+    }
+    uni.showToast({ title: contactButtonText.value, icon: 'none' });
+  } catch (error: any) {
+    const message = String(error?.message || '操作失败，请稍后重试').replace(/^.*：/, '').slice(0, 100);
+    uni.showModal({
+      title: needsOrderCreation ? '暂时无法进入付款' : '任务状态更新失败',
+      content: needsOrderCreation && /系统异常/.test(message)
+        ? '线上服务器尚未完成代办订单和数据库升级，请部署最新后端后再试。'
+        : message,
+      showCancel: false,
+    });
+    await loadErrandOrder();
+  } finally {
+    contactSubmitting.value = false;
+  }
+}
+
+function openErrandEvidenceComposer(mode: 'complete' | 'dispute') {
+  if (!errandOrder.value || errandEvidenceSubmitting.value)
+    return;
+  errandEvidenceMode.value = mode;
+  errandEvidenceText.value = '';
+  errandEvidenceImages.value = [];
+  showErrandEvidenceComposer.value = true;
+}
+
+function closeErrandEvidenceComposer() {
+  if (!errandEvidenceSubmitting.value)
+    showErrandEvidenceComposer.value = false;
+}
+
+function chooseErrandEvidenceImages() {
+  const remaining = 3 - errandEvidenceImages.value.length;
+  if (remaining <= 0) {
+    uni.showToast({ title: '最多上传 3 张凭证', icon: 'none' });
+    return;
+  }
+  uni.chooseImage({
+    count: remaining,
+    sizeType: ['compressed'],
+    success: ({ tempFilePaths }) => {
+      errandEvidenceImages.value.push(...tempFilePaths.slice(0, remaining));
+    },
+  });
+}
+
+function removeErrandEvidenceImage(index: number) {
+  errandEvidenceImages.value.splice(index, 1);
+}
+
+function previewErrandEvidence(current: string) {
+  uni.previewImage({ urls: errandOrder.value?.completionImages || [], current });
+}
+
+async function submitErrandEvidence() {
+  const order = errandOrder.value;
+  if (!order || errandEvidenceSubmitting.value)
+    return;
+  const text = errandEvidenceText.value.trim();
+  if (errandEvidenceMode.value === 'complete' && !text && !errandEvidenceImages.value.length) {
+    uni.showToast({ title: '请填写完成说明或上传凭证', icon: 'none' });
+    return;
+  }
+  if (errandEvidenceMode.value === 'dispute' && !text) {
+    uni.showToast({ title: '请填写申诉原因', icon: 'none' });
+    return;
+  }
+  errandEvidenceSubmitting.value = true;
+  try {
+    const images: string[] = [];
+    for (const image of errandEvidenceImages.value)
+      images.push(await uploadCampusErrandEvidence(image));
+    errandOrder.value = errandEvidenceMode.value === 'complete'
+      ? await submitCampusErrandOrder(order.id, { note: text, images })
+      : await disputeCampusErrandOrder(order.id, { reason: text, images });
+    showErrandEvidenceComposer.value = false;
+    uni.showToast({
+      title: errandEvidenceMode.value === 'complete' ? '已提交，24 小时内待确认' : '申诉已提交，赏金已冻结',
+      icon: 'none',
+    });
+  }
+  catch (error: any) {
+    uni.showToast({ title: String(error?.message || '提交失败，请重试').slice(0, 80), icon: 'none' });
+    await loadErrandOrder();
+  }
+  finally {
+    errandEvidenceSubmitting.value = false;
+  }
+}
+
+function startErrandDispute() {
+  const order = errandOrder.value;
+  if (!isOwnPost.value || !order || order.fulfillmentStatus !== 3 || order.disputeStatus)
+    return;
+  openErrandEvidenceComposer('dispute');
+}
+
+function openErrandChat() {
+  if (!canOpenErrandChat.value || !errandOrder.value)
+    return;
+  uni.navigateTo({ url: `/pages/trade-chat/index?orderId=${errandOrder.value.id}` });
+}
+function navigateToMerchant() {
+  if (!canNavigateToMerchant.value) {
+    uni.showToast({ title: '商家暂未提供地图导航位置', icon: 'none' });
+    return;
+  }
+  uni.openLocation({
+    latitude: Number(post.value.merchantLatitude),
+    longitude: Number(post.value.merchantLongitude),
+    name: post.value.merchantLocationName || post.value.title,
+    address: post.value.merchantAddress || post.value.location || '',
+    scale: 18,
+    fail: () => uni.showToast({ title: '地图打开失败，请稍后重试', icon: 'none' }),
+  });
+}
 async function contact() {
+  if (downlisted.value) {
+    uni.showToast({ title: '商品已下架', icon: 'none' });
+    return;
+  }
+  if (isErrandPost.value) {
+    await handleErrandAction();
+    return;
+  }
+  if (soldOut.value) {
+    uni.showToast({ title: '商品已售罄', icon: 'none' });
+    return;
+  }
   if (isOwnPost.value) {
     managePost();
     return;
@@ -532,6 +895,10 @@ async function contact() {
   }
 }
 async function toggleLike() {
+  if (downlisted.value) {
+    uni.showToast({ title: '已下架商品不能点赞', icon: 'none' });
+    return;
+  }
   if (!ensureLogin() || interactionBusy.value)
     return;
   interactionBusy.value = true;
@@ -578,6 +945,18 @@ async function toggleFollow() {
   }
 }
 function managePost() {
+  if (isErrandPost.value && errandOrder.value
+    && [0, 1].includes(errandOrder.value.status)
+    && [0, 1, 2, 3].includes(Number(errandOrder.value.fulfillmentStatus))) {
+    uni.showModal({
+      title: '任务订单仍在进行',
+      content: errandOrder.value.fulfillmentStatus === 1
+        ? '请先通过页面底部按钮取消任务并退款，再删除发布。'
+        : '已有接单人参与，任务完成前不能删除发布。',
+      showCancel: false,
+    });
+    return;
+  }
   uni.showActionSheet({
     itemList: ['删除这条发布'],
     success: ({ tapIndex }) => {
@@ -689,6 +1068,9 @@ function reportPost() {
         </view>
         <view v-if="hasMarkedPrice" class="price">
           <text>¥</text>{{ post.price }}
+        </view>
+        <view v-if="stockSummary" class="stock-summary" :class="{ sold: soldOut }">
+          {{ stockSummary }}
         </view><view class="title">
           {{ post.title }}
         </view><view class="body" :class="{ expanded: contentExpanded }">
@@ -702,8 +1084,19 @@ function reportPost() {
             # {{ tag }}
           </text>
         </view>
+        <view v-if="isShopPost" class="groupbuy-location-card">
+          <image src="/static/icons/ui/location.svg" mode="aspectFit" />
+          <view class="groupbuy-location-copy">
+            <text>{{ post.merchantLocationName || '门店位置' }}</text>
+            <text class="groupbuy-exact-address">{{ post.merchantAddress || post.location || `${post.school} · 校内附近` }}</text>
+            <text v-if="post.merchantAddress && post.location" class="groupbuy-approximate-address">大概位置：{{ post.location }}</text>
+          </view>
+          <button v-if="canNavigateToMerchant" class="merchant-navigation-button" @click.stop="navigateToMerchant">
+            去导航
+          </button>
+        </view>
         <view class="meta">
-          <view class="meta-location">
+          <view v-if="!isShopPost" class="meta-location">
             <image
               :src="isConfession ? '/static/icons/mine/heart.svg' : '/static/icons/ui/location.svg'" mode="aspectFit"
             /><text>{{ isConfession ? '仅展示在本校表白墙' : (post.location || `${post.school} · 校内`) }}</text>
@@ -713,6 +1106,27 @@ function reportPost() {
             </text>
           </view>
         </view>
+        <view v-if="isErrandPost && errandOrder" class="errand-status-card">
+          <view>
+            <text class="errand-status-title">{{ errandOrder.fulfillmentStatusText || errandOrder.statusText }}</text>
+            <text class="errand-status-note">
+              {{ errandStatusNote }}
+            </text>
+            <text v-if="errandOrder.completionNote" class="errand-evidence-note">完成说明：{{ errandOrder.completionNote }}</text>
+            <view v-if="errandOrder.completionImages?.length" class="errand-evidence-preview">
+              <image v-for="image in errandOrder.completionImages" :key="image" :src="image" mode="aspectFill" @click.stop="previewErrandEvidence(image)" />
+            </view>
+          </view>
+          <view class="errand-side">
+            <text class="errand-reward">赏金 ¥{{ Number(errandOrder.amount || 0).toFixed(2) }}</text>
+            <button v-if="canOpenErrandChat" class="errand-chat-button" @click.stop="openErrandChat">
+              {{ errandChatText }}
+            </button>
+            <button v-if="isOwnPost && errandOrder.fulfillmentStatus === 3 && !errandOrder.disputeStatus" class="errand-dispute-button" @click.stop="startErrandDispute">
+              完成情况有异议
+            </button>
+          </view>
+        </view>
         <view class="detail-actions">
           <view class="detail-action" :class="{ active: liked }" @click="toggleLike">
             <text class="detail-heart">{{ liked ? '♥' : '♡' }}</text><text>{{ hasMarkedPrice ? `${post.likes || 0}人想要` : `热度 ${postHotCount}` }}</text>
@@ -720,7 +1134,7 @@ function reportPost() {
           <view class="detail-action" :class="{ active: collected }" @click="toggleCollect">
             <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>{{ post.collects || 0 }}人收藏</text>
           </view>
-          <button v-if="isOwnPost || !isConfession" class="detail-contact" :disabled="contactSubmitting" @click="contact">
+          <button v-if="isOwnPost || !isConfession" class="detail-contact" :disabled="contactSubmitting || (!isOwnPost && (soldOut || downlisted))" @click="contact">
             {{ contactSubmitting ? '提交中…' : contactButtonText }}
           </button>
         </view>
@@ -859,12 +1273,38 @@ function reportPost() {
         >
           <text>{{ collected ? '★' : '☆' }}</text><text>{{ post.collects || 0 }}</text>
         </view>
-        <button v-if="isOwnPost || !isConfession" class="prototype-buy" :disabled="contactSubmitting" @click="contact">
+        <button v-if="isOwnPost || !isConfession" class="prototype-buy" :disabled="contactSubmitting || (!isOwnPost && (soldOut || downlisted))" @click="contact">
           {{ contactSubmitting ? '提交中…' : contactButtonText }}
         </button>
         <button v-else class="prototype-buy" @click="openCommentComposer">
           去表白
         </button>
+      </view>
+      <view v-if="showErrandEvidenceComposer" class="comment-overlay" @click="closeErrandEvidenceComposer">
+        <view class="errand-evidence-composer" @click.stop>
+          <view class="composer-header">
+            <text>{{ errandEvidenceMode === 'complete' ? '提交任务完成凭证' : '发起任务申诉' }}</text>
+            <text class="composer-close" @click="closeErrandEvidenceComposer">×</text>
+          </view>
+          <text class="errand-composer-tip">
+            {{ errandEvidenceMode === 'complete' ? '提交后发布人有 24 小时确认；逾期未申诉将自动结算赏金。' : '申诉提交后赏金立即冻结，平台将依据双方沟通和凭证进行裁决。' }}
+          </text>
+          <textarea
+            v-model="errandEvidenceText" class="errand-evidence-textarea" maxlength="500"
+            :placeholder="errandEvidenceMode === 'complete' ? '说明放置位置、交付时间等完成情况' : '请具体说明任务未完成或不符合约定的情况'"
+          />
+          <view v-if="errandEvidenceImages.length" class="comment-upload-preview">
+            <view v-for="(image, index) in errandEvidenceImages" :key="image" class="comment-upload-item">
+              <image :src="image" mode="aspectFill" /><text @click="removeErrandEvidenceImage(index)">×</text>
+            </view>
+          </view>
+          <view class="errand-evidence-actions">
+            <button class="errand-add-evidence" @click="chooseErrandEvidenceImages">＋ 添加凭证（{{ errandEvidenceImages.length }}/3）</button>
+            <button class="errand-submit-evidence" :disabled="errandEvidenceSubmitting" @click="submitErrandEvidence">
+              {{ errandEvidenceSubmitting ? '提交中…' : (errandEvidenceMode === 'complete' ? '确认提交完成' : '提交申诉并冻结赏金') }}
+            </button>
+          </view>
+        </view>
       </view>
       <view v-if="showCommentComposer" class="comment-overlay" @click="closeCommentComposer">
         <view class="comment-composer" :style="composerKeyboardStyle" @click.stop>
@@ -1097,6 +1537,19 @@ function reportPost() {
   margin-right: 4rpx;
   font-size: 26rpx;
 }
+.stock-summary {
+  display: inline-flex;
+  margin: 8rpx 0 2rpx;
+  padding: 7rpx 14rpx;
+  border-radius: 999rpx;
+  color: #2f7d63;
+  background: rgba(16, 167, 121, 0.1);
+  font-size: 21rpx;
+}
+.stock-summary.sold {
+  color: #777;
+  background: rgba(31, 31, 31, 0.08);
+}
 .title {
   margin-top: 12rpx;
   font-size: 38rpx;
@@ -1154,6 +1607,108 @@ function reportPost() {
   flex: 0 0 auto;
   gap: 18rpx;
   margin-left: 18rpx;
+}
+.errand-status-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin-top: 24rpx;
+  padding: 20rpx 22rpx;
+  border-radius: 20rpx;
+  background: rgba(16, 167, 121, 0.09);
+}
+.groupbuy-location-card {
+  display: flex;
+  align-items: center;
+  margin-top: 22rpx;
+  padding: 18rpx 20rpx;
+  border: 1rpx solid #dcece6;
+  border-radius: 18rpx;
+  background: #f5fbf8;
+}
+.groupbuy-location-card image {
+  width: 38rpx;
+  height: 38rpx;
+  margin-right: 15rpx;
+}
+.groupbuy-location-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.groupbuy-location-copy > text:first-child {
+  color: #568075;
+  font-size: 19rpx;
+  font-weight: 700;
+}
+.groupbuy-exact-address {
+  overflow: hidden;
+  margin-top: 4rpx;
+  color: #31463f;
+  font-size: 23rpx;
+  text-overflow: ellipsis;
+  line-height: 1.45;
+}
+.groupbuy-approximate-address {
+  margin-top: 5rpx;
+  color: #8a9590;
+  font-size: 18rpx;
+}
+.merchant-navigation-button {
+  flex: 0 0 auto;
+  height: 62rpx;
+  margin: 0 0 0 16rpx;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  color: #fff;
+  background: #10a779;
+  font-size: 21rpx;
+  font-weight: 700;
+  line-height: 62rpx;
+}
+.merchant-navigation-button::after {
+  border: 0;
+}
+.errand-status-card > view {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.errand-status-title {
+  color: #087b59;
+  font-size: 27rpx;
+  font-weight: 750;
+}
+.errand-status-note {
+  margin-top: 7rpx;
+  color: #71817b;
+  font-size: 21rpx;
+}
+.errand-reward {
+  flex: 0 0 auto;
+  color: #e44b38;
+  font-size: 25rpx;
+  font-weight: 750;
+}
+.errand-side {
+  align-items: flex-end;
+  flex: 0 0 auto;
+}
+.errand-chat-button {
+  height: 48rpx;
+  margin: 10rpx 0 0;
+  padding: 0 18rpx;
+  border: 0;
+  border-radius: 24rpx;
+  color: #fff;
+  background: #10a779;
+  font-size: 20rpx;
+  line-height: 48rpx;
+}
+.errand-chat-button::after {
+  border: 0;
 }
 .detail-actions {
   display: flex;
@@ -2173,5 +2728,111 @@ function reportPost() {
 .comment-send.disabled {
   color: #a2aa9f;
   background: #c8fb88;
+}
+
+.errand-evidence-note {
+  margin-top: 12rpx;
+  color: #475c55;
+  font-size: 21rpx;
+  line-height: 1.5;
+}
+
+.errand-evidence-preview {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 10rpx;
+  margin-top: 12rpx;
+}
+
+.errand-evidence-preview image {
+  width: 82rpx;
+  height: 82rpx;
+  border-radius: 12rpx;
+}
+
+.errand-dispute-button {
+  height: 46rpx;
+  margin: 9rpx 0 0;
+  padding: 0 15rpx;
+  border: 1rpx solid #e38a72;
+  border-radius: 24rpx;
+  color: #c5533b;
+  background: #fff8f5;
+  font-size: 19rpx;
+  line-height: 44rpx;
+}
+
+.errand-dispute-button::after {
+  border: 0;
+}
+
+.errand-evidence-composer {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 30rpx 32rpx calc(28rpx + env(safe-area-inset-bottom));
+  border-radius: 32rpx 32rpx 0 0;
+  background: #fff;
+}
+
+.errand-evidence-composer .composer-header {
+  display: flex;
+}
+
+.errand-composer-tip {
+  display: block;
+  margin-top: 18rpx;
+  color: #71817b;
+  font-size: 22rpx;
+  line-height: 1.55;
+}
+
+.errand-evidence-textarea {
+  width: 100%;
+  height: 210rpx;
+  box-sizing: border-box;
+  margin-top: 20rpx;
+  padding: 22rpx;
+  border-radius: 20rpx;
+  color: #283631;
+  background: #f6f8f7;
+  font-size: 25rpx;
+  line-height: 1.55;
+}
+
+.errand-evidence-composer .comment-upload-preview {
+  margin-top: 20rpx;
+}
+
+.errand-evidence-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.errand-add-evidence,
+.errand-submit-evidence {
+  flex: 1;
+  height: 72rpx;
+  margin: 0;
+  padding: 0 12rpx;
+  border-radius: 22rpx;
+  font-size: 22rpx;
+  line-height: 72rpx;
+}
+
+.errand-add-evidence {
+  color: #39705e;
+  background: #eff8f4;
+}
+
+.errand-submit-evidence {
+  color: #14200a;
+  background: #95f51f;
+  font-weight: 750;
+}
+
+.errand-add-evidence::after,
+.errand-submit-evidence::after {
+  border: 0;
 }
 </style>

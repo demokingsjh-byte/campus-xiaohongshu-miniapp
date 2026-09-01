@@ -1,4 +1,4 @@
-export const PRIVACY_POLICY_VERSION = '2026-07-13';
+export const PRIVACY_POLICY_VERSION = '2026-08-29';
 
 const CONSENT_KEY = 'campus-privacy-consent';
 

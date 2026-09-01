@@ -161,8 +161,10 @@ function retry() {
 }
 
 function openOrder(order: CampusTradeOrder) {
-  if (activeRole.value !== 'buyer')
+  if (order.bizType === 4) {
+    uni.navigateTo({ url: `/pages/detail/index?id=${order.postId}` });
     return;
+  }
   uni.navigateTo({ url: `/pages/checkout/index?orderId=${order.id}&postId=${order.postId}` });
 }
 
@@ -209,6 +211,25 @@ function displayStatus(status: number, fallback: string) {
   return fallback || '已完成';
 }
 
+function displayOrderStatus(order: CampusTradeOrder) {
+  return order.bizType === 4
+    ? (order.fulfillmentStatusText || displayStatus(order.status, order.statusText))
+    : displayStatus(order.status, order.statusText);
+}
+
+function orderFooterText(order: CampusTradeOrder) {
+  if (order.bizType === 4) {
+    if (order.fulfillmentStatus === 1)
+      return '赏金已托管，点击查看任务进度';
+    if ([2, 3, 4].includes(Number(order.fulfillmentStatus)))
+      return activeRole.value === 'seller' && order.fulfillmentStatus === 4
+        ? `收益 ¥${Number(order.incomeAmount || order.amount || 0).toFixed(2)} 已到账`
+        : '点击查看任务进度并联系对方';
+    return '点击查看任务订单详情';
+  }
+  return order.status === 1 || order.status === 2 ? '点击查看联系方式和交易会话' : '点击查看订单详情';
+}
+
 function goBack() {
   uni.navigateBack();
 }
@@ -249,10 +270,10 @@ function statusTone(status: number) {
 
     <view class="role-tabs">
       <view class="role-tab" :class="[{ active: activeRole === 'buyer' }]" @click="changeRole('buyer')">
-        我买的
+        我买/发布的
       </view>
       <view class="role-tab" :class="[{ active: activeRole === 'seller' }]" @click="changeRole('seller')">
-        我卖的
+        我卖/接的
       </view>
     </view>
 
@@ -287,8 +308,7 @@ function statusTone(status: number) {
     </view>
     <view v-else class="order-list">
       <view
-        v-for="item in orders" :key="item.id" class="order-card"
-        :class="{ clickable: activeRole === 'buyer' }"
+        v-for="item in orders" :key="item.id" class="order-card clickable"
         @click="openOrder(item)"
       >
         <view class="order-card-head">
@@ -296,7 +316,7 @@ function statusTone(status: number) {
             订单号 {{ item.orderNo }}
           </text>
           <text class="order-status" :class="[statusTone(item.status)]">
-            {{ displayStatus(item.status, item.statusText) }}
+            {{ displayOrderStatus(item) }}
           </text>
         </view>
         <view class="order-product">
@@ -306,10 +326,12 @@ function statusTone(status: number) {
           </view>
           <view class="order-copy">
             <text class="order-title">
-              {{ item.title || '校园交易商品' }}
+              {{ item.title || (item.bizType === 4 ? '校园代办任务' : '校园交易商品') }}
             </text>
             <text class="order-person">
-              {{ activeRole === 'buyer' ? `卖家：${item.sellerName || '校园同学'}` : `买家：${item.buyerName || '校园同学'}` }}
+              {{ item.bizType === 4
+                ? (activeRole === 'buyer' ? `接单人：${item.sellerName || '等待接单'}` : `发布人：${item.buyerName || '校园同学'}`)
+                : (activeRole === 'buyer' ? `卖家：${item.sellerName || '校园同学'}` : `买家：${item.buyerName || '校园同学'}`) }}
             </text>
             <text class="order-time">
               {{ formatTime(item.paidAt || item.expiresAt) }}
@@ -321,8 +343,8 @@ function statusTone(status: number) {
             </text>{{ Number(item.amount || 0).toFixed(2) }}
           </view>
         </view>
-        <view v-if="activeRole === 'buyer'" class="order-footer">
-          点击查看订单详情
+        <view class="order-footer">
+          {{ orderFooterText(item) }}
         </view>
       </view>
     </view>

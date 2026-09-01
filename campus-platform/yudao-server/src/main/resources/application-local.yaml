@@ -345,6 +345,8 @@ com:
 
 # 校园二手微信支付（密钥内容不进入配置文件和 Git）
 campus:
+  trade-chat:
+    sensitive-words: ${CAMPUS_TRADE_CHAT_SENSITIVE_WORDS:裸聊,代考,枪支,毒品,赌博,博彩,洗钱,刷单返利,校园贷,银行卡密码,支付密码,短信验证码}
   content-security:
     # 本机默认关闭，避免离线开发时依赖微信接口；联调时设置环境变量为 true。
     enabled: ${CAMPUS_CONTENT_SECURITY_ENABLED:false}

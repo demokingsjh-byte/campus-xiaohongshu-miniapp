@@ -84,7 +84,7 @@ CURRENT_STEP="checking database connection"
 
 mkdir -p "$BACKUP_DIR"
 backup_tables=()
-for table in infra_config system_menu system_dict_data system_tenant system_social_client campus_region campus_school_catalog campus_home_category campus_tenant_profile campus_miniapp_user campus_user_follow campus_post campus_post_interaction campus_post_comment campus_post_comment_like campus_post_comment_report campus_post_report campus_content_audit campus_notification campus_contact_request campus_trade_order; do
+for table in infra_config system_menu system_dict_data system_tenant system_social_client campus_region campus_school_catalog campus_home_category campus_tenant_profile campus_miniapp_user campus_user_follow campus_post campus_post_interaction campus_post_comment campus_post_comment_like campus_post_comment_report campus_post_report campus_content_audit campus_notification campus_contact_request campus_trade_order campus_trade_message; do
   exists="$("$mysql_bin" "${mysql_args[@]}" --batch --skip-column-names \
     -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '$table'")"
   if [ "$exists" = "1" ]; then
@@ -127,7 +127,14 @@ migrations=(
   campus-wechat-miniapp-config.sql
   campus-wechat-pay-upgrade.sql
   campus-trade-order-upgrade.sql
+  campus-trade-chat-upgrade.sql
+  campus-inventory-upgrade.sql
+  campus-job-audit-upgrade.sql
+  campus-groupbuy-address-upgrade.sql
   campus-trade-refund-upgrade.sql
+  campus-errand-order-upgrade.sql
+  campus-errand-audit-policy-upgrade.sql
+  campus-errand-confirmation-upgrade.sql
 )
 
 for migration in "${migrations[@]}"; do

@@ -79,9 +79,14 @@ const alovaInstance = createAlova({
         throw new Error(`请求错误[${code}]：${errorMessage}`);
       }
       // 处理http状态错误
+      const httpErrorData = rawData && typeof rawData === 'object' ? rawData as Partial<API> : undefined;
+      const httpErrorMessage = httpErrorData?.msg || httpErrorData?.message
+        || (typeof rawData === 'string' ? rawData : '')
+        || (errMsg && errMsg !== 'request:ok' ? errMsg : '')
+        || `服务器返回 HTTP ${statusCode}`;
       if (!config.meta?.silentError)
-        handleHttpStatus(statusCode, errMsg || '');
-      throw new Error(`HTTP请求错误[${statusCode}]：${errMsg}`);
+        handleHttpStatus(statusCode, httpErrorMessage);
+      throw new Error(`HTTP请求错误[${statusCode}]：${httpErrorMessage}`);
     },
 
     /**

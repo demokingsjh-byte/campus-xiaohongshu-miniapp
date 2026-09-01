@@ -75,7 +75,12 @@ export interface CampusPostCreateParams {
   content: string
   price?: string
   originalPrice?: string
+  stockTotal?: number
   location?: string
+  merchantAddress?: string
+  merchantLocationName?: string
+  merchantLatitude?: number
+  merchantLongitude?: number
   tradeMode?: string
   visibleRange?: string
   contact?: string
@@ -118,13 +123,25 @@ export interface CampusTradeContact {
   status: number
   paid: boolean
   sellerName?: string
+  participantName?: string
   contact?: string
+}
+
+export interface CampusTradeMessage {
+  id: number
+  orderId: number
+  senderId: number
+  senderName?: string
+  receiverId: number
+  content: string
+  createTime?: string | number[]
 }
 
 export interface CampusTradeOrder {
   id: number
   orderNo: string
   postId: number
+  bizType?: number
   buyerId: number
   sellerId: number
   buyerName?: string
@@ -134,11 +151,29 @@ export interface CampusTradeOrder {
   amount: string | number
   status: number
   statusText: string
+  fulfillmentStatus?: number
+  fulfillmentStatusText?: string
   expiresAt?: string
+  acceptExpiresAt?: string
+  acceptedAt?: string
+  submittedAt?: string
+  completionNote?: string
+  completionImages?: string[]
+  confirmExpiresAt?: string
+  disputeStatus?: number
+  disputeStatusText?: string
+  disputeReason?: string
+  disputeImages?: string[]
+  disputedAt?: string
+  disputeResolvedAt?: string
+  disputeResolution?: string
+  autoConfirmed?: boolean
   paidAt?: string
   completedAt?: string
   closedAt?: string
   closeReason?: string
+  refundStatus?: number
+  incomeAmount?: string | number
   expired?: boolean
 }
 
@@ -345,8 +380,58 @@ export function cancelCampusTradeOrder(orderId: number) {
   return request.Post<boolean>('/campus/trade/order/cancel', {}, { params: { id: orderId } });
 }
 
-export function getCampusTradeContact(postId: number) {
-  return request.Get<CampusTradeContact>('/campus/trade/contact', { params: { postId }, cacheFor: 0 });
+export function getCampusTradeContact(orderId: number) {
+  return request.Get<CampusTradeContact>('/campus/trade/contact', {
+    params: { orderId },
+    cacheFor: 0,
+    meta: { silentError: true },
+  });
+}
+
+export function createCampusErrandOrder(postId: number) {
+  return request.Post<CampusTradeOrder>('/campus/trade/order/errand/create', {}, { params: { postId } });
+}
+
+export function getCampusErrandOrderByPost(postId: number) {
+  return request.Get<CampusTradeOrder>('/campus/trade/order/errand/get-by-post', {
+    params: { postId },
+    cacheFor: 0,
+    meta: { silentError: true },
+  });
+}
+
+export function acceptCampusErrandOrder(orderId: number) {
+  return request.Post<CampusTradeOrder>('/campus/trade/order/errand/accept', {}, { params: { id: orderId } });
+}
+
+export function submitCampusErrandOrder(orderId: number, data: { note?: string, images?: string[] }) {
+  return request.Post<CampusTradeOrder>('/campus/trade/order/errand/submit', data, { params: { id: orderId } });
+}
+
+export function confirmCampusErrandOrder(orderId: number) {
+  return request.Post<CampusTradeOrder>('/campus/trade/order/errand/confirm', {}, { params: { id: orderId } });
+}
+
+export function disputeCampusErrandOrder(orderId: number, data: { reason: string, images?: string[] }) {
+  return request.Post<CampusTradeOrder>('/campus/trade/order/errand/dispute', data, { params: { id: orderId } });
+}
+
+export function cancelCampusErrandOrder(orderId: number) {
+  return request.Post<CampusTradeOrder>('/campus/trade/order/errand/cancel', {}, { params: { id: orderId } });
+}
+
+export function getCampusTradeMessages(orderId: number) {
+  return request.Get<CampusTradeMessage[]>('/campus/trade/chat/messages', {
+    params: { orderId },
+    cacheFor: 0,
+    meta: { silentError: true },
+  });
+}
+
+export function sendCampusTradeMessage(orderId: number, content: string) {
+  return request.Post<CampusTradeMessage>('/campus/trade/chat/send', { orderId, content }, {
+    meta: { silentError: true },
+  });
 }
 
 export function setCampusPostLike(id: number, active: boolean) {

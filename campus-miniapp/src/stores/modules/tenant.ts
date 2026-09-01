@@ -63,13 +63,23 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
     };
   }
 
+  function isPubliclyVisible(post: CampusPost) {
+    const isIdle = post.type === 'idle' || post.channel === '二手';
+    return post.downlisted !== true
+      && (post.status === undefined || post.status === 1)
+      && (!isIdle || (post.soldOut !== true && Number(post.stockAvailable ?? 1) > 0));
+  }
+
   function replacePost(updated: CampusPost) {
     const replace = (list: CampusPost[]) => {
       const index = list.findIndex(item => item.id === updated.id);
       if (index >= 0)
         list[index] = updated;
     };
-    replace(posts.value);
+    if (isPubliclyVisible(updated))
+      replace(posts.value);
+    else
+      posts.value = posts.value.filter(item => item.id !== updated.id);
     replace(publishedPosts.value);
     replace(favoritePosts.value);
     if (currentPost.value?.id === updated.id)
@@ -86,7 +96,9 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
     loading.value = true;
     const request = (async () => {
       const page = await getCampusPostPage(requestParams);
-      const nextPosts = (page.list || []).map(normalizePostMedia);
+      // 服务端是最终过滤边界；这里再做一次客户端防御，避免切页返回或
+      // 支付前缓存让已卖出/已下架商品短暂残留在首页和闲置频道。
+      const nextPosts = (page.list || []).map(normalizePostMedia).filter(isPubliclyVisible);
       if (requestId === latestPostsRequestId)
         posts.value = nextPosts;
       return nextPosts;
@@ -120,7 +132,9 @@ export const useCampusContentStore = defineStore('CampusContentStore', () => {
     // 发布接口成功返回的内容必然是当前用户创建的。
     const createdResult = await createCampusPost(input);
     const created = { ...normalizePostMedia(createdResult), owner: true };
-    if (created.status === 1)
+    // 代拿代办必须在赏金支付成功后才由服务端放入公开列表，发布时不能
+    // 仅凭帖子 status=1 提前插入首页本地缓存。
+    if (isPubliclyVisible(created) && created.type !== 'help')
       posts.value = [created, ...posts.value.filter(item => item.id !== created.id)];
     publishedPosts.value = [created, ...publishedPosts.value.filter(item => item.id !== created.id)];
     currentPost.value = created;

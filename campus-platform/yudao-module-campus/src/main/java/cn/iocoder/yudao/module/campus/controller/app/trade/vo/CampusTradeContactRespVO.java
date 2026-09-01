@@ -8,5 +8,6 @@ public class CampusTradeContactRespVO {
     private Integer status;
     private boolean paid;
     private String sellerName;
+    private String participantName;
     private String contact;
 }

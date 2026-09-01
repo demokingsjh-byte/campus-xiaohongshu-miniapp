@@ -97,14 +97,15 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         if (!Objects.equals(longValue(post.get("tenant_id")), longValue(buyer.get("tenant_id")))) {
             throw exception0(GlobalErrorCodeConstants.FORBIDDEN.getCode(), "只能购买本校商品");
         }
-        if (StrUtil.isBlank(stringValue(post.get("contact")))
-                && StrUtil.isBlank(stringValue(seller.get("mobile")))) {
+        String sellerPhone = StrUtil.blankToDefault(stringValue(post.get("contact")),
+                stringValue(seller.get("mobile")));
+        if (StrUtil.isBlank(sellerPhone)) {
             throw badRequest("发布者未预留联系方式，暂时无法购买");
         }
 
         Map<String, Object> order = findOrder(postId, buyerId);
         if (order == null) {
-            order = insertOrder(post, buyerId, sellerId, amount);
+            order = insertOrder(post, buyerId, sellerId, amount, sellerPhone);
         }
         CampusTradePayRespVO response = baseResponse(order);
         if (intValue(order.get("status")) == STATUS_PAID) {
@@ -154,10 +155,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         }
         LocalDateTime expiresAt = toLocalDateTime(order.get("expires_at"));
         if (expiresAt != null && !expiresAt.isAfter(LocalDateTime.now())) {
-            jdbcTemplate.update("UPDATE campus_trade_order SET status = 3, closed_at = NOW(),"
-                            + " close_reason = 'TIMEOUT', updater = 'wechat-pay', update_time = NOW()"
-                            + " WHERE id = :id AND status = 0 AND deleted = b'0'",
-                    new MapSqlParameterSource("id", order.get("id")));
+            closeOrderAndReleaseStock(order, "TIMEOUT", "wechat-pay");
             throw badRequest("订单已过期，请重新下单");
         }
 
@@ -179,9 +177,10 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             }
             BigDecimal amount = decimalValue(order.get("amount"));
             int totalFen = amount.movePointRight(2).setScale(0, RoundingMode.UNNECESSARY).intValueExact();
+            String paymentScene = intValue(order.get("biz_type")) == 4 ? "校园代办-" : "校园二手-";
             WxPayUnifiedOrderV3Request request = new WxPayUnifiedOrderV3Request()
                     .setOutTradeNo(stringValue(order.get("order_no")))
-                    .setDescription(crop("校园二手-" + stringValue(order.get("item_title_snapshot")), 127))
+                    .setDescription(crop(paymentScene + stringValue(order.get("item_title_snapshot")), 127))
                     .setNotifyUrl(properties.getNotifyUrl())
                     .setTimeExpire(formatWechatExpiry(expiresAt))
                     .setAmount(new WxPayUnifiedOrderV3Request.Amount().setTotal(totalFen))
@@ -365,9 +364,43 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
             Map<String, Object> post = getPostIncludingSold(postId);
             Map<String, Object> seller = getUser(longValue(post.get("user_id")));
             response.setSellerName(stringValue(seller.get("nickname")));
+            response.setParticipantName(stringValue(seller.get("nickname")));
             response.setContact(StrUtil.blankToDefault(stringValue(post.get("contact")),
                     stringValue(seller.get("mobile"))));
         }
+        return response;
+    }
+
+    @Override
+    public CampusTradeContactRespVO getContactByOrder(Long orderId, Long userId) {
+        Map<String, Object> order = findParticipantOrder(orderId, userId);
+        CampusTradeContactRespVO response = new CampusTradeContactRespVO();
+        response.setOrderId(longValue(order.get("id")));
+        response.setStatus(intValue(order.get("status")));
+        response.setPaid(order.get("paid_at") != null);
+        if (!response.isPaid()) {
+            return response;
+        }
+        int bizType = intValue(order.get("biz_type"));
+        int fulfillmentStatus = intValue(order.get("fulfillment_status"));
+        if (bizType == 4 && fulfillmentStatus < 2) {
+            throw exception0(GlobalErrorCodeConstants.FORBIDDEN.getCode(), "接单成功后才能查看对方联系方式");
+        }
+        boolean requesterIsBuyer = Objects.equals(longValue(order.get("buyer_id")), userId);
+        Long participantId = requesterIsBuyer ? longValue(order.get("seller_id")) : longValue(order.get("buyer_id"));
+        Map<String, Object> participant = getUser(participantId);
+        Map<String, Object> post = getPostIncludingSold(longValue(order.get("product_id")));
+        response.setParticipantName(stringValue(participant.get("nickname")));
+        if (requesterIsBuyer) {
+            response.setSellerName(stringValue(participant.get("nickname")));
+        }
+        String contact = requesterIsBuyer
+                ? StrUtil.blankToDefault(stringValue(order.get("seller_phone_snapshot")),
+                    StrUtil.blankToDefault(stringValue(participant.get("mobile")), stringValue(post.get("contact"))))
+                : (bizType == 4
+                    ? StrUtil.blankToDefault(stringValue(post.get("contact")), stringValue(participant.get("mobile")))
+                    : stringValue(participant.get("mobile")));
+        response.setContact(contact);
         return response;
     }
 
@@ -602,6 +635,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                 ? crop("WECHAT_REFUND_" + StrUtil.blankToDefault(wechatStatus, "UNKNOWN"), 255) : null;
         jdbcTemplate.update("UPDATE campus_trade_order SET"
                         + " status = CASE WHEN :success = 1 THEN :refundedStatus ELSE status END,"
+                        + " fulfillment_status = CASE WHEN :success = 1 AND biz_type = 4 THEN 5 ELSE fulfillment_status END,"
                         + " refund_status = :refundStatus, wx_refund_id = COALESCE(:wxRefundId, wx_refund_id),"
                         + " refund_amount = amount, refunded_at = CASE WHEN :success = 1"
                         + " THEN COALESCE(:refundedAt, NOW()) ELSE refunded_at END,"
@@ -618,6 +652,9 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                         .addValue("error", error)
                         .addValue("fromNotify", fromNotify ? 1 : 0)
                         .addValue("updater", fromNotify ? "wechat-refund-notify" : "wechat-refund-query"));
+        if (success) {
+            restoreSoldStockAfterRefund(order);
+        }
     }
 
     private void markRefundFailed(Long orderId, String error) {
@@ -719,16 +756,18 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
     }
 
     private Map<String, Object> insertOrder(Map<String, Object> post, Long buyerId, Long sellerId,
-                                            BigDecimal amount) {
+                                            BigDecimal amount, String sellerPhone) {
+        reserveStock(longValue(post.get("id")), buyerId);
         String orderNo = "CS" + System.currentTimeMillis() + UUID.randomUUID().toString().substring(0, 8);
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("orderNo", orderNo).addValue("buyerId", buyerId).addValue("sellerId", sellerId)
                 .addValue("postId", post.get("id")).addValue("amount", amount)
+                .addValue("sellerPhone", sellerPhone)
                 .addValue("tenantId", post.get("tenant_id")).addValue("operator", String.valueOf(buyerId));
         KeyHolder key = new GeneratedKeyHolder();
         jdbcTemplate.update("INSERT INTO campus_trade_order (order_no, buyer_id, seller_id, product_id, amount,"
-                        + " status, expires_at, creator, updater, create_time, update_time, deleted, tenant_id)"
-                        + " VALUES (:orderNo, :buyerId, :sellerId, :postId, :amount, 0,"
+                        + " seller_phone_snapshot, status, inventory_state, expires_at, creator, updater, create_time, update_time, deleted, tenant_id)"
+                        + " VALUES (:orderNo, :buyerId, :sellerId, :postId, :amount, :sellerPhone, 0, 1,"
                         + " DATE_ADD(NOW(), INTERVAL 15 MINUTE), :operator, :operator, NOW(), NOW(), b'0', :tenantId)",
                 params, key);
         return findOrder(post.get("id") instanceof Number ? ((Number) post.get("id")).longValue() : null, buyerId);
@@ -751,6 +790,20 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    private Map<String, Object> findParticipantOrder(Long orderId, Long userId) {
+        if (orderId == null || userId == null) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "订单不能为空");
+        }
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT * FROM campus_trade_order"
+                        + " WHERE id = :orderId AND (buyer_id = :userId OR seller_id = :userId)"
+                        + " AND deleted = b'0' LIMIT 1",
+                new MapSqlParameterSource().addValue("orderId", orderId).addValue("userId", userId));
+        if (rows.isEmpty()) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "订单不存在或无权查看联系方式");
+        }
+        return rows.get(0);
+    }
+
     private String syncOrderFromWechat(Map<String, Object> order) {
         String orderNo = stringValue(order.get("order_no"));
         try {
@@ -767,10 +820,7 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                 auditWechatQuery(order, "SUCCESS", null);
             } else if ("CLOSED".equals(result.getTradeState()) || "REVOKED".equals(result.getTradeState())) {
                 auditWechatQuery(order, result.getTradeState(), null);
-                jdbcTemplate.update("UPDATE campus_trade_order SET status = 3, closed_at = NOW(),"
-                                + " close_reason = 'WECHAT_CLOSED', updater = 'wechat-query', update_time = NOW()"
-                                + " WHERE id = :id AND status = 0 AND deleted = b'0'",
-                        new MapSqlParameterSource("id", order.get("id")));
+                closeOrderAndReleaseStock(order, "WECHAT_CLOSED", "wechat-query");
             } else {
                 auditWechatQuery(order, result.getTradeState(), null);
             }
@@ -863,22 +913,116 @@ public class CampusTradePaymentServiceImpl implements CampusTradePaymentService 
                         new MapSqlParameterSource().addValue("id", order.get("id"))
                                 .addValue("transactionId", transactionId));
             }
+            initializeErrandFulfillment(order.get("id"));
             return;
         }
         if (status != STATUS_WAITING && status != 3) {
             throw badRequest("订单状态不允许确认支付");
         }
-        jdbcTemplate.update("UPDATE campus_trade_order SET status = 1, paid_at = COALESCE(paid_at, NOW()),"
+        int inventoryState = intValue(order.get("inventory_state"));
+        int updated = jdbcTemplate.update("UPDATE campus_trade_order SET status = 1, paid_at = COALESCE(paid_at, NOW()),"
+                        + " fulfillment_status = CASE WHEN biz_type = 4 AND fulfillment_status = 0 THEN 1"
+                        + " ELSE fulfillment_status END,"
+                        + " accept_expires_at = CASE WHEN biz_type = 4 THEN COALESCE(accept_expires_at,"
+                        + " DATE_ADD(NOW(), INTERVAL 24 HOUR)) ELSE accept_expires_at END,"
                         + " closed_at = NULL, close_reason = '', wx_transaction_id = :transactionId,"
+                        + " inventory_state = CASE WHEN biz_type = 1 THEN 2 ELSE inventory_state END,"
                         + " updater = 'wechat-pay', update_time = NOW(), version = version + 1"
                         + " WHERE id = :id AND status IN (0, 3) AND deleted = b'0'",
                 new MapSqlParameterSource().addValue("id", order.get("id"))
                         .addValue("transactionId", transactionId));
+        if (updated > 0 && intValue(order.get("biz_type")) == 1) {
+            completeStockSale(longValue(order.get("product_id")), inventoryState == 1);
+        }
+    }
+
+    private void initializeErrandFulfillment(Object orderId) {
+        jdbcTemplate.update("UPDATE campus_trade_order SET fulfillment_status = 1,"
+                        + " accept_expires_at = COALESCE(accept_expires_at, DATE_ADD(NOW(), INTERVAL 24 HOUR)),"
+                        + " updater = 'wechat-pay', update_time = NOW()"
+                        + " WHERE id = :id AND biz_type = 4 AND status = 1 AND fulfillment_status = 0"
+                        + " AND deleted = b'0'",
+                new MapSqlParameterSource("id", orderId));
+    }
+
+    private void reserveStock(Long postId, Long buyerId) {
+        int updated = jdbcTemplate.update("UPDATE campus_post SET stock_available = stock_available - 1,"
+                        + " sale_status = CASE WHEN stock_available - 1 <= 0 THEN 2 ELSE 1 END,"
+                        + " updater = :operator, update_time = NOW()"
+                        + " WHERE id = :id AND type = 'idle' AND status = 1 AND sale_status = 1"
+                        + " AND stock_available > 0 AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("id", postId)
+                        .addValue("operator", String.valueOf(buyerId)));
+        if (updated == 0) {
+            throw badRequest("商品已售罄");
+        }
+    }
+
+    private void closeOrderAndReleaseStock(Map<String, Object> order, String reason, String operator) {
+        int inventoryState = intValue(order.get("inventory_state"));
+        int bizType = intValue(order.get("biz_type"));
+        int updated = jdbcTemplate.update("UPDATE campus_trade_order SET status = 3, closed_at = NOW(),"
+                        + " close_reason = :reason,"
+                        + " inventory_state = CASE WHEN biz_type = 1 AND inventory_state = 1 THEN 3"
+                        + " ELSE inventory_state END, updater = :operator, update_time = NOW(), version = version + 1"
+                        + " WHERE id = :id AND status = 0 AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("id", order.get("id")).addValue("reason", reason)
+                        .addValue("operator", operator));
+        if (updated > 0 && bizType == 1 && inventoryState == 1) {
+            releaseReservedStock(longValue(order.get("product_id")), operator);
+        }
+    }
+
+    private void releaseReservedStock(Long postId, String operator) {
+        jdbcTemplate.update("UPDATE campus_post SET"
+                        + " stock_available = LEAST(stock_total - sold_count, stock_available + 1),"
+                        + " sale_status = CASE WHEN stock_total - sold_count > 0 THEN 1 ELSE 2 END,"
+                        + " updater = :operator, update_time = NOW()"
+                        + " WHERE id = :id AND type = 'idle' AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("id", postId).addValue("operator", operator));
+    }
+
+    private void completeStockSale(Long postId, boolean reserved) {
+        if (reserved) {
+            jdbcTemplate.update("UPDATE campus_post SET sold_count = LEAST(stock_total, sold_count + 1),"
+                            + " sale_status = CASE WHEN stock_available <= 0 THEN 2 ELSE 1 END,"
+                            + " updater = 'wechat-pay', update_time = NOW()"
+                            + " WHERE id = :id AND type = 'idle' AND deleted = b'0'",
+                    new MapSqlParameterSource("id", postId));
+            return;
+        }
+        // 兼容迁移前订单或超时边界上的微信成功回调：支付事实优先，库存不会变成负数。
+        jdbcTemplate.update("UPDATE campus_post SET"
+                        + " sale_status = CASE WHEN stock_available <= 1 THEN 2 ELSE 1 END,"
+                        + " stock_total = GREATEST(stock_total, sold_count + 1),"
+                        + " stock_available = GREATEST(stock_available - 1, 0), sold_count = sold_count + 1,"
+                        + " updater = 'wechat-pay', update_time = NOW()"
+                        + " WHERE id = :id AND type = 'idle' AND deleted = b'0'",
+                new MapSqlParameterSource("id", postId));
+    }
+
+    private void restoreSoldStockAfterRefund(Map<String, Object> order) {
+        if (intValue(order.get("biz_type")) != 1) {
+            return;
+        }
+        int claimed = jdbcTemplate.update("UPDATE campus_trade_order SET inventory_state = 3,"
+                        + " updater = 'wechat-refund', update_time = NOW()"
+                        + " WHERE id = :id AND inventory_state = 2 AND deleted = b'0'",
+                new MapSqlParameterSource("id", order.get("id")));
+        if (claimed == 0) {
+            return;
+        }
+        jdbcTemplate.update("UPDATE campus_post SET sale_status = 1,"
+                        + " stock_available = LEAST(stock_total - GREATEST(sold_count - 1, 0), stock_available + 1),"
+                        + " sold_count = GREATEST(sold_count - 1, 0), updater = 'wechat-refund', update_time = NOW()"
+                        + " WHERE id = :id AND type = 'idle' AND deleted = b'0'",
+                new MapSqlParameterSource("id", order.get("product_id")));
     }
 
     private Map<String, Object> getPost(Long postId) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT * FROM campus_post"
-                        + " WHERE id = :id AND status = 1 AND deleted = b'0' LIMIT 1",
+                        + " WHERE id = :id AND status = 1 AND sale_status = 1"
+                        + " AND stock_available > 0 AND deleted = b'0' LIMIT 1",
                 new MapSqlParameterSource("id", postId));
         if (rows.isEmpty()) throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "商品不存在或已下架");
         return rows.get(0);

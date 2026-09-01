@@ -14,7 +14,15 @@ CREATE TABLE IF NOT EXISTS `campus_post` (
   `content` varchar(2000) NOT NULL COMMENT '正文',
   `price` decimal(10,2) DEFAULT NULL COMMENT '价格',
   `original_price` decimal(10,2) DEFAULT NULL COMMENT '原价',
-  `location` varchar(160) NOT NULL DEFAULT '' COMMENT '发布位置',
+  `stock_total` int NOT NULL DEFAULT 1 COMMENT '初始库存数量',
+  `stock_available` int NOT NULL DEFAULT 1 COMMENT '当前可售库存（已扣除待付款预占）',
+  `sold_count` int NOT NULL DEFAULT 0 COMMENT '累计已售数量',
+  `sale_status` tinyint NOT NULL DEFAULT 1 COMMENT '销售状态：1在售 2售罄',
+  `location` varchar(160) NOT NULL DEFAULT '' COMMENT '公开展示位置；团购为大概位置',
+  `merchant_address` varchar(255) NOT NULL DEFAULT '' COMMENT '商户实际地址，团购详情公开展示',
+  `merchant_location_name` varchar(120) NOT NULL DEFAULT '' COMMENT '地图选择的门店或地点名称',
+  `merchant_latitude` decimal(10,7) DEFAULT NULL COMMENT '门店纬度，仅用于地图导航',
+  `merchant_longitude` decimal(10,7) DEFAULT NULL COMMENT '门店经度，仅用于地图导航',
   `trade_mode` varchar(64) NOT NULL DEFAULT '' COMMENT '交易或参与方式',
   `visible_range` varchar(32) NOT NULL DEFAULT '仅本校可见' COMMENT '可见范围',
   `contact` varchar(160) NOT NULL DEFAULT '' COMMENT '联系方式',
@@ -33,7 +41,8 @@ CREATE TABLE IF NOT EXISTS `campus_post` (
   `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
   PRIMARY KEY (`id`),
   KEY `idx_user_status` (`user_id`, `status`, `create_time`),
-  KEY `idx_tenant_channel` (`tenant_id`, `channel`, `status`, `create_time`)
+  KEY `idx_tenant_channel` (`tenant_id`, `channel`, `status`, `create_time`),
+  KEY `idx_tenant_sale` (`tenant_id`, `type`, `status`, `sale_status`, `stock_available`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='校园社区帖子';
 
 CREATE TABLE IF NOT EXISTS `campus_post_interaction` (

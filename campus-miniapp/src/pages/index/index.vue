@@ -54,6 +54,7 @@ const state = ref<'content' | 'loading' | 'empty' | 'error'>('loading');
 const showCampusPicker = ref(false);
 const campusSwitching = ref(false);
 const categoryScrollLeft = ref(0);
+const categoryPageIndex = ref(0);
 const tenantStore = useTenantStore();
 const contentStore = useCampusContentStore();
 const notificationStore = useCampusNotificationStore();
@@ -75,6 +76,8 @@ const categories = computed(() => homeConfig.value.categories
   .filter(entry => entry.item.enabled !== false)
   .sort((left, right) => Number(left.item.sort ?? left.index) - Number(right.item.sort ?? right.index))
   .map(entry => entry.item));
+// 首页一屏展示约 5 个分类；超出的分类通过横向滑动查看。
+const categoryPageCount = computed(() => Math.max(1, Math.ceil(categories.value.length / 5)));
 const activeCategory = computed<CampusHomeCategory>(() => categories.value.find(item => item.key === activeCategoryKey.value)
   || categories.value[0]
   || DEFAULT_HOME_CONFIG.categories[0]);
@@ -189,6 +192,24 @@ function centerCategory(category: CampusHomeCategory) {
   const centeredLeft = stripPadding + index * itemStep + itemWidth / 2 - windowWidth / 2;
   const maxScrollLeft = Math.max(0, stripWidth - windowWidth);
   categoryScrollLeft.value = Math.round(Math.min(Math.max(centeredLeft, 0), maxScrollLeft));
+  categoryPageIndex.value = maxScrollLeft > 0
+    ? Math.round((categoryScrollLeft.value / maxScrollLeft) * (categoryPageCount.value - 1))
+    : 0;
+}
+
+function onCategoryScroll(event: { detail: { scrollLeft: number } }) {
+  const { windowWidth = 375 } = uni.getWindowInfo();
+  const rpxToPx = windowWidth / 750;
+  const itemWidth = 123.08 * rpxToPx;
+  const itemGap = 18.59 * rpxToPx;
+  const stripPadding = 30.77 * rpxToPx;
+  const stripWidth = categories.value.length * itemWidth
+    + Math.max(0, categories.value.length - 1) * itemGap
+    + stripPadding * 2;
+  const maxScrollLeft = Math.max(0, stripWidth - windowWidth);
+  categoryPageIndex.value = maxScrollLeft > 0
+    ? Math.round((Math.min(Math.max(event.detail.scrollLeft, 0), maxScrollLeft) / maxScrollLeft) * (categoryPageCount.value - 1))
+    : 0;
 }
 
 async function chooseCategory(category: CampusHomeCategory) {
@@ -304,6 +325,7 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
       <scroll-view
         class="category-scroll" scroll-x scroll-with-animation
         :scroll-left="categoryScrollLeft" :show-scrollbar="false"
+        @scroll="onCategoryScroll"
       >
         <view class="category-strip">
           <button
@@ -326,6 +348,12 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
           </button>
         </view>
       </scroll-view>
+      <view v-if="categoryPageCount > 1" class="category-page-indicator" aria-hidden="true">
+        <view
+          v-for="page in categoryPageCount" :key="page" class="category-page-dot"
+          :class="{ active: categoryPageIndex === page - 1 }"
+        />
+      </view>
     </view>
 
     <view v-if="homeConfig.notice" class="notice-bar">
@@ -695,6 +723,31 @@ watch(() => userStore.loggedIn, loggedIn => loggedIn && notificationStore.loadUn
   line-height: 30.77rpx;
   text-align: center;
   white-space: nowrap;
+}
+
+.category-page-indicator {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28rpx;
+  margin-top: -4rpx;
+  padding-bottom: 8rpx;
+  column-gap: 7rpx;
+}
+
+.category-page-dot {
+  width: 20rpx;
+  height: 8rpx;
+  border-radius: 4rpx;
+  background: rgba(31, 31, 31, 0.16);
+  transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+.category-page-dot.active {
+  width: 10rpx;
+  background: #1f1f1f;
 }
 
 .category-item.active .category-title {

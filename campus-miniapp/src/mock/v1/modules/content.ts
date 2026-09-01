@@ -107,6 +107,16 @@ function page(list: CampusPost[]) {
   return createMock({ data: { list, total: list.length } });
 }
 
+function withoutMerchantLocation(post: CampusPost): CampusPost {
+  return {
+    ...post,
+    merchantAddress: undefined,
+    merchantLocationName: undefined,
+    merchantLatitude: undefined,
+    merchantLongitude: undefined,
+  };
+}
+
 function findPost(id: number) {
   return allPosts().find(item => item.id === id);
 }
@@ -255,7 +265,16 @@ export const contentMocks = defineMock({
       time: '刚刚',
       price: data.price || undefined,
       originalPrice: data.originalPrice || undefined,
+      stockTotal: data.type === 'idle' ? Number(data.stockTotal || 1) : undefined,
+      stockAvailable: data.type === 'idle' ? Number(data.stockTotal || 1) : undefined,
+      soldCount: data.type === 'idle' ? 0 : undefined,
+      saleStatus: data.type === 'idle' ? 1 : undefined,
+      soldOut: false,
       location: data.location || '',
+      merchantAddress: data.type === 'shop' ? (data.merchantAddress || '') : undefined,
+      merchantLocationName: data.type === 'shop' ? (data.merchantLocationName || '') : undefined,
+      merchantLatitude: data.type === 'shop' ? data.merchantLatitude : undefined,
+      merchantLongitude: data.type === 'shop' ? data.merchantLongitude : undefined,
       tradeMode: data.tradeMode || '',
       visibleRange: data.visibleRange || '仅本校可见',
       tags: Array.isArray(data.tags) && data.tags.length ? data.tags : ['校园新鲜事'],
@@ -282,16 +301,20 @@ export const contentMocks = defineMock({
     const channel = String(query.channel || '推荐');
     const keyword = String(query.keyword || '').trim().toLowerCase();
     const result = allPosts().filter((post) => {
+      if (post.downlisted)
+        return false;
+      if ((post.type === 'idle' || post.channel === '二手') && post.soldOut)
+        return false;
       if (post.tenantId !== tenantId)
         return false;
       if (channel && channel !== '推荐' && post.channel !== channel)
         return false;
       return !keyword || [post.title, post.content, post.author, post.school, ...post.tags].join(' ').toLowerCase().includes(keyword);
     });
-    return page(result);
+    return page(result.map(withoutMerchantLocation));
   },
-  '[GET]/api/campus/post/my-page': () => page(allPosts().filter(post => post.owner)),
-  '[GET]/api/campus/post/favorite-page': () => page(allPosts().filter(post => post.collected)),
+  '[GET]/api/campus/post/my-page': () => page(allPosts().filter(post => post.owner && !post.downlisted).map(withoutMerchantLocation)),
+  '[GET]/api/campus/post/favorite-page': () => page(allPosts().filter(post => post.collected).map(withoutMerchantLocation)),
   '[GET]/api/campus/post/get': (params) => {
     const post = findPost(Number(queryOf(params).id));
     return post
@@ -368,7 +391,7 @@ export const contentMocks = defineMock({
     const stored = getStoredPosts();
     if (!stored.some(item => item.id === id))
       return createMock({ data: false, code: ResultEnum.FAIL, message: '内容不存在或无权删除' });
-    setStoredPosts(stored.filter(item => item.id !== id));
+    setStoredPosts(stored.map(item => item.id === id ? { ...item, downlisted: true } : item));
     return createMock({ data: true });
   },
   '[POST]/api/campus/post/report': () => createMock({ data: true }),

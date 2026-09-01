@@ -89,6 +89,33 @@ const fallbackEmoji = computed(() => ({
 
 const isFreshIdle = computed(() => props.post.tags?.some(tag => /全新|未拆|九成新/.test(tag)) || false);
 const hasMarkedPrice = computed(() => String(props.post.price ?? '').trim().length > 0);
+const saleCompleted = computed(() => {
+  if (!props.post.soldOut)
+    return false;
+  const total = Number(props.post.stockTotal);
+  const sold = Number(props.post.soldCount);
+  return props.post.stockTotal === undefined || props.post.soldCount === undefined
+    || (Number.isFinite(total) && Number.isFinite(sold) && sold >= total);
+});
+const unavailableText = computed(() => {
+  if (props.post.downlisted)
+    return '已下架';
+  if (props.post.soldOut)
+    return props.collectionContext || props.ownerContext || props.post.owner
+      ? (saleCompleted.value ? '已卖出' : '交易中')
+      : '已售罄';
+  return '';
+});
+const inventoryText = computed(() => {
+  if (displayVariant.value !== 'idle')
+    return '';
+  if (unavailableText.value)
+    return unavailableText.value;
+  const available = Number(props.post.stockAvailable);
+  return props.post.stockAvailable !== undefined && Number.isFinite(available)
+    ? `剩余${Math.max(available, 0)}件`
+    : '';
+});
 // “想要”使用真实点赞数，不再用浏览量或默认值补数。
 const wantCount = computed(() => Number(props.post.likes || 0));
 // 便签热度只汇总真实互动数据，不使用人为权重或固定假数据。
@@ -259,6 +286,9 @@ function openDetail(id: number) {
           <view class="media-stack-back" />
           <view class="media-stack-front" />
         </view>
+        <view v-if="unavailableText" class="sold-out-mask" :class="{ downlisted: post.downlisted }">
+          {{ unavailableText }}
+        </view>
         <view v-if="isRecommendCard" class="recommend-category-badge" :class="{ fresh: displayVariant === 'idle' && isFreshIdle }">
           <text>{{ displayVariant === 'idle' && isFreshIdle ? '全新' : categoryLabel }}</text>
           <text>校内</text>
@@ -279,7 +309,7 @@ function openDetail(id: number) {
             </text><text class="price-value">{{ post.price }}</text>
           </view>
           <text v-if="hasMarkedPrice" class="want-count">
-            {{ wantCount }}人想要
+            {{ inventoryText || `${wantCount}人想要` }}
           </text>
           <view v-else class="post-heat">
             <text>🔥</text><text>热度 {{ hotCount }}</text>
@@ -332,6 +362,18 @@ function openDetail(id: number) {
   right: 0;
   bottom: 0;
   left: 0;
+}
+.sold-out-mask {
+  position: absolute;
+  z-index: 4;
+  top: 18rpx;
+  right: 18rpx;
+  padding: 8rpx 15rpx;
+  border-radius: 999rpx;
+  color: #fff;
+  background: rgba(31, 31, 31, 0.72);
+  font-size: 21rpx;
+  font-weight: 700;
 }
 
 .cover-image {

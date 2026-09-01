@@ -13,9 +13,11 @@ import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRe
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
+import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradeOrderRespVO;
 import cn.iocoder.yudao.module.campus.service.contentsecurity.CampusContentCheckResult;
 import cn.iocoder.yudao.module.campus.service.contentsecurity.CampusContentSecurityService;
 import cn.iocoder.yudao.module.campus.service.notification.CampusNotificationService;
+import cn.iocoder.yudao.module.campus.service.trade.CampusTradeOrderService;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -49,6 +51,11 @@ public class CampusPostServiceImpl implements CampusPostService {
     private static final long DEFAULT_TENANT_ID = 201L;
     private static final Set<String> SUPPORTED_TYPES = Collections.unmodifiableSet(
             new java.util.HashSet<>(Arrays.asList("idle", "help", "confession", "ride", "shop", "lost", "club", "job")));
+    private static final String PHONE_PATTERN = "^(?:1[3-9]\\d{9}|0\\d{2,3}-?\\d{7,8})$";
+    private static final String ERRAND_PUBLIC_VISIBILITY =
+            " AND (p.type <> 'help' OR EXISTS (SELECT 1 FROM campus_trade_order eo WHERE eo.product_id = p.id"
+                    + " AND eo.biz_type = 4 AND eo.status IN (1, 2) AND eo.fulfillment_status IN (1, 2, 3, 4)"
+                    + " AND eo.deleted = b'0'))";
     private static final Map<String, String> CHANNEL_MAP = new HashMap<>();
 
     static {
@@ -66,14 +73,17 @@ public class CampusPostServiceImpl implements CampusPostService {
     private final FileApi fileApi;
     private final CampusNotificationService campusNotificationService;
     private final CampusContentSecurityService contentSecurityService;
+    private final CampusTradeOrderService campusTradeOrderService;
 
     public CampusPostServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi,
                                  CampusNotificationService campusNotificationService,
-                                 CampusContentSecurityService contentSecurityService) {
+                                 CampusContentSecurityService contentSecurityService,
+                                 CampusTradeOrderService campusTradeOrderService) {
         this.jdbcTemplate = jdbcTemplate;
         this.fileApi = fileApi;
         this.campusNotificationService = campusNotificationService;
         this.contentSecurityService = contentSecurityService;
+        this.campusTradeOrderService = campusTradeOrderService;
     }
 
     @Override
@@ -84,6 +94,39 @@ public class CampusPostServiceImpl implements CampusPostService {
         }
         if (!SUPPORTED_TYPES.contains(reqVO.getType())) {
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "不支持的发布类型");
+        }
+        String contact = normalizePhone(reqVO.getContact());
+        if (("idle".equals(reqVO.getType()) || "help".equals(reqVO.getType()))
+                && !contact.matches(PHONE_PATTERN)) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(),
+                    "help".equals(reqVO.getType())
+                            ? "发布代拿代办时请填写有效联系电话"
+                            : "发布二手闲置时请填写有效联系电话");
+        }
+        int stockTotal = "idle".equals(reqVO.getType())
+                ? (reqVO.getStockTotal() == null ? 1 : reqVO.getStockTotal()) : 1;
+        if (stockTotal < 1 || stockTotal > 999) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "库存需填写 1 至 999 件");
+        }
+        if ("help".equals(reqVO.getType())
+                && (reqVO.getPrice() == null || reqVO.getPrice().compareTo(new BigDecimal("0.01")) < 0)) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "发布代拿代办时请设置任务赏金");
+        }
+        String publicLocation = trimToEmpty(reqVO.getLocation());
+        String merchantAddress = trimToEmpty(reqVO.getMerchantAddress());
+        String merchantLocationName = trimToEmpty(reqVO.getMerchantLocationName());
+        boolean hasMerchantLatitude = reqVO.getMerchantLatitude() != null;
+        boolean hasMerchantLongitude = reqVO.getMerchantLongitude() != null;
+        if ("shop".equals(reqVO.getType())) {
+            if (StrUtil.isBlank(merchantAddress)) {
+                throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "发布商家团购时请填写商户实际地址");
+            }
+            if (StrUtil.isBlank(publicLocation)) {
+                throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "发布商家团购时请填写用户可见的大概位置");
+            }
+            if (hasMerchantLatitude != hasMerchantLongitude) {
+                throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "门店地图经纬度需要同时提交");
+            }
         }
         Map<String, Object> user = getUser(userId);
         enforceRateLimit("campus_post", userId, 3, Duration.ofMinutes(10), "发布过于频繁，请稍后再试");
@@ -100,7 +143,9 @@ public class CampusPostServiceImpl implements CampusPostService {
                 CampusContentSecurityService.SCENE_FORUM, auditText, reqVO.getTitle().trim(),
                 userNickname(user), images);
         ensureContentNotRisky(auditResults);
-        int initialStatus = allChecksPassed(auditResults) ? 1 : 0;
+        // 只有兼职信息需要后台人工审核。其他内容在同步校验未发现风险后立即发布；
+        // 异步内容安全结果若确认违规，回调仍会自动下架。
+        int initialStatus = "job".equals(reqVO.getType()) ? 0 : 1;
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("userId", userId)
                 .addValue("tenantId", tenantId)
@@ -112,10 +157,15 @@ public class CampusPostServiceImpl implements CampusPostService {
                 .addValue("content", reqVO.getContent().trim())
                 .addValue("price", reqVO.getPrice())
                 .addValue("originalPrice", reqVO.getOriginalPrice())
-                .addValue("location", trimToEmpty(reqVO.getLocation()))
+                .addValue("stockTotal", stockTotal)
+                .addValue("location", publicLocation)
+                .addValue("merchantAddress", "shop".equals(reqVO.getType()) ? merchantAddress : "")
+                .addValue("merchantLocationName", "shop".equals(reqVO.getType()) ? merchantLocationName : "")
+                .addValue("merchantLatitude", "shop".equals(reqVO.getType()) ? reqVO.getMerchantLatitude() : null)
+                .addValue("merchantLongitude", "shop".equals(reqVO.getType()) ? reqVO.getMerchantLongitude() : null)
                 .addValue("tradeMode", trimToEmpty(reqVO.getTradeMode()))
                 .addValue("visibleRange", StrUtil.blankToDefault(reqVO.getVisibleRange(), "仅本校可见"))
-                .addValue("contact", trimToEmpty(reqVO.getContact()))
+                .addValue("contact", contact)
                 .addValue("anonymous", Boolean.TRUE.equals(reqVO.getAnonymous()))
                 .addValue("tagsJson", JsonUtils.toJsonString(defaultList(reqVO.getTags())))
                 .addValue("imagesJson", JsonUtils.toJsonString(images))
@@ -123,10 +173,14 @@ public class CampusPostServiceImpl implements CampusPostService {
                 .addValue("operator", String.valueOf(userId));
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update("INSERT INTO campus_post (user_id, tenant_id, school_name, campus_name, type, channel,"
-                        + " title, content, price, original_price, location, trade_mode, visible_range, contact, anonymous,"
+                        + " title, content, price, original_price, stock_total, stock_available, sold_count, sale_status,"
+                        + " location, merchant_address, merchant_location_name, merchant_latitude, merchant_longitude,"
+                        + " trade_mode, visible_range, contact, anonymous,"
                         + " tags_json, images_json, status, like_count, collect_count, comment_count, view_count,"
                         + " creator, updater, create_time, update_time, deleted) VALUES (:userId, :tenantId, :schoolName,"
-                        + " :campusName, :type, :channel, :title, :content, :price, :originalPrice, :location, :tradeMode,"
+                        + " :campusName, :type, :channel, :title, :content, :price, :originalPrice, :stockTotal,"
+                        + " :stockTotal, 0, 1, :location, :merchantAddress, :merchantLocationName,"
+                        + " :merchantLatitude, :merchantLongitude, :tradeMode,"
                         + " :visibleRange, :contact, :anonymous, :tagsJson, :imagesJson, :status, 0, 0, 0, 0, :operator,"
                         + " :operator, NOW(), NOW(), b'0')",
                 params, keyHolder);
@@ -135,7 +189,13 @@ public class CampusPostServiceImpl implements CampusPostService {
             throw exception0(GlobalErrorCodeConstants.INTERNAL_SERVER_ERROR.getCode(), "发布失败，请稍后重试");
         }
         saveAuditResults("POST", key.longValue(), userId, tenantId, auditText, images, auditResults);
-        return getPost(key.longValue(), userId);
+        CampusTradeOrderRespVO errandOrder = "help".equals(reqVO.getType())
+                ? campusTradeOrderService.createErrandOrder(userId, key.longValue()) : null;
+        CampusPostRespVO response = getPost(key.longValue(), userId);
+        if (errandOrder != null) {
+            response.setErrandOrderId(errandOrder.getId());
+        }
+        return response;
     }
 
     @Override
@@ -146,8 +206,14 @@ public class CampusPostServiceImpl implements CampusPostService {
 
     private CampusPostRespVO getPostInternal(Long id, Long loginUserId, boolean increaseView) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                selectSql() + " WHERE p.id = :id AND p.deleted = b'0'"
-                        + " AND (p.status = 1 OR p.user_id = :loginUserId) LIMIT 1",
+                selectSql() + " WHERE p.id = :id AND ("
+                        + "(p.deleted = b'0' AND p.status = 1" + ERRAND_PUBLIC_VISIBILITY + ")"
+                        + " OR p.user_id = :loginUserId"
+                        + " OR EXISTS (SELECT 1 FROM campus_post_interaction vi WHERE vi.post_id = p.id"
+                        + " AND vi.user_id = :loginUserId AND vi.type = 'COLLECT' AND vi.deleted = b'0')"
+                        + " OR EXISTS (SELECT 1 FROM campus_trade_order vo WHERE vo.product_id = p.id"
+                        + " AND (vo.buyer_id = :loginUserId OR vo.seller_id = :loginUserId)"
+                        + " AND vo.deleted = b'0')) LIMIT 1",
                 new MapSqlParameterSource().addValue("id", id).addValue("loginUserId", loginUserId));
         if (rows.isEmpty()) {
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "内容不存在或已下架");
@@ -157,7 +223,7 @@ public class CampusPostServiceImpl implements CampusPostService {
                     new MapSqlParameterSource("id", id));
             rows.get(0).put("view_count", toInt(rows.get(0).get("view_count")) + 1);
         }
-        return toResp(rows.get(0), loginUserId);
+        return toResp(rows.get(0), loginUserId, true);
     }
 
     @Override
@@ -169,8 +235,10 @@ public class CampusPostServiceImpl implements CampusPostService {
                 .addValue("keyword", StrUtil.isBlank(keyword) ? null : "%" + keyword.trim() + "%")
                 .addValue("loginUserId", loginUserId);
         String where = " WHERE p.deleted = b'0' AND p.status = 1 AND p.tenant_id = :tenantId"
+                + " AND (p.type <> 'idle' OR (p.sale_status = 1 AND p.stock_available > 0))"
                 + " AND (:channel IS NULL OR :channel = '' OR :channel = '推荐' OR p.channel = :channel)"
-                + " AND (:keyword IS NULL OR p.title LIKE :keyword OR p.content LIKE :keyword OR p.tags_json LIKE :keyword)";
+                + " AND (:keyword IS NULL OR p.title LIKE :keyword OR p.content LIKE :keyword OR p.tags_json LIKE :keyword)"
+                + ERRAND_PUBLIC_VISIBILITY;
         return page(where, params, loginUserId, pageNo, pageSize, "p.create_time DESC");
     }
 
@@ -186,8 +254,11 @@ public class CampusPostServiceImpl implements CampusPostService {
     public PageResult<CampusPostRespVO> getFavoritePostPage(Long userId, Integer pageNo, Integer pageSize) {
         requireUserId(userId);
         MapSqlParameterSource params = new MapSqlParameterSource("loginUserId", userId);
-        String where = " WHERE p.deleted = b'0' AND p.status = 1 AND EXISTS (SELECT 1 FROM campus_post_interaction f"
-                + " WHERE f.post_id = p.id AND f.user_id = :loginUserId AND f.type = 'COLLECT' AND f.deleted = b'0')";
+        // 收藏是用户的私有历史：商品售罄或发布者软删除后仍保留，响应中的
+        // soldOut/downlisted 负责告诉前端展示“已卖出”或“已下架”。
+        String where = " WHERE EXISTS (SELECT 1 FROM campus_post_interaction f"
+                + " WHERE f.post_id = p.id AND f.user_id = :loginUserId AND f.type = 'COLLECT' AND f.deleted = b'0')"
+                + " AND (p.status = 1 OR p.deleted = b'1')";
         return page(where, params, userId, pageNo, pageSize, "p.create_time DESC");
     }
 
@@ -426,7 +497,8 @@ public class CampusPostServiceImpl implements CampusPostService {
         if (!"LIKE".equals(type) && !"COLLECT".equals(type)) {
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "不支持的互动类型");
         }
-        Map<String, Object> post = getPostRow(postId);
+        Map<String, Object> post = "COLLECT".equals(type) && !active
+                ? getCollectedPostRow(postId, userId) : getPostRow(postId);
         boolean current = isInteractionActive(postId, userId, type);
         if (current == active) {
             return getPostInternal(postId, userId, false);
@@ -451,13 +523,19 @@ public class CampusPostServiceImpl implements CampusPostService {
         String countColumn = "LIKE".equals(type) ? "like_count" : "collect_count";
         jdbcTemplate.update("UPDATE campus_post SET " + countColumn + " = (SELECT COUNT(*)"
                         + " FROM campus_post_interaction i WHERE i.post_id = :postId AND i.type = :type"
-                        + " AND i.deleted = b'0'), update_time = NOW() WHERE id = :postId AND deleted = b'0'",
+                        + " AND i.deleted = b'0'), update_time = NOW() WHERE id = :postId",
                 new MapSqlParameterSource().addValue("postId", postId).addValue("type", type));
         if (active && "LIKE".equals(type)) {
             Map<String, Object> actor = getUser(userId);
             campusNotificationService.createInteraction(toLongObject(post.get("user_id")), tenantId, userId,
                     userNickname(actor), "LIKE", userNickname(actor) + "赞了你的内容", value(post, "title"),
                     "POST", postId);
+        }
+        if ("COLLECT".equals(type) && !active
+                && (toBoolean(post.get("deleted")) || toInt(post.get("status")) != 1)) {
+            // 取消已下架收藏后，用户会立即失去私有详情访问权限；返回本次操作前
+            // 已校验过权限的历史快照，避免末尾查询失败导致整个事务回滚。
+            return getPostHistorySnapshot(postId, userId);
         }
         return getPostInternal(postId, userId, false);
     }
@@ -466,6 +544,13 @@ public class CampusPostServiceImpl implements CampusPostService {
     @Transactional(rollbackFor = Exception.class)
     public void deletePost(Long postId, Long userId) {
         requireUserId(userId);
+        Long activeErrandCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM campus_trade_order"
+                        + " WHERE product_id = :postId AND buyer_id = :userId AND biz_type = 4"
+                        + " AND status IN (0, 1) AND fulfillment_status IN (0, 1, 2, 3) AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("postId", postId).addValue("userId", userId), Long.class);
+        if (activeErrandCount != null && activeErrandCount > 0) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "请先取消代办订单或完成任务后再删除");
+        }
         int updated = jdbcTemplate.update("UPDATE campus_post SET deleted = b'1', updater = :operator, update_time = NOW()"
                         + " WHERE id = :postId AND user_id = :userId AND deleted = b'0'",
                 new MapSqlParameterSource().addValue("postId", postId).addValue("userId", userId)
@@ -535,9 +620,22 @@ public class CampusPostServiceImpl implements CampusPostService {
         if (targetStatus == 0) {
             return;
         }
+        if ("POST".equals(entityType) && isJobPost(entityId)) {
+            // 安全检测通过不能替代人工审核；若异步检测确认违规，则立即驳回或下架。
+            if (targetStatus == 2) {
+                jdbcTemplate.update("UPDATE campus_post SET status = 2,"
+                                + " audit_reason = CASE WHEN audit_reason = '' THEN '内容安全检测未通过'"
+                                + " ELSE audit_reason END, updater = 'wechat', update_time = NOW()"
+                                + " WHERE id = :id AND status IN (0, 1) AND deleted = b'0'",
+                        new MapSqlParameterSource("id", entityId));
+            }
+            return;
+        }
         String table = "POST".equals(entityType) ? "campus_post" : "campus_post_comment";
+        String currentStatusCondition = "POST".equals(entityType) && targetStatus == 2
+                ? "status IN (0, 1)" : "status = 0";
         int updated = jdbcTemplate.update("UPDATE " + table + " SET status = :status, updater = 'wechat',"
-                        + " update_time = NOW() WHERE id = :id AND status = 0 AND deleted = b'0'",
+                        + " update_time = NOW() WHERE id = :id AND " + currentStatusCondition + " AND deleted = b'0'",
                 new MapSqlParameterSource().addValue("status", targetStatus).addValue("id", entityId));
         if (updated > 0 && targetStatus == 1 && "COMMENT".equals(entityType)) {
             Long postId = jdbcTemplate.queryForObject("SELECT post_id FROM campus_post_comment WHERE id = :id",
@@ -657,7 +755,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         params.addValue("offset", (safePageNo - 1) * safePageSize).addValue("pageSize", safePageSize);
         List<CampusPostRespVO> list = jdbcTemplate.queryForList(
                         selectSql() + where + " ORDER BY " + orderBy + " LIMIT :offset, :pageSize", params)
-                .stream().map(row -> toResp(row, loginUserId)).collect(Collectors.toList());
+                .stream().map(row -> toResp(row, loginUserId, false)).collect(Collectors.toList());
         return new PageResult<>(list, total == null ? 0L : total);
     }
 
@@ -757,7 +855,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         return vo;
     }
 
-    private CampusPostRespVO toResp(Map<String, Object> row, Long loginUserId) {
+    private CampusPostRespVO toResp(Map<String, Object> row, Long loginUserId, boolean includeMerchantLocation) {
         CampusPostRespVO vo = new CampusPostRespVO();
         long id = toLong(row.get("id"), 0L);
         String type = value(row, "type");
@@ -782,7 +880,23 @@ public class CampusPostServiceImpl implements CampusPostService {
         vo.setTime(relativeTime(toLocalDateTime(row.get("create_time"))));
         vo.setPrice(formatPrice(row.get("price")));
         vo.setOriginalPrice(formatPrice(row.get("original_price")));
+        if ("idle".equals(type)) {
+            int stockAvailable = toInt(row.get("stock_available"));
+            int saleStatus = toInt(row.get("sale_status"));
+            vo.setStockTotal(toInt(row.get("stock_total")));
+            vo.setStockAvailable(stockAvailable);
+            vo.setSoldCount(toInt(row.get("sold_count")));
+            vo.setSaleStatus(saleStatus);
+            vo.setSoldOut(saleStatus == 2 || stockAvailable <= 0);
+        }
         vo.setLocation(value(row, "location"));
+        boolean owner = loginUserId != null && loginUserId.equals(vo.getUserId());
+        if (includeMerchantLocation && "shop".equals(type)) {
+            vo.setMerchantAddress(value(row, "merchant_address"));
+            vo.setMerchantLocationName(value(row, "merchant_location_name"));
+            vo.setMerchantLatitude(decimalValue(row.get("merchant_latitude")));
+            vo.setMerchantLongitude(decimalValue(row.get("merchant_longitude")));
+        }
         vo.setTradeMode(value(row, "trade_mode"));
         vo.setVisibleRange(value(row, "visible_range"));
         vo.setTags(parseStringList(value(row, "tags_json")));
@@ -797,11 +911,21 @@ public class CampusPostServiceImpl implements CampusPostService {
         vo.setComments(toInt(row.get("comment_count")));
         vo.setViews(toInt(row.get("view_count")));
         vo.setStatus(toInt(row.get("status")));
+        vo.setDownlisted(toBoolean(row.get("deleted")) || vo.getStatus() == 2);
+        vo.setAuditReason(value(row, "audit_reason"));
+        vo.setAuditTime(toLocalDateTime(row.get("audit_time")));
         vo.setLiked(toBoolean(row.get("login_liked")));
         vo.setCollected(toBoolean(row.get("login_collected")));
-        vo.setOwner(loginUserId != null && loginUserId.equals(vo.getUserId()));
+        vo.setOwner(owner);
         vo.setCreateTime(toLocalDateTime(row.get("create_time")));
         return vo;
+    }
+
+    private boolean isJobPost(Long postId) {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM campus_post"
+                        + " WHERE id = :id AND type = 'job' AND deleted = b'0'",
+                new MapSqlParameterSource("id", postId), Long.class);
+        return count != null && count > 0;
     }
 
     /**
@@ -840,6 +964,29 @@ public class CampusPostServiceImpl implements CampusPostService {
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "内容不存在或已下架");
         }
         return rows.get(0);
+    }
+
+    private Map<String, Object> getCollectedPostRow(Long postId, Long userId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT p.id, p.tenant_id, p.user_id, p.title, p.status, p.deleted FROM campus_post p"
+                        + " WHERE p.id = :id AND EXISTS (SELECT 1 FROM campus_post_interaction i"
+                        + " WHERE i.post_id = p.id AND i.user_id = :userId AND i.type = 'COLLECT'"
+                        + " AND i.deleted = b'0') LIMIT 1",
+                new MapSqlParameterSource().addValue("id", postId).addValue("userId", userId));
+        if (rows.isEmpty()) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "收藏记录不存在");
+        }
+        return rows.get(0);
+    }
+
+    private CampusPostRespVO getPostHistorySnapshot(Long postId, Long loginUserId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                selectSql() + " WHERE p.id = :id LIMIT 1",
+                new MapSqlParameterSource().addValue("id", postId).addValue("loginUserId", loginUserId));
+        if (rows.isEmpty()) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "历史内容不存在");
+        }
+        return toResp(rows.get(0), loginUserId, false);
     }
 
     private static String userNickname(Map<String, Object> user) {
@@ -975,6 +1122,11 @@ public class CampusPostServiceImpl implements CampusPostService {
         return price.stripTrailingZeros().toPlainString();
     }
 
+    private static BigDecimal decimalValue(Object value) {
+        return value == null ? null : (value instanceof BigDecimal
+                ? (BigDecimal) value : new BigDecimal(String.valueOf(value)));
+    }
+
     private static String relativeTime(LocalDateTime createTime) {
         if (createTime == null) {
             return "刚刚";
@@ -1018,5 +1170,10 @@ public class CampusPostServiceImpl implements CampusPostService {
         if ("club".equals(type)) return "活动报名中";
         if ("job".equals(type)) return "校内兼职";
         return "同校互助";
+    }
+
+    private static String normalizePhone(String value) {
+        String phone = StrUtil.blankToDefault(value, "").replaceAll("\\s+", "").trim();
+        return phone.startsWith("+86") ? phone.substring(3) : phone;
     }
 }

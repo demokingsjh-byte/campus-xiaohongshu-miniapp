@@ -51,7 +51,12 @@ public class CampusAppTradePaymentController {
     }
 
     @GetMapping("/contact")
-    public CommonResult<CampusTradeContactRespVO> contact(@RequestParam("postId") Long postId) {
+    public CommonResult<CampusTradeContactRespVO> contact(
+            @RequestParam(value = "orderId", required = false) Long orderId,
+            @RequestParam(value = "postId", required = false) Long postId) {
+        if (orderId != null) {
+            return success(paymentService.getContactByOrder(orderId, getLoginUserId()));
+        }
         return success(paymentService.getContact(postId, getLoginUserId()));
     }
 

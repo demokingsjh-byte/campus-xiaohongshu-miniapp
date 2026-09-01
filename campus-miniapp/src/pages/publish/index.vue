@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import PrototypeTabBar from '@/components/PrototypeTabBar/index.vue';
 import { campusPublishTypes, getDefaultTenant } from '@/mock/campus';
+import { createCampusErrandOrder, getCampusErrandOrderByPost } from '@/services/api/content';
 import { uploadCampusPostImage } from '@/services/api/file';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
@@ -11,11 +12,12 @@ const activeType = ref('idle');
 const images = ref<string[]>([]);
 const customTag = ref('');
 const choosingImages = ref(false);
+const choosingMerchantLocation = ref(false);
 const submitting = ref(false);
 const showSuccess = ref(false);
 const createdPostId = ref<number | null>(null);
 const createdPostStatus = ref<number>(1);
-const publishedSummary = ref<{ typeTitle: string, location: string, visibleRange: string } | null>(null);
+const publishedSummary = ref<{ typeKey: string, typeTitle: string, location: string, visibleRange: string } | null>(null);
 const agreed = ref(true);
 const errors = reactive<Record<string, string>>({});
 const userStore = useUserStore();
@@ -36,8 +38,13 @@ const form = reactive({
   title: '',
   price: '',
   originalPrice: '',
+  stock: '1',
   content: '',
   location: locations.value[0],
+  merchantAddress: '',
+  merchantLocationName: '',
+  merchantLatitude: null as number | null,
+  merchantLongitude: null as number | null,
   tags: [] as string[],
   contact: '',
   tradeMode: '校内自提',
@@ -45,7 +52,7 @@ const form = reactive({
   anonymous: false,
 });
 watch(schoolName, () => {
-  if (!form.location.startsWith(schoolName.value))
+  if (activeType.value !== 'shop' && !form.location.startsWith(schoolName.value))
     form.location = locations.value[0];
 });
 
@@ -97,6 +104,27 @@ const displayTags = computed(() => Array.from(new Set([
 ])));
 const showPrice = computed(() => ['idle', 'help', 'ride', 'shop', 'job'].includes(activeType.value));
 const isConfession = computed(() => activeType.value === 'confession');
+const isIdle = computed(() => activeType.value === 'idle');
+const isJob = computed(() => activeType.value === 'job');
+const isShop = computed(() => activeType.value === 'shop');
+const hasMerchantMapLocation = computed(() => isValidCoordinate(
+  form.merchantLatitude,
+  form.merchantLongitude,
+));
+
+function coordinateFromDraft(value: unknown, minimum: number, maximum: number) {
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) && coordinate >= minimum && coordinate <= maximum ? coordinate : null;
+}
+
+function isValidCoordinate(latitude: unknown, longitude: unknown) {
+  if (latitude === null || latitude === undefined || longitude === null || longitude === undefined)
+    return false;
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  return Number.isFinite(lat) && lat >= -90 && lat <= 90
+    && Number.isFinite(lng) && lng >= -180 && lng <= 180;
+}
 
 onLoad(() => {
   const draft = uni.getStorageSync('campus-publish-draft');
@@ -108,8 +136,15 @@ onLoad(() => {
     title: draft.title || '',
     price: draft.price || '',
     originalPrice: draft.originalPrice || '',
+    stock: String(draft.stock || '1'),
     content: draft.content || '',
-    location: locations.value.includes(draft.location) ? draft.location : locations.value[0],
+    location: draftType === 'shop'
+      ? String(draft.location || '').slice(0, 160)
+      : (locations.value.includes(draft.location) ? draft.location : locations.value[0]),
+    merchantAddress: String(draft.merchantAddress || '').slice(0, 255),
+    merchantLocationName: String(draft.merchantLocationName || '').slice(0, 120),
+    merchantLatitude: coordinateFromDraft(draft.merchantLatitude, -90, 90),
+    merchantLongitude: coordinateFromDraft(draft.merchantLongitude, -180, 180),
     tags: Array.isArray(draft.tags) ? draft.tags.slice(0, 3) : [],
     contact: draft.contact || '',
     tradeMode: typeDetails[draftType].modes.includes(draft.tradeMode) ? draft.tradeMode : typeDetails[draftType].modes[0],
@@ -147,6 +182,10 @@ function openPublisherProfile() {
 
 function chooseType(key: string) {
   activeType.value = key;
+  if (key === 'shop' && locations.value.includes(form.location))
+    form.location = '';
+  else if (key !== 'shop' && !locations.value.includes(form.location))
+    form.location = locations.value[0];
   form.tags = [];
   customTag.value = '';
   form.tradeMode = typeDetails[key].modes[0];
@@ -230,6 +269,77 @@ function toggleTag(tag: string) {
   else
     uni.showToast({ title: '最多选择 3 个标签', icon: 'none' });
 }
+
+function handleChooseLocationFailure(error: { errMsg?: string }) {
+  const message = error.errMsg || '';
+  if (/cancel/i.test(message))
+    return;
+
+  if (/privacy|scope is not declared/i.test(message)) {
+    uni.showModal({
+      title: '暂时无法使用地图选址',
+      content: '请先在微信小程序后台声明“位置信息”用途并发布最新隐私保护指引；你也可以继续手动填写门店地址。',
+      showCancel: false,
+      confirmText: '知道了',
+    });
+    return;
+  }
+
+  if (/auth deny|permission|authorize/i.test(message)) {
+    uni.showModal({
+      title: '需要位置权限',
+      content: '仅在你主动地图选址时使用当前位置。你可以打开设置授权，也可以取消后手动填写地址。',
+      cancelText: '手动填写',
+      confirmText: '打开设置',
+      success: result => result.confirm && uni.openSetting({}),
+    });
+    return;
+  }
+
+  uni.showToast({ title: '地图选址失败，请重试或手动填写', icon: 'none' });
+}
+
+function chooseMerchantLocation() {
+  if (choosingMerchantLocation.value)
+    return;
+  choosingMerchantLocation.value = true;
+  const options: UniApp.ChooseLocationOptions = {
+    success: (result) => {
+      const latitude = Number(result.latitude);
+      const longitude = Number(result.longitude);
+      if (!isValidCoordinate(latitude, longitude)) {
+        uni.showToast({ title: '地图没有返回有效位置，请重新选择', icon: 'none' });
+        return;
+      }
+      const name = String(result.name || '').trim().slice(0, 120);
+      const address = String(result.address || name).trim().slice(0, 255);
+      form.merchantLocationName = name;
+      form.merchantAddress = address;
+      form.merchantLatitude = latitude;
+      form.merchantLongitude = longitude;
+      form.location = (name || address).slice(0, 160);
+      errors.merchantAddress = '';
+      errors.location = '';
+      uni.showToast({ title: '已填入门店位置', icon: 'success' });
+    },
+    fail: handleChooseLocationFailure,
+    complete: () => {
+      choosingMerchantLocation.value = false;
+    },
+  };
+  if (hasMerchantMapLocation.value) {
+    options.latitude = Number(form.merchantLatitude);
+    options.longitude = Number(form.merchantLongitude);
+  }
+  uni.chooseLocation(options);
+}
+
+function clearMerchantMapLocation() {
+  form.merchantLocationName = '';
+  form.merchantLatitude = null;
+  form.merchantLongitude = null;
+  uni.showToast({ title: '已改为手动填写地址', icon: 'none' });
+}
 function addCustomTag() {
   const tag = customTag.value
     .replace(/^#+/, '')
@@ -261,7 +371,22 @@ function validate() {
     ? (form.title.trim().length >= 2 ? '' : '请填写表白对象或称呼')
     : (form.title.trim().length >= 4 ? '' : '标题至少填写 4 个字');
   errors.content = form.content.trim().length >= 10 ? '' : '详细描述至少填写 10 个字';
-  errors.price = showPrice.value && form.price && Number(form.price) <= 0 ? '价格需要大于 0' : '';
+  errors.price = activeType.value === 'help' && !form.price.trim()
+    ? '代拿代办需要设置任务赏金并由发布人付款'
+    : (showPrice.value && form.price && Number(form.price) <= 0 ? '价格需要大于 0' : '');
+  const stock = Number(form.stock);
+  errors.stock = isIdle.value && (!Number.isInteger(stock) || stock < 1 || stock > 999)
+    ? '库存需填写 1 至 999 件'
+    : '';
+  errors.merchantAddress = isShop.value && !form.merchantAddress.trim()
+    ? '请填写商户实际地址'
+    : '';
+  errors.location = isShop.value && !form.location.trim()
+    ? '请填写用户可见的大概位置'
+    : '';
+  errors.contact = (isIdle.value || activeType.value === 'help') && !isValidPhone(form.contact)
+    ? `${isIdle.value ? '发布二手闲置' : '发布代拿代办'}时请填写有效联系电话`
+    : '';
   errors.agreement = agreed.value ? '' : '请先同意社区发布规范';
   return !Object.values(errors).some(Boolean);
 }
@@ -276,6 +401,30 @@ watch(() => form.content, (value) => {
   if (errors.content && value.trim().length >= 10)
     errors.content = '';
 });
+watch(() => form.contact, (value) => {
+  if (errors.contact && isValidPhone(value))
+    errors.contact = '';
+});
+watch(() => form.stock, (value) => {
+  const stock = Number(value);
+  if (errors.stock && Number.isInteger(stock) && stock >= 1 && stock <= 999)
+    errors.stock = '';
+});
+watch(() => form.merchantAddress, (value) => {
+  if (errors.merchantAddress && value.trim())
+    errors.merchantAddress = '';
+});
+watch(() => form.location, (value) => {
+  if (errors.location && value.trim())
+    errors.location = '';
+});
+function normalizePhone(value: string) {
+  const phone = value.replace(/\s+/g, '').trim();
+  return phone.startsWith('+86') ? phone.slice(3) : phone;
+}
+function isValidPhone(value: string) {
+  return /^(?:1[3-9]\d{9}|0\d{2,3}-?\d{7,8})$/.test(normalizePhone(value));
+}
 function normalizeConfessionTitle(value: string) {
   const target = value.replace(/^TO[：:]?\s*/i, '').trim();
   return `TO：${target}`;
@@ -290,8 +439,13 @@ function clearEditor() {
     title: '',
     price: '',
     originalPrice: '',
+    stock: '1',
     content: '',
     location: locations.value[0],
+    merchantAddress: '',
+    merchantLocationName: '',
+    merchantLatitude: null,
+    merchantLongitude: null,
     tags: [],
     contact: '',
     tradeMode: typeDetails.idle.modes[0],
@@ -329,6 +483,7 @@ async function submit() {
     return;
   }
   submitting.value = true;
+  let savedPostId = 0;
   try {
     const uploadedImages = await Promise.all(images.value.map((image) => {
       if (/^https?:\/\//i.test(image))
@@ -341,29 +496,58 @@ async function submit() {
       content: form.content.trim(),
       price: form.price.trim() || undefined,
       originalPrice: form.originalPrice.trim() || undefined,
-      location: isConfession.value ? `${schoolName.value} · 表白墙` : form.location,
+      stockTotal: isIdle.value ? Number(form.stock) : undefined,
+      location: isConfession.value
+        ? `${schoolName.value} · 表白墙`
+        : (isShop.value ? form.location.trim() : form.location),
+      merchantAddress: isShop.value ? form.merchantAddress.trim() : undefined,
+      merchantLocationName: isShop.value ? form.merchantLocationName.trim() || undefined : undefined,
+      merchantLatitude: isShop.value && hasMerchantMapLocation.value ? Number(form.merchantLatitude) : undefined,
+      merchantLongitude: isShop.value && hasMerchantMapLocation.value ? Number(form.merchantLongitude) : undefined,
       tradeMode: form.tradeMode,
       visibleRange: form.visibleRange,
-      contact: form.contact.trim() || undefined,
+      contact: normalizePhone(form.contact) || undefined,
       tags: [...form.tags],
       images: uploadedImages,
       anonymous: form.anonymous,
     });
+    savedPostId = created.id;
     createdPostId.value = created.id;
     createdPostStatus.value = created.status ?? 1;
     publishedSummary.value = {
+      typeKey: activeType.value,
       typeTitle: currentType.value.title,
       location: form.location,
       visibleRange: form.visibleRange,
     };
+    if (activeType.value === 'help') {
+      let orderId = Number(created.errandOrderId || 0);
+      if (!orderId) {
+        try {
+          orderId = Number((await getCampusErrandOrderByPost(created.id)).id || 0);
+        } catch {
+          // 兼容尚未在发布接口中返回 errandOrderId 的服务端：补建订单后仍直接进入付款，
+          // 不把“创建赏金订单”这一内部步骤暴露给发布人。
+          orderId = Number((await createCampusErrandOrder(created.id)).id || 0);
+        }
+      }
+      if (!orderId)
+        throw new Error('代办赏金订单创建失败，请部署最新后端并执行数据库升级后重试');
+      clearEditor();
+      uni.navigateTo({ url: `/pages/checkout/index?orderId=${orderId}&postId=${created.id}&mode=errand` });
+      return;
+    }
     clearEditor();
     showSuccess.value = true;
   } catch (error) {
     const message = error instanceof Error ? error.message.replace(/^.*：/, '') : '请检查网络后重试';
     const backendNotUpdated = /不支持的发布类型/.test(message);
+    const orderCreationFailed = savedPostId > 0;
     uni.showModal({
-      title: backendNotUpdated ? '服务器版本未更新' : '发布失败，内容未保存',
-      content: backendNotUpdated
+      title: orderCreationFailed ? '未进入赏金付款' : (backendNotUpdated ? '服务器版本未更新' : '发布失败，内容未保存'),
+      content: orderCreationFailed
+        ? `帖子已保存，但线上服务器尚未完成代办订单升级，暂时不能付款：${message || '请稍后重试'}。请不要重复发布；部署最新后端并执行数据库升级后，可从详情点击“去支付赏金”继续。`
+        : backendNotUpdated
         ? '该发布类型已加入小程序，但服务器仍在运行旧版本。请部署最新后端并重启服务后再试。'
         : (message || '请检查网络后重试，当前填写内容仍为你保留。'),
       showCancel: false,
@@ -420,6 +604,10 @@ function reset() {
           </view>
         </view>
       </scroll-view>
+      <view v-if="isJob" class="job-audit-notice">
+        <text>需人工审核</text>
+        <text>兼职信息提交后不会立即展示，管理员审核通过后才会发布。</text>
+      </view>
     </view>
 
     <view class="content-card card-block">
@@ -499,7 +687,7 @@ function reset() {
 
     <view v-if="showPrice" class="trade-card card-block">
       <view class="block-head">
-        <text>{{ activeType === 'ride' ? '费用信息' : '交易信息' }}</text><text>价格可面议 ◯</text>
+        <text>{{ activeType === 'help' ? '任务赏金' : (activeType === 'ride' ? '费用信息' : '交易信息') }}</text><text>{{ activeType === 'help' ? '发布人付款' : '价格可面议 ◯' }}</text>
       </view>
       <view class="price-row">
         <view class="price-main">
@@ -512,6 +700,18 @@ function reset() {
       <view v-if="errors.price" class="error">
         {{ errors.price }}
       </view>
+      <view v-if="isIdle" class="stock-row">
+        <view class="stock-copy">
+          <text>库存数量</text><text>每笔订单购买 1 件，售完自动下架</text>
+        </view>
+        <view class="stock-input" :class="{ invalid: errors.stock }">
+          <input v-model="form.stock" type="number" maxlength="3" inputmode="numeric">
+          <text>件</text>
+        </view>
+      </view>
+      <view v-if="errors.stock" class="error">
+        {{ errors.stock }}
+      </view>
       <view class="mode-label">
         {{ activeType === 'ride' ? '费用方式' : '交付方式' }}
       </view>
@@ -523,7 +723,53 @@ function reset() {
     </view>
 
     <view class="setting-card card-block">
-      <picker v-if="!isConfession" :range="locations" @change="selectFrom('location', locations, $event)">
+      <view v-if="isShop" class="shop-address-fields">
+        <view class="map-location-picker">
+          <view class="map-location-copy">
+            <text>{{ hasMerchantMapLocation ? '已选择门店地图位置' : '地图选择门店位置' }}</text>
+            <text>{{ hasMerchantMapLocation ? (form.merchantLocationName || '已记录导航位置') : '授权后可自动填入门店名称和地址' }}</text>
+          </view>
+          <button class="map-location-button" :disabled="choosingMerchantLocation" @click="chooseMerchantLocation">
+            {{ choosingMerchantLocation ? '打开中…' : (hasMerchantMapLocation ? '重新选择' : '打开地图') }}
+          </button>
+        </view>
+        <view v-if="hasMerchantMapLocation" class="map-location-selected">
+          <text>发布后用户可在团购详情中一键导航</text>
+          <text @click="clearMerchantMapLocation">改为手动填写</text>
+        </view>
+        <view class="setting-row address-input-row">
+          <view class="setting-icon">
+            <image src="/static/icons/ui/location.svg" mode="aspectFit" />
+          </view>
+          <view class="setting-main">
+            <text>门店准确地址（必填）</text>
+            <input
+              v-model="form.merchantAddress" maxlength="255" :class="{ invalid: errors.merchantAddress }"
+              placeholder="例：北门商业街 18 号 2 楼"
+            >
+            <text class="address-privacy">将在团购详情展示；地图选址后仍可补充楼层、门牌等信息</text>
+          </view>
+        </view>
+        <view v-if="errors.merchantAddress" class="address-error error">
+          {{ errors.merchantAddress }}
+        </view>
+        <view class="setting-row address-input-row">
+          <view class="setting-icon public-location-icon">
+            <image src="/static/icons/ui/location.svg" mode="aspectFit" />
+          </view>
+          <view class="setting-main">
+            <text>用户可见的大概位置（必填）</text>
+            <input
+              v-model="form.location" maxlength="160" :class="{ invalid: errors.location }"
+              placeholder="例：北门商业街附近"
+            >
+          </view>
+        </view>
+        <view v-if="errors.location" class="address-error error">
+          {{ errors.location }}
+        </view>
+      </view>
+      <picker v-else-if="!isConfession" :range="locations" @change="selectFrom('location', locations, $event)">
         <view class="setting-row">
           <view class="setting-icon">
             <image src="/static/icons/ui/location.svg" mode="aspectFit" />
@@ -552,8 +798,17 @@ function reset() {
           <image src="/static/icons/ui/contact.svg" mode="aspectFit" />
         </view>
         <view class="setting-main">
-          <text>联系方式</text><input v-model="form.contact" placeholder="请输入联系方式">
+          <text>{{ isIdle ? '卖家联系电话（必填）' : (activeType === 'help' ? '发布人联系电话（必填）' : '联系方式') }}</text>
+          <input
+            v-model="form.contact" maxlength="20" :class="{ invalid: errors.contact }"
+            :placeholder="isIdle
+              ? '付款后向买家展示，请填写手机号'
+              : (activeType === 'help' ? '接单后向接单人展示，请填写手机号' : '请输入联系方式')"
+          >
         </view>
+      </view>
+      <view v-if="!isConfession && errors.contact" class="contact-error error">
+        {{ errors.contact }}
       </view>
       <view class="setting-row last-row">
         <view class="setting-icon">
@@ -587,7 +842,7 @@ function reset() {
       </button>
       <button class="publish-btn" :disabled="submitting" @click="submit">
         <view v-if="submitting" class="submit-spinner" /><text>
-          {{ submitting ? '正在发布…' : `发布${currentType.title}` }}
+          {{ submitting ? '正在提交…' : (isJob ? '提交兼职审核' : `发布${currentType.title}`) }}
         </text>
       </button>
     </view>
@@ -600,12 +855,12 @@ function reset() {
           <i />
         </view>
         <view class="success-title">
-          {{ createdPostStatus === 1 ? '发布成功' : '已提交审核' }}
+          {{ publishedSummary?.typeKey === 'job' && createdPostStatus !== 1 ? '兼职已提交审核' : '发布成功' }}
         </view>
         <view class="success-desc">
-          {{ createdPostStatus === 1
-            ? `内容已发布到${schoolName}，新的回应会通过消息通知你。`
-            : '文字和图片正在进行安全审核，通过后会自动展示给同校同学。' }}
+          {{ publishedSummary?.typeKey === 'job' && createdPostStatus !== 1
+            ? '管理员将在后台进行人工审核，审核通过前不会在小程序公开展示。'
+            : `内容已发布到${schoolName}，新的回应会通过消息通知你。` }}
         </view>
         <view class="success-summary">
           <text>{{ publishedSummary?.location }}</text><text>{{ publishedSummary?.visibleRange }}</text>
@@ -710,6 +965,25 @@ function reset() {
 }
 .type-card {
   padding: 22rpx 0 20rpx;
+}
+
+.job-audit-notice {
+  display: flex;
+  margin: 16rpx 24rpx 0;
+  padding: 18rpx 20rpx;
+  border: 1rpx solid rgba(230, 158, 35, 0.24);
+  border-radius: 18rpx;
+  color: #7f5b13;
+  background: #fff8e8;
+  font-size: 22rpx;
+  line-height: 1.55;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.job-audit-notice text:first-child {
+  color: #b26d00;
+  font-weight: 650;
 }
 .type-card .block-head {
   margin-bottom: 16rpx;
@@ -935,6 +1209,45 @@ function reset() {
   gap: 26rpx;
   padding: 5rpx 0 22rpx;
   border-bottom: 1rpx solid var(--color-divider);
+}
+.stock-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 0 4rpx;
+}
+.stock-copy {
+  display: flex;
+  flex-direction: column;
+}
+.stock-copy text:first-child {
+  color: #34403c;
+  font-size: 25rpx;
+  font-weight: 700;
+}
+.stock-copy text:last-child {
+  margin-top: 6rpx;
+  color: #9aa39f;
+  font-size: 19rpx;
+}
+.stock-input {
+  display: flex;
+  align-items: center;
+  width: 142rpx;
+  padding: 9rpx 14rpx;
+  border: 1rpx solid rgba(60, 60, 67, 0.14);
+  border-radius: 14rpx;
+  color: #34403c;
+}
+.stock-input input {
+  min-width: 0;
+  flex: 1;
+  text-align: right;
+}
+.stock-input text {
+  margin-left: 8rpx;
+  color: #8f9894;
+  font-size: 21rpx;
 }
 .price-main {
   display: flex;
@@ -1603,6 +1916,94 @@ function reset() {
   color: #959996;
   font-size: 25rpx;
   text-align: right;
+}
+.address-input-row {
+  align-items: flex-start;
+  padding: 22rpx 0;
+}
+.map-location-picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 22rpx 0;
+  border-bottom: 1rpx solid rgba(60, 60, 67, 0.1);
+}
+.map-location-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.map-location-copy text:first-child {
+  color: #1e211f;
+  font-size: 27rpx;
+  font-weight: 650;
+}
+.map-location-copy text:last-child {
+  overflow: hidden;
+  margin-top: 7rpx;
+  color: #888f8b;
+  font-size: 20rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.map-location-button {
+  flex: 0 0 auto;
+  min-width: 154rpx;
+  height: 64rpx;
+  margin: 0;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  color: #087b59;
+  background: #e8f8f1;
+  font-size: 21rpx;
+  font-weight: 700;
+  line-height: 64rpx;
+}
+.map-location-button::after {
+  border: 0;
+}
+.map-location-button[disabled] {
+  opacity: 0.65;
+}
+.map-location-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13rpx 0;
+  border-bottom: 1rpx solid rgba(60, 60, 67, 0.1);
+  color: #6e7b76;
+  font-size: 19rpx;
+}
+.map-location-selected text:last-child {
+  color: #a3762f;
+  font-weight: 650;
+}
+.address-input-row .setting-icon {
+  margin-top: 2rpx;
+}
+.address-input-row .setting-main {
+  align-items: flex-start;
+  flex-direction: column;
+}
+.address-input-row input {
+  width: 100%;
+  margin-top: 8rpx;
+  margin-left: 0;
+  text-align: left;
+}
+.setting-main .address-privacy {
+  margin-top: 8rpx;
+  margin-left: 0;
+  color: #a28a60;
+  font-size: 18rpx;
+}
+.public-location-icon {
+  background: #eef7ff;
+}
+.address-error {
+  margin: -12rpx 0 12rpx 82rpx;
 }
 
 .setting-main input {

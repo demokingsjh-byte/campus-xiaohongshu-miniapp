@@ -104,7 +104,12 @@
     },
     "usingComponents": true,
     "__usePrivacyCheck__": true,
-    "permission": {},
+    "permission": {
+      "scope.userLocation": {
+        "desc": "用于商家发布团购时在地图选择并确认门店位置"
+      }
+    },
+    "requiredPrivateInfos": ["chooseLocation"],
     "style": "v2"
   },
   "mp-alipay": {

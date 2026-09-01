@@ -16,7 +16,17 @@ export interface CampusPost {
   time: string
   price?: string
   originalPrice?: string
+  stockTotal?: number
+  stockAvailable?: number
+  soldCount?: number
+  saleStatus?: number
+  soldOut?: boolean
+  downlisted?: boolean
   location?: string
+  merchantAddress?: string
+  merchantLocationName?: string
+  merchantLatitude?: number
+  merchantLongitude?: number
   tradeMode?: string
   visibleRange?: string
   tags: string[]
@@ -26,9 +36,12 @@ export interface CampusPost {
   comments: number
   views?: number
   status?: number
+  auditReason?: string
+  auditTime?: string
   liked?: boolean
   collected?: boolean
   owner?: boolean
+  errandOrderId?: number
   createTime?: string
   coverColor: string
   coverEmoji: string

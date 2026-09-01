@@ -94,3 +94,7 @@ export function uploadCampusPostImage(filePath: string) {
 export function uploadCampusCommentImage(filePath: string) {
   return uploadCampusFile(filePath, 'campus/comment', '评论图片');
 }
+
+export function uploadCampusErrandEvidence(filePath: string) {
+  return uploadCampusFile(filePath, 'campus/errand-evidence', '任务凭证');
+}

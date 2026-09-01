@@ -22,6 +22,7 @@ VALUES
     (900750, '分类管理', 'campus:home-category:query', 2, 8, 900000, 'home-category', 'ep:grid', 'campus/base/index', 'CampusHomeCategory', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900700, '数据日志', 'system:operate-log:query', 2, 11, 900000, 'data-log', 'ep:notebook', 'campus/log/index', 'CampusDataLog', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900800, '内容管理', 'campus:post:query', 2, 8, 900000, 'post', 'ep:document', 'campus/base/index', 'CampusPost', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900930, '兼职审核', 'campus:job-audit:query', 2, 9, 900000, 'job-audit', 'ep:checked', 'campus/job-audit/index', 'CampusJobAudit', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900850, '表白管理', 'campus:post:query', 2, 9, 900000, 'confession', 'ep:chat-line-round', 'campus/confession/index', 'CampusConfession', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900910, '联系申请', 'campus:contact-request:query', 2, 10, 900000, 'contact-request', 'ep:chat-dot-round', 'campus/base/index', 'CampusContactRequest', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
 ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), sort = VALUES(sort), parent_id = VALUES(parent_id), path = VALUES(path), icon = VALUES(icon), component = VALUES(component), component_name = VALUES(component_name), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';
@@ -52,6 +53,7 @@ VALUES
     (900701, '日志导出', 'system:operate-log:export', 3, 1, 900700, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900801, '内容修改', 'campus:post:update', 3, 1, 900800, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900802, '内容删除', 'campus:post:delete', 3, 2, 900800, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900931, '兼职审核操作', 'campus:job-audit:review', 3, 1, 900930, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900911, '联系申请处理', 'campus:contact-request:update', 3, 1, 900910, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900912, '联系申请删除', 'campus:contact-request:delete', 3, 2, 900910, '', '', '', NULL, 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
 ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), parent_id = VALUES(parent_id), sort = VALUES(sort), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';

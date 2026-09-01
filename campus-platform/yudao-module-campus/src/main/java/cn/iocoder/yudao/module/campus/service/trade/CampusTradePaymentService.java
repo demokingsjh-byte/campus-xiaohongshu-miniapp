@@ -13,6 +13,7 @@ public interface CampusTradePaymentService {
     CampusTradePayRespVO createPaymentByOrder(Long orderId, Long buyerId, String userIp);
     CampusTradePaymentStatusRespVO getPaymentStatus(Long orderId, Long buyerId);
     CampusTradeContactRespVO getContact(Long postId, Long buyerId);
+    CampusTradeContactRespVO getContactByOrder(Long orderId, Long userId);
     void handleWechatNotify(String body, Map<String, String> headers);
     CampusTradeRefundRespVO refundOrder(Long orderId, String reason, String operator);
     CampusTradeRefundRespVO syncRefund(Long orderId);

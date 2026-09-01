@@ -182,7 +182,8 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
         }
 
         namedParameterJdbcTemplate.update("UPDATE campus_post"
-                + " SET title = '内容已由用户删除', content = '', contact = '', location = '',"
+                + " SET title = '内容已由用户删除', content = '', contact = '', location = '', merchant_address = '',"
+                + " merchant_location_name = '', merchant_latitude = NULL, merchant_longitude = NULL,"
                 + " images_json = '[]', tags_json = '[]', status = 2, updater = '', update_time = NOW(), deleted = b'1'"
                 + " WHERE user_id = :userId AND deleted = b'0'", params);
         namedParameterJdbcTemplate.update("UPDATE campus_post_interaction"

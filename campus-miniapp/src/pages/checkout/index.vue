@@ -1,8 +1,10 @@
 <script lang="ts" setup>
 import type { CampusPost } from '@/mock/campus';
 import type { CampusTradeContact, CampusTradeOrder } from '@/services/api/content';
+import TradeChatPanel from '@/components/TradeChatPanel/index.vue';
 import {
   cancelCampusTradeOrder,
+  createCampusErrandOrder,
   createCampusTradeOrder,
   createCampusTradePayment,
   getCampusPost,
@@ -11,10 +13,12 @@ import {
   getCampusTradePaymentStatus,
 } from '@/services/api/content';
 import { useUserStore } from '@/stores/modules/user';
+import { useCampusContentStore } from '@/stores/modules/tenant';
 import { resolveCampusMediaUrl } from '@/utils/avatar';
 
 const postId = ref(0);
 const orderId = ref(0);
+const checkoutMode = ref<'trade' | 'errand'>('trade');
 const post = ref<CampusPost>();
 const order = ref<CampusTradeOrder>();
 const contact = ref<CampusTradeContact>();
@@ -26,15 +30,21 @@ const showPurchaseSuccess = ref(false);
 const remainingSeconds = ref(0);
 const loadError = ref(false);
 const userStore = useUserStore();
+const contentStore = useCampusContentStore();
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
 let paymentPollingTimer: ReturnType<typeof setInterval> | null = null;
 let paymentPollingBusy = false;
 let paymentSubmittedAt = 0;
 const PAYMENT_CONFIRMATION_GRACE_MS = 30_000;
 
-const isPaid = computed(() => order.value?.status === 1);
+const isErrand = computed(() => checkoutMode.value === 'errand' || order.value?.bizType === 4);
+const isPaid = computed(() => Boolean(order.value?.paidAt) || [1, 2, 4].includes(Number(order.value?.status)));
 const isWaitingPayment = computed(() => order.value?.status === 0 && remainingSeconds.value > 0);
 const isPaymentPending = computed(() => paymentPending.value && order.value?.status === 0);
+const isBuyer = computed(() => Number(userStore.userInfo?.id) === Number(order.value?.buyerId));
+const participantName = computed(() => isBuyer.value
+  ? (contact.value?.sellerName || order.value?.sellerName || '卖家')
+  : (order.value?.buyerName || '买家'));
 const productImage = computed(() => resolveCampusMediaUrl(order.value?.coverImage || post.value?.coverImage || post.value?.images?.[0] || ''));
 const countdownText = computed(() => {
   const minutes = Math.floor(remainingSeconds.value / 60).toString().padStart(2, '0');
@@ -46,7 +56,10 @@ const displayAmount = computed(() => Number(order.value?.amount ?? post.value?.p
 onLoad(async (query) => {
   postId.value = Number(query?.postId || 0);
   orderId.value = Number(query?.orderId || 0);
+  checkoutMode.value = query?.mode === 'errand' ? 'errand' : 'trade';
   await loadCheckout();
+  if (isErrand.value)
+    uni.setNavigationBarTitle({ title: '支付任务赏金' });
 });
 
 onShow(() => {
@@ -71,7 +84,7 @@ async function loadCheckout() {
       loadError.value = true;
       uni.showModal({
         title: '请先登录',
-        content: '登录后才能创建二手交易订单。',
+        content: isErrand.value ? '登录后才能支付任务赏金。' : '登录后才能创建二手交易订单。',
         showCancel: false,
         success: () => uni.navigateBack(),
       });
@@ -79,6 +92,8 @@ async function loadCheckout() {
     }
     if (orderId.value) {
       order.value = await getCampusTradeOrder(orderId.value);
+      if (order.value.bizType === 4)
+        checkoutMode.value = 'errand';
       postId.value = order.value.postId;
       // Keep order history readable even when the original listing is gone.
       try {
@@ -91,9 +106,14 @@ async function loadCheckout() {
       order.value = await createCampusTradeOrder(postId.value);
     }
     startCountdown();
-    if (order.value.status === 1) {
-      await loadContact();
-    } else if (order.value.status === 0) {
+    if (isPaid.value && !isErrand.value) {
+      try {
+        await loadContact();
+      } catch {
+        // 联系电话是支付后的增强信息；接口升级期间仍应正常展示订单和在线咨询入口。
+        contact.value = undefined;
+      }
+    } else if (order.value.status === 0 && isBuyer.value) {
       // Reconcile once when reopening the page. If WeChat still says NOTPAY,
       // keep the payment button available; the backend rechecks the existing
       // WeChat order before creating another prepay order.
@@ -264,10 +284,19 @@ async function applyPaidOrder(paidAt?: string) {
   paymentTimedOut.value = false;
   paymentSubmittedAt = 0;
   stopPaymentPolling();
-  try {
-    await loadContact();
-  } catch {
-    contact.value = undefined;
+  if (!isErrand.value) {
+    // 支付确认后立即同步最新库存；Pinia 会把售罄商品从首页缓存移除，
+    // 多库存商品则只更新剩余数量，不必等用户重新进入首页。
+    try {
+      post.value = await contentStore.loadPost(postId.value);
+    } catch {
+      // 订单快照仍可保证购买历史可读，列表页下次 onShow 会重新拉取。
+    }
+    try {
+      await loadContact();
+    } catch {
+      contact.value = undefined;
+    }
   }
   if (!wasPaid)
     openPurchaseSuccess();
@@ -280,11 +309,17 @@ function openPurchaseSuccess() {
 }
 
 function buyAgain() {
+  if (isErrand.value) {
+    uni.redirectTo({ url: `/pages/detail/index?id=${postId.value}&mine=1` });
+    return;
+  }
   uni.switchTab({ url: '/pages/index/index' });
 }
 
 async function loadContact() {
-  contact.value = await getCampusTradeContact(postId.value);
+  if (!order.value)
+    return;
+  contact.value = await getCampusTradeContact(order.value.id);
 }
 
 async function pay() {
@@ -313,7 +348,6 @@ async function pay() {
         title: paymentPending.value ? '支付已提交，正在确认订单状态' : '微信支付未完成，请重新支付',
         icon: 'none',
       });
-      return;
     }
   } catch (error: any) {
     const message = String(error?.errMsg || error?.message || '').toLowerCase();
@@ -367,7 +401,9 @@ async function recreateOrder() {
   busy.value = true;
   try {
     stopPaymentPolling();
-    order.value = await createCampusTradeOrder(postId.value);
+    order.value = isErrand.value
+      ? await createCampusErrandOrder(postId.value)
+      : await createCampusTradeOrder(postId.value);
     paymentPending.value = false;
     paymentTimedOut.value = false;
     paymentSubmittedAt = 0;
@@ -426,17 +462,49 @@ function copyContact() {
   if (contact.value?.contact)
     uni.setClipboardData({ data: contact.value.contact });
 }
+
+function callContact() {
+  if (contact.value?.contact)
+    uni.makePhoneCall({ phoneNumber: contact.value.contact });
+}
+
+function openConsultation() {
+  if (!order.value)
+    return;
+  uni.navigateTo({ url: `/pages/trade-chat/index?orderId=${order.value.id}` });
+}
 </script>
 
 <template>
   <view class="checkout-page" :class="{ 'purchase-success-page': showPurchaseSuccess }">
     <view v-if="showPurchaseSuccess" class="purchase-success-state">
-      <view class="purchase-success-title">
-        <view class="purchase-success-check">✓</view>
-        <text>购买成功</text>
+      <view class="purchase-success-hero">
+        <view class="purchase-success-title">
+          <view class="purchase-success-check">✓</view>
+          <text>{{ isErrand ? '赏金支付成功' : '购买成功' }}</text>
+        </view>
+        <text class="purchase-success-desc">{{ isErrand ? '任务已进入待接单状态，24 小时无人接单将自动退款' : '付款已确认，请联系卖家沟通验货和交付' }}</text>
       </view>
-      <text class="purchase-success-desc">您已成功购买/发布一件商品</text>
-      <button class="purchase-again" @click="buyAgain">在发/买一件</button>
+      <view v-if="!isErrand && order" class="card consultation-entry success-contact-card" @click="openConsultation">
+        <view class="consultation-icon">✉</view>
+        <view class="consultation-main">
+          <text class="consultation-title">联系该用户</text>
+          <text class="consultation-user">{{ participantName }}</text>
+          <text class="consultation-tip">进入小程序咨询入口，沟通验货、取货和交付</text>
+          <view v-if="contact?.contact" class="consultation-phone" @click.stop>
+            <text @click="copyContact">{{ contact.contact }}</text>
+            <text class="copy" @click="copyContact">复制</text>
+            <text class="call" @click="callContact">拨打</text>
+          </view>
+        </view>
+        <text class="consultation-arrow">›</text>
+      </view>
+      <TradeChatPanel
+        v-if="order && isPaid && !isErrand" class="success-chat" :order-id="order.id"
+        :current-user-id="userStore.userInfo?.id" :participant-name="participantName"
+        :readonly="![1, 2].includes(order.status)"
+      />
+      <button class="purchase-again" @click="buyAgain">{{ isErrand ? '查看任务进度' : '退出，继续逛校园' }}</button>
     </view>
     <view v-else-if="loading" class="state">
       订单信息加载中…
@@ -449,7 +517,7 @@ function copyContact() {
         <image v-if="productImage" class="cover" :src="productImage" mode="aspectFill" />
         <view class="product-main">
           <text class="title">
-            {{ order.title || post.title }}
+            {{ order.title || post?.title }}
           </text>
           <text class="meta">
             {{ post?.tradeMode || '校内自提' }}
@@ -481,13 +549,19 @@ function copyContact() {
 
       <view class="card notice">
         <text class="notice-title">
-          购买说明
+          {{ isErrand ? '代办说明' : '购买说明' }}
         </text>
-        <text>支付金额以订单中锁定的商品价格为准。</text>
-        <text>支付成功后才会显示发布者预留的联系方式，请先沟通验货和交付安排。</text>
+        <template v-if="isErrand">
+          <text>赏金由任务发布人支付，付款成功后其他同校学生才能接单。</text>
+          <text>24 小时无人接单会自动原路退款；接单后，发布人确认完成才会把收益结算给接单人。</text>
+        </template>
+        <template v-else>
+          <text>支付金额以订单中锁定的商品价格为准。</text>
+          <text>支付成功后才会显示发布者预留的联系方式，请先沟通验货和交付安排。</text>
+        </template>
       </view>
 
-      <view v-if="isPaid && contact?.paid" class="card contact-card">
+      <view v-if="!isErrand && isPaid && contact?.paid" class="card contact-card">
         <text class="success">
           支付成功 · 联系方式已解锁
         </text>
@@ -496,13 +570,19 @@ function copyContact() {
         </text>
         <view class="contact-value" @click="copyContact">
           <text>{{ contact.contact || '发布者尚未填写联系方式，请联系平台处理' }}</text>
-          <text v-if="contact.contact" class="copy">
-            复制
-          </text>
+          <view v-if="contact.contact" class="contact-actions">
+            <text class="copy">复制</text>
+            <text class="call" @click.stop="callContact">拨打</text>
+          </view>
         </view>
       </view>
 
-      <view class="action-bar">
+      <TradeChatPanel
+        v-if="isPaid && !isErrand" :order-id="order.id" :current-user-id="userStore.userInfo?.id"
+        :participant-name="participantName" :readonly="![1, 2].includes(order.status)"
+      />
+
+      <view v-if="isBuyer" class="action-bar">
         <button v-if="isWaitingPayment && !isPaymentPending" class="pay-button" :disabled="busy" @click="pay">
           {{ busy ? '正在发起支付…' : `微信支付 ¥${displayAmount}` }}
         </button>
@@ -635,6 +715,17 @@ function copyContact() {
 }
 .copy {
   color: #10a779;
+  font-size: 24rpx;
+}
+.contact-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-left: 20rpx;
+  gap: 20rpx;
+}
+.call {
+  color: #2483ee;
   font-size: 24rpx;
 }
 .pay-button {
@@ -839,7 +930,7 @@ function copyContact() {
 }
 
 .checkout-page.purchase-success-page {
-  padding: 0;
+  padding: 0 32rpx calc(48rpx + env(safe-area-inset-bottom));
   background: #f4f4f4;
 }
 
@@ -848,8 +939,87 @@ function copyContact() {
   align-items: center;
   box-sizing: border-box;
   min-height: 100vh;
-  padding-top: 188rpx;
+  padding-top: 112rpx;
   flex-direction: column;
+}
+
+.purchase-success-hero {
+  display: flex;
+  align-items: center;
+  margin-bottom: 48rpx;
+  flex-direction: column;
+}
+
+.success-contact-card,
+.success-chat {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.consultation-entry {
+  display: flex;
+  align-items: center;
+  padding: 28rpx 24rpx;
+}
+
+.consultation-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72rpx;
+  height: 72rpx;
+  flex: 0 0 auto;
+  border-radius: 24rpx;
+  color: #168c65;
+  background: #ecf9f4;
+  font-size: 34rpx;
+}
+
+.consultation-main {
+  min-width: 0;
+  margin-left: 22rpx;
+  flex: 1;
+}
+
+.consultation-title,
+.consultation-user,
+.consultation-tip {
+  display: block;
+}
+
+.consultation-title {
+  color: #202321;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.consultation-user {
+  margin-top: 6rpx;
+  color: #4d5551;
+  font-size: 25rpx;
+}
+
+.consultation-tip {
+  margin-top: 8rpx;
+  color: #929894;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.consultation-phone {
+  display: flex;
+  align-items: center;
+  margin-top: 14rpx;
+  gap: 18rpx;
+  color: #303532;
+  font-size: 25rpx;
+}
+
+.consultation-arrow {
+  margin-left: 12rpx;
+  color: #a5aaa7;
+  font-size: 48rpx;
+  line-height: 1;
 }
 
 .purchase-success-title {
@@ -890,9 +1060,9 @@ function copyContact() {
 }
 
 .purchase-again {
-  min-width: 204rpx;
+  min-width: 284rpx;
   height: 64rpx;
-  margin-top: 30rpx;
+  margin: 0 auto;
   padding: 0 26rpx;
   border: 2rpx solid #dedfdd;
   border-radius: 23rpx;

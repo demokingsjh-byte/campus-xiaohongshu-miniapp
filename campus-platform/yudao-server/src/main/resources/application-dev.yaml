@@ -284,6 +284,8 @@ com:
 
 # 校园二手微信支付。服务器通过环境变量挂载密钥和 PEM 文件。
 campus:
+  trade-chat:
+    sensitive-words: ${CAMPUS_TRADE_CHAT_SENSITIVE_WORDS:裸聊,代考,枪支,毒品,赌博,博彩,洗钱,刷单返利,校园贷,银行卡密码,支付密码,短信验证码}
   content-security:
     # 线上默认启用；可用环境变量临时关闭。微信消息服务器回调地址见合规发布清单。
     enabled: ${CAMPUS_CONTENT_SECURITY_ENABLED:true}

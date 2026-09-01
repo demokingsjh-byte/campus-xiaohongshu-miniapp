@@ -9,7 +9,7 @@ import {
   type CampusDownlistedRecord,
 } from '@/utils/personalRecords';
 
-type PublishTab = '在卖' | '草稿' | '已下架';
+type PublishTab = '在卖' | '已卖出' | '草稿' | '已下架';
 
 const userStore = useUserStore();
 const contentStore = useCampusContentStore();
@@ -22,9 +22,21 @@ const selectedPost = ref<CampusPost | null>(null);
 const statusBarHeight = ref(0);
 const navigationStyle = computed(() => ({ '--status-bar-height': `${statusBarHeight.value}px` }));
 
-const activePosts = computed(() => contentStore.publishedPosts);
+const allPublishedPosts = computed(() => contentStore.publishedPosts);
+function isSoldPost(post: CampusPost) {
+  if (!post.soldOut)
+    return false;
+  const total = Number(post.stockTotal);
+  const sold = Number(post.soldCount);
+  return post.stockTotal === undefined || post.soldCount === undefined
+    || (Number.isFinite(total) && Number.isFinite(sold) && sold >= total);
+}
+const sellingPosts = computed(() => allPublishedPosts.value.filter(post => !isSoldPost(post) && !post.downlisted));
+const soldPosts = computed(() => allPublishedPosts.value.filter(post => isSoldPost(post) && !post.downlisted));
+const visiblePublishedPosts = computed(() => activeTab.value === '已卖出' ? soldPosts.value : sellingPosts.value);
 const tabs = computed(() => [
-  { label: '在卖' as const, count: activePosts.value.length },
+  { label: '在卖' as const, count: sellingPosts.value.length },
+  { label: '已卖出' as const, count: soldPosts.value.length },
   { label: '草稿' as const, count: draft.value ? 1 : 0 },
   { label: '已下架' as const, count: downlisted.value.length },
 ]);
@@ -155,6 +167,18 @@ function formatTime(value?: unknown) {
 function draftTitle() {
   return String(draft.value?.title || draft.value?.content || '未命名草稿');
 }
+
+function publicationStatus(post: CampusPost) {
+  if (isSoldPost(post))
+    return '已卖出';
+  if (post.soldOut)
+    return '交易中';
+  if (post.status === 0)
+    return '审核中';
+  if (post.status === 2)
+    return post.auditReason ? `未通过：${post.auditReason}` : '已下架';
+  return '';
+}
 </script>
 
 <template>
@@ -171,25 +195,28 @@ function draftTitle() {
         v-for="tab in tabs" :key="tab.label" :class="{ active: activeTab === tab.label }"
         @click="activeTab = tab.label"
       >
-        {{ tab.label }}{{ tab.label === '在卖' ? ` ${tab.count}` : `(${tab.count})` }}
+        {{ tab.label }}({{ tab.count }})
       </text>
     </view>
 
-    <StatePanel v-if="loading && !activePosts.length" title="正在加载发布记录" description="只展示当前账号的真实内容" />
+    <StatePanel v-if="loading && !allPublishedPosts.length" title="正在加载发布记录" description="只展示当前账号的真实内容" />
     <StatePanel
-      v-else-if="loadError && !activePosts.length" type="offline" title="发布记录加载失败" description="请检查网络后重试"
+      v-else-if="loadError && !allPublishedPosts.length" type="offline" title="发布记录加载失败" description="请检查网络后重试"
       action="重新加载" @action="loadData"
     />
 
-    <view v-else-if="activeTab === '在卖' && activePosts.length" class="publish-list">
+    <view v-else-if="(activeTab === '在卖' || activeTab === '已卖出') && visiblePublishedPosts.length" class="publish-list">
       <view
-        v-for="post in activePosts" :key="post.id" class="publish-card"
+        v-for="post in visiblePublishedPosts" :key="post.id" class="publish-card"
         @longpress.stop="openMore(post)"
       >
         <view class="publish-main" @click="openDetail(post)">
           <image :src="post.coverImage || post.images?.[0] || '/static/icons/ui/empty.svg'" mode="aspectFill" />
           <view class="publish-copy">
             <text class="publish-title">{{ post.title }}</text>
+            <text v-if="publicationStatus(post)" class="publish-status" :class="{ rejected: post.status === 2 }">
+              {{ publicationStatus(post) }}
+            </text>
             <text class="publish-view">浏览 {{ post.views || 0 }}</text>
             <view class="publish-meta">
               <text>{{ formatTime(post.createTime) || post.time }}</text>
@@ -236,6 +263,11 @@ function draftTitle() {
       <button @click="goBuy">去购买</button>
       <button @click="goPublish">去发布</button>
     </view>
+
+    <StatePanel
+      v-else-if="activeTab === '已卖出'" title="还没有卖出记录"
+      description="商品售罄后会保留在这里，不再出现在首页和闲置频道。"
+    />
 
     <StatePanel
       v-else :title="activeTab === '草稿' ? '没有保存的草稿' : '没有已下架内容'"
@@ -344,6 +376,18 @@ function draftTitle() {
 .publish-main > image { flex: 0 0 auto; width: 160rpx; height: 160rpx; border-radius: 20rpx; background: #eee; }
 .publish-copy { display: flex; overflow: hidden; flex: 1; min-width: 0; margin-left: 24rpx; flex-direction: column; }
 .publish-title { display: -webkit-box; overflow: hidden; color: #1f1f1f; font-size: 30rpx; font-weight: 600; line-height: 40rpx; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.publish-status {
+  overflow: hidden;
+  margin-top: 10rpx;
+  color: #b26d00;
+  font-size: 22rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.publish-status.rejected {
+  color: #e24f45;
+}
 .publish-view { margin-top: 12rpx; color: #999; font-size: 23rpx; }
 .publish-meta { display: flex; align-items: flex-end; justify-content: space-between; margin-top: auto; color: #999; font-size: 23rpx; }
 .publish-price { color: #ff4747; font-size: 38rpx; font-weight: 700; }

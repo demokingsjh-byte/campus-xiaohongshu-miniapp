@@ -411,6 +411,10 @@ const metas: Record<string, PageMeta> = {
       { label: '校区', prop: 'campus_name' },
       { label: '频道', prop: 'channel' },
       { label: '价格', prop: 'price' },
+      { label: '总库存', prop: 'stock_total' },
+      { label: '可售', prop: 'stock_available' },
+      { label: '已售', prop: 'sold_count' },
+      { label: '销售状态', prop: 'sale_status' },
       { label: '点赞', prop: 'like_count' },
       { label: '收藏', prop: 'collect_count' },
       { label: '状态', prop: 'status' }
@@ -420,7 +424,20 @@ const metas: Record<string, PageMeta> = {
       { label: '正文', prop: 'content', type: 'textarea' },
       { label: '价格', prop: 'price', type: 'decimal' },
       { label: '原价', prop: 'original_price', type: 'decimal' },
-      { label: '位置', prop: 'location' },
+      { label: '总库存', prop: 'stock_total', type: 'number' },
+      { label: '可售库存', prop: 'stock_available', type: 'number' },
+      { label: '已售数量', prop: 'sold_count', type: 'number' },
+      {
+        label: '销售状态',
+        prop: 'sale_status',
+        options: [
+          { label: '在售', value: 1 },
+          { label: '售罄', value: 2 }
+        ]
+      },
+      { label: '公开位置', prop: 'location' },
+      { label: '商户实际地址', prop: 'merchant_address' },
+      { label: '地图门店名称', prop: 'merchant_location_name' },
       { label: '交易/参与方式', prop: 'trade_mode' },
       { label: '可见范围', prop: 'visible_range' },
       {
