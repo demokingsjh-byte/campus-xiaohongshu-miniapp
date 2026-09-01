@@ -122,11 +122,28 @@
             <el-tag :type="orderTag(row.status)" effect="light" round>{{ row.statusText }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="退款状态" width="125" align="center">
+        <el-table-column label="退款状态" width="150" align="center">
           <template #default="{ row }">
-            <el-tag :type="refundTag(row.refundStatus)" effect="plain" round>
-              {{ row.refundStatusText }}
-            </el-tag>
+            <div class="refund-status-cell">
+              <el-tooltip
+                :disabled="!row.refundError"
+                :content="row.refundError"
+                placement="top"
+              >
+                <el-tag :type="refundTag(row.refundStatus)" effect="plain" round>
+                  {{ row.refundStatusText }}
+                </el-tag>
+              </el-tooltip>
+              <el-button
+                v-if="isRefundFailed(row) && canRefund(row)"
+                v-hasPermi="['campus:trade-order:refund']"
+                link
+                type="danger"
+                @click="openRefund(row)"
+              >
+                重新退款
+              </el-button>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="支付 / 下单时间" min-width="175">
@@ -157,7 +174,7 @@
               type="danger"
               @click="openRefund(row)"
             >
-              退款
+              {{ isRefundFailed(row) ? '重新退款' : '退款' }}
             </el-button>
           </template>
         </el-table-column>
@@ -224,8 +241,19 @@
       </div>
     </el-drawer>
 
-    <el-dialog v-model="refundVisible" title="确认原路全额退款" width="520px">
+    <el-dialog
+      v-model="refundVisible"
+      :title="isRefundFailed(refundOrder) ? '重新提交原路退款' : '确认原路全额退款'"
+      width="520px"
+    >
       <div v-if="refundOrder" class="refund-dialog">
+        <el-alert
+          v-if="isRefundFailed(refundOrder) && refundOrder.refundError"
+          :title="`上次退款失败：${refundOrder.refundError}`"
+          type="error"
+          :closable="false"
+          show-icon
+        />
         <el-alert
           title="退款将直接提交至微信支付，成功后不可撤销，请确认已与买卖双方沟通。"
           type="warning"
@@ -394,7 +422,7 @@ const openDetail = async (row: CampusTradeOrder) => {
 
 const openRefund = (row: CampusTradeOrder) => {
   refundOrder.value = row
-  refundReason.value = ''
+  refundReason.value = isRefundFailed(row) ? row.refundReason || '' : ''
   refundVisible.value = true
 }
 
@@ -441,8 +469,9 @@ const handleSyncRefund = async (row: CampusTradeOrder) => {
   }
 }
 
+const isRefundFailed = (row?: CampusTradeOrder) => Number(row?.refundStatus) === 3
 const canRefund = (row: CampusTradeOrder) =>
-  (row.status === 1 || row.status === 2) && row.refundStatus !== 2
+  (Number(row.status) === 1 || Number(row.status) === 2) && Number(row.refundStatus) !== 2
 
 const money = (value?: number) => Number(value || 0).toFixed(2)
 const formatTime = (value?: string) => (value ? formatDate(value) : '-')
@@ -606,6 +635,12 @@ onMounted(() => {
   --el-table-border-color: #edf2f1;
   --el-table-header-bg-color: #f6faf9;
   --el-table-row-hover-bg-color: #f1faf7;
+}
+
+.refund-status-cell {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
 }
 
 .product-cell {
