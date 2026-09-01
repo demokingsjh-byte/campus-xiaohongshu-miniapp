@@ -99,9 +99,6 @@ public class CampusAppHomeController {
             if (item.getEnabled() == null) {
                 item.setEnabled(true);
             }
-            if (!Boolean.TRUE.equals(item.getEnabled())) {
-                continue;
-            }
             if (Boolean.TRUE.equals(item.getIconVisible()) && !hasText(item.getIcon())) {
                 continue;
             }
@@ -114,8 +111,8 @@ public class CampusAppHomeController {
     }
 
     /**
-     * 优先读取后台分类表。返回 null 表示尚未执行升级脚本，此时继续兼容旧 JSON 配置；
-     * 返回空集合表示后台已经配置、但所有分类均已关闭。
+     * 优先读取后台分类表。返回 null 表示尚未执行升级脚本，此时继续兼容旧 JSON 配置。
+     * 关闭的分类仍返回 enabled=false，供小程序同时隐藏入口和对应频道内容。
      */
     private List<Category> getDatabaseCategories(Long tenantId) {
         try {
@@ -129,9 +126,6 @@ public class CampusAppHomeController {
             List<Category> result = new ArrayList<>();
             Set<String> keys = new HashSet<>();
             for (Map<String, Object> row : rows) {
-                if (!toBoolean(row.get("enabled"))) {
-                    continue;
-                }
                 String key = value(row, "category_key");
                 String title = value(row, "title");
                 String channel = value(row, "channel");
@@ -144,7 +138,8 @@ public class CampusAppHomeController {
                     continue;
                 }
                 result.add(new Category(key, title, channel, icon, value(row, "publish_type"),
-                        iconVisible, toBoolean(row.get("title_visible")), true, toInteger(row.get("sort"))));
+                        iconVisible, toBoolean(row.get("title_visible")), toBoolean(row.get("enabled")),
+                        toInteger(row.get("sort"))));
             }
             return result;
         } catch (DataAccessException ex) {

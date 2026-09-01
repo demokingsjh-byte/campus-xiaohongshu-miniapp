@@ -81,7 +81,19 @@ const categoryPageCount = computed(() => Math.max(1, Math.ceil(categories.value.
 const activeCategory = computed<CampusHomeCategory>(() => categories.value.find(item => item.key === activeCategoryKey.value)
   || categories.value[0]
   || DEFAULT_HOME_CONFIG.categories[0]);
-const visiblePosts = computed(() => contentStore.allPosts);
+const disabledCategoryChannels = computed(() => new Set(homeConfig.value.categories
+  .filter(item => item.enabled === false)
+  .map(item => String(item.channel || '').trim())
+  .filter(Boolean)));
+const disabledPublishTypes = computed(() => new Set(homeConfig.value.categories
+  .filter(item => item.enabled === false)
+  .map(item => String(item.publishType || '').trim())
+  .filter(Boolean)));
+const visiblePosts = computed(() => contentStore.allPosts.filter((post) => {
+  const channel = String(post.channel || '').trim();
+  const type = String(post.type || '').trim();
+  return !disabledCategoryChannels.value.has(channel) && !disabledPublishTypes.value.has(type);
+}));
 function postHasImage(post: CampusPost) {
   return Boolean(post.coverImage || post.images?.some(Boolean));
 }
