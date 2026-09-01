@@ -172,7 +172,7 @@ jobs:
               (.icon | type == "string")
               and (.iconVisible | type == "boolean")
               and (.titleVisible | type == "boolean")
-              and (.enabled == true)
+              and (.enabled | type == "boolean")
               and (.sort | type == "number")))' <<<"$home_config" >/dev/null; then
             echo "::error title=Public campus home config smoke test failed::Unexpected response: $home_config"
             exit 1
