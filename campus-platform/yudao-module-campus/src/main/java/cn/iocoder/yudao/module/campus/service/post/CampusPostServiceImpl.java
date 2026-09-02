@@ -16,6 +16,7 @@ import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradeOrderRespVO;
 import cn.iocoder.yudao.module.campus.service.contentsecurity.CampusContentCheckResult;
 import cn.iocoder.yudao.module.campus.service.contentsecurity.CampusContentSecurityService;
+import cn.iocoder.yudao.module.campus.service.home.CampusCategoryAvailabilityService;
 import cn.iocoder.yudao.module.campus.service.notification.CampusNotificationService;
 import cn.iocoder.yudao.module.campus.service.trade.CampusTradeOrderService;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
@@ -74,16 +75,19 @@ public class CampusPostServiceImpl implements CampusPostService {
     private final CampusNotificationService campusNotificationService;
     private final CampusContentSecurityService contentSecurityService;
     private final CampusTradeOrderService campusTradeOrderService;
+    private final CampusCategoryAvailabilityService categoryAvailabilityService;
 
     public CampusPostServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi,
                                  CampusNotificationService campusNotificationService,
                                  CampusContentSecurityService contentSecurityService,
-                                 CampusTradeOrderService campusTradeOrderService) {
+                                 CampusTradeOrderService campusTradeOrderService,
+                                 CampusCategoryAvailabilityService categoryAvailabilityService) {
         this.jdbcTemplate = jdbcTemplate;
         this.fileApi = fileApi;
         this.campusNotificationService = campusNotificationService;
         this.contentSecurityService = contentSecurityService;
         this.campusTradeOrderService = campusTradeOrderService;
+        this.categoryAvailabilityService = categoryAvailabilityService;
     }
 
     @Override
@@ -136,6 +140,7 @@ public class CampusPostServiceImpl implements CampusPostService {
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "请先完善学校和校区资料后再发布");
         }
         long tenantId = toLong(user.get("tenant_id"), DEFAULT_TENANT_ID);
+        ensurePublishTypeEnabled(tenantId, reqVO.getType());
         List<String> images = normalizePostImages(reqVO.getImages());
         String auditText = reqVO.getTitle().trim() + "\n" + reqVO.getContent().trim() + "\n"
                 + String.join(" ", defaultList(reqVO.getTags()));
@@ -218,6 +223,11 @@ public class CampusPostServiceImpl implements CampusPostService {
         if (rows.isEmpty()) {
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "内容不存在或已下架");
         }
+        Map<String, Object> post = rows.get(0);
+        if (!categoryAvailabilityService.isPublishTypeEnabled(toLong(post.get("tenant_id"), DEFAULT_TENANT_ID),
+                value(post, "type")) && !hasTradeOrderAccess(id, loginUserId)) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "该分类已关闭，内容暂不可见");
+        }
         if (increaseView && (loginUserId == null || !loginUserId.equals(toLongObject(rows.get(0).get("user_id"))))) {
             jdbcTemplate.update("UPDATE campus_post SET view_count = view_count + 1 WHERE id = :id",
                     new MapSqlParameterSource("id", id));
@@ -229,8 +239,9 @@ public class CampusPostServiceImpl implements CampusPostService {
     @Override
     public PageResult<CampusPostRespVO> getPostPage(Long loginUserId, Long tenantId, String channel,
                                                     String keyword, Integer pageNo, Integer pageSize) {
+        long resolvedTenantId = tenantId == null ? DEFAULT_TENANT_ID : tenantId;
         MapSqlParameterSource params = new MapSqlParameterSource()
-                .addValue("tenantId", tenantId == null ? DEFAULT_TENANT_ID : tenantId)
+                .addValue("tenantId", resolvedTenantId)
                 .addValue("channel", channel)
                 .addValue("keyword", StrUtil.isBlank(keyword) ? null : "%" + keyword.trim() + "%")
                 .addValue("loginUserId", loginUserId);
@@ -239,6 +250,7 @@ public class CampusPostServiceImpl implements CampusPostService {
                 + " AND (:channel IS NULL OR :channel = '' OR :channel = '推荐' OR p.channel = :channel)"
                 + " AND (:keyword IS NULL OR p.title LIKE :keyword OR p.content LIKE :keyword OR p.tags_json LIKE :keyword)"
                 + ERRAND_PUBLIC_VISIBILITY;
+        where += disabledPublishTypeCondition(resolvedTenantId, params);
         return page(where, params, loginUserId, pageNo, pageSize, "p.create_time DESC");
     }
 
@@ -246,7 +258,9 @@ public class CampusPostServiceImpl implements CampusPostService {
     public PageResult<CampusPostRespVO> getMyPostPage(Long userId, Integer pageNo, Integer pageSize) {
         requireUserId(userId);
         MapSqlParameterSource params = new MapSqlParameterSource("loginUserId", userId);
-        String where = " WHERE p.deleted = b'0' AND p.user_id = :loginUserId";
+        long tenantId = toLong(getUser(userId).get("tenant_id"), DEFAULT_TENANT_ID);
+        String where = " WHERE p.deleted = b'0' AND p.user_id = :loginUserId"
+                + disabledPublishTypeCondition(tenantId, params);
         return page(where, params, userId, pageNo, pageSize, "p.create_time DESC");
     }
 
@@ -254,18 +268,20 @@ public class CampusPostServiceImpl implements CampusPostService {
     public PageResult<CampusPostRespVO> getFavoritePostPage(Long userId, Integer pageNo, Integer pageSize) {
         requireUserId(userId);
         MapSqlParameterSource params = new MapSqlParameterSource("loginUserId", userId);
+        long tenantId = toLong(getUser(userId).get("tenant_id"), DEFAULT_TENANT_ID);
         // 收藏是用户的私有历史：商品售罄或发布者软删除后仍保留，响应中的
         // soldOut/downlisted 负责告诉前端展示“已卖出”或“已下架”。
         String where = " WHERE EXISTS (SELECT 1 FROM campus_post_interaction f"
                 + " WHERE f.post_id = p.id AND f.user_id = :loginUserId AND f.type = 'COLLECT' AND f.deleted = b'0')"
                 + " AND (p.status = 1 OR p.deleted = b'1')";
+        where += disabledPublishTypeCondition(tenantId, params);
         return page(where, params, userId, pageNo, pageSize, "p.create_time DESC");
     }
 
     @Override
     public PageResult<CampusPostCommentRespVO> getCommentPage(Long postId, Long loginUserId,
                                                               Integer pageNo, Integer pageSize, String sort) {
-        getPostRow(postId);
+        ensurePostFeatureEnabled(getPostRow(postId));
         int safePageNo = Math.max(pageNo == null ? 1 : pageNo, 1);
         int safePageSize = Math.min(Math.max(pageSize == null ? 20 : pageSize, 1), 50);
         MapSqlParameterSource params = new MapSqlParameterSource()
@@ -289,6 +305,7 @@ public class CampusPostServiceImpl implements CampusPostService {
                                                   CampusPostCommentCreateReqVO reqVO) {
         requireUserId(userId);
         Map<String, Object> post = getPostRow(postId);
+        ensurePostFeatureEnabled(post);
         Map<String, Object> user = getUser(userId);
         enforceRateLimit("campus_post_comment", userId, 6, Duration.ofMinutes(1), "评论过于频繁，请稍后再试");
         long postTenantId = toLong(post.get("tenant_id"), DEFAULT_TENANT_ID);
@@ -449,6 +466,7 @@ public class CampusPostServiceImpl implements CampusPostService {
     public void createContactRequest(Long postId, Long userId) {
         requireUserId(userId);
         Map<String, Object> post = getPostRow(postId);
+        ensurePostFeatureEnabled(post);
         Long targetUserId = toLongObject(post.get("user_id"));
         if (userId.equals(targetUserId)) {
             throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "不能联系自己发布的内容");
@@ -499,6 +517,7 @@ public class CampusPostServiceImpl implements CampusPostService {
         }
         Map<String, Object> post = "COLLECT".equals(type) && !active
                 ? getCollectedPostRow(postId, userId) : getPostRow(postId);
+        ensurePostFeatureEnabled(post);
         boolean current = isInteractionActive(postId, userId, type);
         if (current == active) {
             return getPostInternal(postId, userId, false);
@@ -745,6 +764,39 @@ public class CampusPostServiceImpl implements CampusPostService {
         if (count != null && count >= maximum) {
             throw exception0(GlobalErrorCodeConstants.TOO_MANY_REQUESTS.getCode(), message);
         }
+    }
+
+    private void ensurePublishTypeEnabled(long tenantId, String publishType) {
+        if (!categoryAvailabilityService.isPublishTypeEnabled(tenantId, publishType)) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "该内容分类已关闭，暂时不能发布");
+        }
+    }
+
+    private void ensurePostFeatureEnabled(Map<String, Object> post) {
+        if (!categoryAvailabilityService.isPublishTypeEnabled(
+                toLong(post.get("tenant_id"), DEFAULT_TENANT_ID), value(post, "type"))) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "该分类已关闭，内容暂不可见");
+        }
+    }
+
+    private String disabledPublishTypeCondition(long tenantId, MapSqlParameterSource params) {
+        Set<String> disabledPublishTypes = categoryAvailabilityService.getDisabledPublishTypes(tenantId);
+        if (disabledPublishTypes.isEmpty()) {
+            return "";
+        }
+        params.addValue("disabledPublishTypes", disabledPublishTypes);
+        return " AND p.type NOT IN (:disabledPublishTypes)";
+    }
+
+    private boolean hasTradeOrderAccess(Long postId, Long loginUserId) {
+        if (loginUserId == null) {
+            return false;
+        }
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM campus_trade_order"
+                        + " WHERE product_id = :postId AND (buyer_id = :userId OR seller_id = :userId)"
+                        + " AND deleted = b'0'",
+                new MapSqlParameterSource().addValue("postId", postId).addValue("userId", loginUserId), Long.class);
+        return count != null && count > 0;
     }
 
     private PageResult<CampusPostRespVO> page(String where, MapSqlParameterSource params, Long loginUserId,

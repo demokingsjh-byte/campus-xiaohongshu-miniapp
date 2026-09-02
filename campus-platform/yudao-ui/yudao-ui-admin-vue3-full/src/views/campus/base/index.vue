@@ -67,6 +67,15 @@
   </ContentWrap>
 
   <ContentWrap>
+    <el-alert
+      v-if="resource === 'home-category'"
+      class="mb-16px"
+      type="info"
+      show-icon
+      :closable="false"
+      title="分类功能开关联动说明"
+      description="关闭某个分类后，小程序会隐藏该分类入口、发布选项和对应帖子，并禁止新发布及新建相关订单；已有订单与退款记录继续保留。"
+    />
     <el-table v-loading="loading" :data="list">
       <el-table-column label="编号" align="center" prop="id" width="90" />
       <el-table-column
@@ -295,7 +304,7 @@ const metas: Record<string, PageMeta> = {
       { label: '分类名称', prop: 'title' },
       { label: '分类标识', prop: 'category_key' },
       { label: '内容频道', prop: 'channel' },
-      { label: '是否显示', prop: 'enabled', type: 'boolean' },
+      { label: '功能开关', prop: 'enabled', type: 'boolean' },
       { label: '排序', prop: 'sort' },
       { label: '租户ID', prop: 'tenant_id' }
     ],
@@ -305,7 +314,7 @@ const metas: Record<string, PageMeta> = {
       { label: '内容频道', prop: 'channel' },
       { label: '分类图标', prop: 'icon_url', type: 'image' },
       { label: '发布类型', prop: 'publish_type' },
-      { label: '是否显示', prop: 'enabled', type: 'boolean', defaultValue: true },
+      { label: '功能开关', prop: 'enabled', type: 'boolean', defaultValue: true },
       { label: '显示图标', prop: 'icon_visible', type: 'boolean', defaultValue: true },
       { label: '显示名称', prop: 'title_visible', type: 'boolean', defaultValue: true },
       { label: '排序', prop: 'sort', type: 'number', defaultValue: 100 },
@@ -780,7 +789,15 @@ const handleBooleanChange = async (row: Record<string, any>, prop: string, value
   row[prop] = value
   try {
     await updateCampus(resource.value, { id: row.id, [prop]: value })
-    message.success(value ? '已开启显示' : '已关闭显示')
+    message.success(
+      resource.value === 'home-category' && prop === 'enabled'
+        ? value
+          ? '分类功能已开启，小程序将恢复入口、帖子和发布选项'
+          : '分类功能已关闭，小程序将隐藏入口、帖子和发布选项'
+        : value
+          ? '已开启显示'
+          : '已关闭显示'
+    )
   } catch (error) {
     row[prop] = previous
     throw error

@@ -1,14 +1,14 @@
 <script lang="ts" setup>
 import PrototypeTabBar from '@/components/PrototypeTabBar/index.vue';
 import { campusPublishTypes, getDefaultTenant } from '@/mock/campus';
-import { createCampusErrandOrder, getCampusErrandOrderByPost } from '@/services/api/content';
+import { createCampusErrandOrder, getCampusErrandOrderByPost, getCampusHomeConfig } from '@/services/api/content';
 import { uploadCampusPostImage } from '@/services/api/file';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 import { useUserStore } from '@/stores/modules/user';
 import { resolveCampusAvatar } from '@/utils/avatar';
 import { openPolicyPage } from '@/utils/privacy';
 
-const activeType = ref('idle');
+const activeType = ref('help');
 const images = ref<string[]>([]);
 const customTag = ref('');
 const choosingImages = ref(false);
@@ -23,6 +23,8 @@ const errors = reactive<Record<string, string>>({});
 const userStore = useUserStore();
 const tenantStore = useTenantStore();
 const contentStore = useCampusContentStore();
+// 首次进入时先不展示任何分类，拿到后台开关后再渲染，避免关闭项短暂闪现。
+const enabledPublishTypeKeys = ref<Set<string> | null>(new Set());
 const currentTenant = computed(() => tenantStore.currentTenant || getDefaultTenant());
 const schoolName = computed(() => currentTenant.value.name);
 const publisherAvatar = computed(() => resolveCampusAvatar(userStore.userInfo?.avatar));
@@ -80,7 +82,8 @@ const typeIcons: Record<string, string> = {
 const selectableTypeKeys = ['idle', 'help', 'club', 'job', 'confession', 'shop'];
 const selectablePublishTypes = computed(() => selectableTypeKeys
   .map(key => campusPublishTypes.find(item => item.key === key))
-  .filter((item): item is typeof campusPublishTypes[number] => Boolean(item)));
+  .filter((item): item is typeof campusPublishTypes[number] => Boolean(item))
+  .filter(item => enabledPublishTypeKeys.value === null || enabledPublishTypeKeys.value.has(item.key)));
 const selectableTypeTitles: Record<string, string> = {
   idle: '二手闲置',
   help: '代拿代办',
@@ -91,6 +94,27 @@ const selectableTypeTitles: Record<string, string> = {
 };
 function selectableTypeTitle(key: string) {
   return selectableTypeTitles[key] || campusPublishTypes.find(item => item.key === key)?.title || key;
+}
+
+function isPublishTypeEnabled(key: string) {
+  return enabledPublishTypeKeys.value === null || enabledPublishTypeKeys.value.has(key);
+}
+
+async function refreshPublishTypeAvailability() {
+  try {
+    const response = await getCampusHomeConfig(currentTenant.value.id);
+    enabledPublishTypeKeys.value = new Set((response.categories || [])
+      .filter(category => category.enabled !== false && category.publishType)
+      .map(category => String(category.publishType)));
+  } catch {
+    // 兼容尚未部署分类配置接口的旧环境；线上服务端仍会执行最终校验。
+    enabledPublishTypeKeys.value = null;
+  }
+  if (!isPublishTypeEnabled(activeType.value)) {
+    const fallbackType = selectablePublishTypes.value[0]?.key;
+    if (fallbackType)
+      chooseType(fallbackType);
+  }
 }
 
 const currentType = computed(() => {
@@ -130,7 +154,7 @@ onLoad(() => {
   const draft = uni.getStorageSync('campus-publish-draft');
   if (!draft || typeof draft !== 'object')
     return;
-  const draftType = selectableTypeKeys.includes(draft.activeType) ? draft.activeType : 'idle';
+  const draftType = selectableTypeKeys.includes(draft.activeType) ? draft.activeType : 'help';
   activeType.value = draftType;
   Object.assign(form, {
     title: draft.title || '',
@@ -156,10 +180,15 @@ onLoad(() => {
 });
 
 onShow(async () => {
+  await refreshPublishTypeAvailability();
   const requestedType = uni.getStorageSync('campus-publish-active-type');
-  if (typeof requestedType === 'string' && campusPublishTypes.some(item => item.key === requestedType)) {
+  if (typeof requestedType === 'string' && campusPublishTypes.some(item => item.key === requestedType)
+    && isPublishTypeEnabled(requestedType)) {
     chooseType(requestedType);
     uni.removeStorageSync('campus-publish-active-type');
+  } else if (typeof requestedType === 'string') {
+    uni.removeStorageSync('campus-publish-active-type');
+    uni.showToast({ title: '该内容分类已关闭', icon: 'none' });
   }
   if (!userStore.loggedIn)
     return;
@@ -181,6 +210,10 @@ function openPublisherProfile() {
 }
 
 function chooseType(key: string) {
+  if (!isPublishTypeEnabled(key)) {
+    uni.showToast({ title: '该内容分类已关闭', icon: 'none' });
+    return;
+  }
   activeType.value = key;
   if (key === 'shop' && locations.value.includes(form.location))
     form.location = '';
@@ -434,7 +467,8 @@ function saveDraft() {
   uni.showToast({ title: '草稿已保存', icon: 'none' });
 }
 function clearEditor() {
-  activeType.value = 'idle';
+  const defaultType = selectablePublishTypes.value[0]?.key || 'help';
+  activeType.value = defaultType;
   Object.assign(form, {
     title: '',
     price: '',
@@ -448,7 +482,7 @@ function clearEditor() {
     merchantLongitude: null,
     tags: [],
     contact: '',
-    tradeMode: typeDetails.idle.modes[0],
+    tradeMode: typeDetails[defaultType].modes[0],
     visibleRange: visibleRanges[0],
     anonymous: false,
   });
@@ -460,6 +494,15 @@ function clearEditor() {
 async function submit() {
   if (submitting.value)
     return;
+  await refreshPublishTypeAvailability();
+  if (!isPublishTypeEnabled(activeType.value)) {
+    uni.showModal({
+      title: '该分类已关闭',
+      content: '管理员已关闭这个内容分类，暂时不能继续发布。',
+      showCancel: false,
+    });
+    return;
+  }
   if (!userStore.loggedIn) {
     uni.showModal({
       title: '登录后才能发布',
@@ -542,9 +585,10 @@ async function submit() {
   } catch (error) {
     const message = error instanceof Error ? error.message.replace(/^.*：/, '') : '请检查网络后重试';
     const backendNotUpdated = /不支持的发布类型/.test(message);
+    const categoryClosed = /分类已关闭|功能已关闭/.test(message);
     const orderCreationFailed = savedPostId > 0;
     uni.showModal({
-      title: orderCreationFailed ? '未进入赏金付款' : (backendNotUpdated ? '服务器版本未更新' : '发布失败，内容未保存'),
+      title: orderCreationFailed ? '未进入赏金付款' : (categoryClosed ? '该分类已关闭' : (backendNotUpdated ? '服务器版本未更新' : '发布失败，内容未保存')),
       content: orderCreationFailed
         ? `帖子已保存，但线上服务器尚未完成代办订单升级，暂时不能付款：${message || '请稍后重试'}。请不要重复发布；部署最新后端并执行数据库升级后，可从详情点击“去支付赏金”继续。`
         : backendNotUpdated
@@ -2348,5 +2392,88 @@ function reset() {
   width: auto;
   margin: 12rpx auto 0;
   color: #8f9390;
+}
+
+/* 商家团购地址需要承载标题、输入值和说明，不能套用普通设置行的固定高度。 */
+.publish-page .shop-address-fields .address-input-row {
+  align-items: flex-start;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  padding: 22rpx 0 20rpx;
+  box-sizing: border-box;
+}
+
+.publish-page .shop-address-fields .address-input-row .setting-main {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.publish-page .shop-address-fields .address-input-row .setting-main > text:first-child {
+  width: 100%;
+  height: auto;
+  color: #1d1b18;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 40rpx;
+}
+
+/* 微信原生 input 不使用灰底、圆角或投影，保持和卡片一致的纯白平面。 */
+.publish-page .shop-address-fields .address-input-row input {
+  width: 100%;
+  height: 58rpx;
+  min-height: 58rpx;
+  margin: 8rpx 0 0;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: #4f5652;
+  background: #fff !important;
+  background-color: #fff !important;
+  box-shadow: none !important;
+  font-size: 24rpx;
+  line-height: 58rpx;
+  text-align: left;
+}
+
+.publish-page .shop-address-fields .address-privacy {
+  width: 100%;
+  height: auto;
+  margin: 4rpx 0 0;
+  color: #969b98;
+  font-size: 19rpx;
+  line-height: 30rpx;
+  text-align: left;
+}
+
+.publish-page .shop-address-fields .address-error {
+  margin: -8rpx 0 12rpx;
+}
+
+.publish-page .map-location-picker {
+  gap: 16rpx;
+  padding: 20rpx 0;
+}
+
+/* 普通设置项保留现有字号，仅收紧纵向留白与左右文字间隔。 */
+.publish-page .setting-card > picker .setting-row,
+.publish-page .setting-card > .contact-row,
+.publish-page .setting-card > .last-row {
+  height: 84rpx;
+  min-height: 84rpx;
+}
+
+.publish-page .setting-card > picker .setting-main > text:last-child,
+.publish-page .setting-card > .contact-row .setting-main input {
+  margin-left: 16rpx;
+}
+
+.publish-page .contact-row input {
+  height: 56rpx;
+  min-height: 56rpx;
+  line-height: 56rpx;
 }
 </style>

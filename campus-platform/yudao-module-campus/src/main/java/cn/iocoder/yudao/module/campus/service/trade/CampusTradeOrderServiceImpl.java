@@ -8,6 +8,7 @@ import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradeOrderCr
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusTradeOrderRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusErrandDisputeReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.trade.vo.CampusErrandSubmitReqVO;
+import cn.iocoder.yudao.module.campus.service.home.CampusCategoryAvailabilityService;
 import cn.iocoder.yudao.module.campus.service.notification.CampusNotificationService;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -66,14 +67,17 @@ public class CampusTradeOrderServiceImpl implements CampusTradeOrderService {
     private final FileApi fileApi;
     private final CampusTradePaymentService paymentService;
     private final CampusNotificationService campusNotificationService;
+    private final CampusCategoryAvailabilityService categoryAvailabilityService;
 
     public CampusTradeOrderServiceImpl(NamedParameterJdbcTemplate jdbcTemplate, FileApi fileApi,
                                        CampusTradePaymentService paymentService,
-                                       CampusNotificationService campusNotificationService) {
+                                       CampusNotificationService campusNotificationService,
+                                       CampusCategoryAvailabilityService categoryAvailabilityService) {
         this.jdbcTemplate = jdbcTemplate;
         this.fileApi = fileApi;
         this.paymentService = paymentService;
         this.campusNotificationService = campusNotificationService;
+        this.categoryAvailabilityService = categoryAvailabilityService;
     }
 
     @Override
@@ -116,6 +120,10 @@ public class CampusTradeOrderServiceImpl implements CampusTradeOrderService {
             } else {
                 return toResp(activeOrder);
             }
+        }
+
+        if (!categoryAvailabilityService.isPublishTypeEnabled(toLong(post.get("tenant_id")), "idle")) {
+            throw badRequest("二手闲置功能已关闭，暂时不能创建新订单");
         }
 
         reserveStock(reqVO.getPostId(), buyerId);
