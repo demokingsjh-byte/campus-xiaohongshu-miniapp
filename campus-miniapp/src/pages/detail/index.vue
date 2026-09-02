@@ -160,6 +160,10 @@ const isErrandPublisher = computed(() => {
   const publisherId = Number(errandOrder.value?.buyerId || 0);
   return publisherId > 0 ? publisherId === currentUserId.value : isOwnPost.value;
 });
+const canConfirmErrand = computed(() => Boolean(isErrandPublisher.value
+  && Number(errandOrder.value?.status) === 1
+  && Number(errandOrder.value?.fulfillmentStatus) === 3
+  && Number(errandOrder.value?.disputeStatus || 0) === 0));
 const canOpenErrandChat = computed(() => {
   const order = errandOrder.value;
   return Boolean(isErrandPost.value && order?.sellerId
@@ -733,25 +737,6 @@ async function handleErrandAction() {
       openErrandEvidenceComposer('complete');
       return;
     }
-    if (order.fulfillmentStatus === 3 && isErrandPublisher.value) {
-      const amount = Number(order.amount || 0).toFixed(2);
-      const confirmed = await new Promise<boolean>((resolve) => {
-        uni.showModal({
-          title: '确认任务已经完成？',
-          content: `请确认接单人已完成本次任务。确认后，¥${amount} 赏金将立即结算到接单人的可提现收益账户，订单同时完成，且无法撤销。若对完成情况有异议，请先返回并发起异议。`,
-          cancelText: '再检查一下',
-          confirmText: '确认并结算',
-          confirmColor: '#10A779',
-          success: result => resolve(Boolean(result.confirm)),
-          fail: () => resolve(false),
-        });
-      });
-      if (!confirmed)
-        return;
-      errandOrder.value = await confirmCampusErrandOrder(order.id);
-      uni.showToast({ title: '已计入接单人可提现收益', icon: 'success' });
-      return;
-    }
     uni.showToast({ title: contactButtonText.value, icon: 'none' });
   } catch (error: any) {
     const message = String(error?.message || '操作失败，请稍后重试').replace(/^.*：/, '').slice(0, 100);
@@ -768,8 +753,67 @@ async function handleErrandAction() {
   }
 }
 
+async function confirmErrandCompletion() {
+  if (!ensureLogin() || contactSubmitting.value)
+    return;
+  contactSubmitting.value = true;
+  try {
+    const latestOrder = await getCampusErrandOrderByPost(postId.value);
+    errandOrder.value = latestOrder;
+    if (Number(latestOrder.buyerId || 0) !== currentUserId.value)
+      throw new Error('只有任务发布人可以确认完成');
+    if (latestOrder.status === 2 && latestOrder.fulfillmentStatus === 4) {
+      uni.showToast({ title: '该任务已经完成结算', icon: 'none' });
+      return;
+    }
+    if (latestOrder.status !== 1 || latestOrder.fulfillmentStatus !== 3)
+      throw new Error('任务状态已经变化，请刷新后重试');
+    if (latestOrder.disputeStatus)
+      throw new Error('该任务已发起异议，请等待平台处理');
+
+    const amount = Number(latestOrder.amount || 0).toFixed(2);
+    const confirmed = await new Promise<boolean>((resolve) => {
+      uni.showModal({
+        title: '确认任务已经完成？',
+        content: `请确认接单人已完成本次任务。确认后，¥${amount} 赏金将立即结算到接单人的可提现收益账户，订单同时完成，且无法撤销。若对完成情况有异议，请先返回并发起异议。`,
+        cancelText: '再检查一下',
+        confirmText: '确认并结算',
+        confirmColor: '#10A779',
+        success: result => resolve(Boolean(result.confirm)),
+        fail: () => resolve(false),
+      });
+    });
+    if (!confirmed)
+      return;
+    errandOrder.value = await confirmCampusErrandOrder(latestOrder.id);
+    uni.showToast({ title: '已计入接单人可提现收益', icon: 'success' });
+  } catch (error: any) {
+    uni.showModal({
+      title: '确认完成失败',
+      content: String(error?.message || '操作失败，请稍后重试').replace(/^.*：/, '').slice(0, 100),
+      showCancel: false,
+    });
+    await loadErrandOrder();
+  } finally {
+    contactSubmitting.value = false;
+  }
+}
+
+async function handleErrandPrimaryAction() {
+  if (canConfirmErrand.value) {
+    await confirmErrandCompletion();
+    return;
+  }
+  await contact();
+}
+
 function openErrandEvidenceComposer(mode: 'complete' | 'dispute') {
-  if (!errandOrder.value || errandEvidenceSubmitting.value)
+  const order = errandOrder.value;
+  if (!order || errandEvidenceSubmitting.value)
+    return;
+  if (mode === 'complete' && (!isErrandHelper.value || order.fulfillmentStatus !== 2))
+    return;
+  if (mode === 'dispute' && (!isErrandPublisher.value || order.fulfillmentStatus !== 3 || order.disputeStatus))
     return;
   errandEvidenceMode.value = mode;
   errandEvidenceText.value = '';
@@ -843,7 +887,7 @@ async function submitErrandEvidence() {
 
 function startErrandDispute() {
   const order = errandOrder.value;
-  if (!isOwnPost.value || !order || order.fulfillmentStatus !== 3 || order.disputeStatus)
+  if (!isErrandPublisher.value || !order || order.fulfillmentStatus !== 3 || order.disputeStatus)
     return;
   openErrandEvidenceComposer('dispute');
 }
@@ -1162,7 +1206,7 @@ function reportPost() {
           </view>
           <button
             v-if="isOwnPost || !isConfession" class="detail-contact" :class="{ 'errand-action': isErrandPost }"
-            :disabled="contactSubmitting || (!isErrandPost && !isOwnPost && (soldOut || downlisted))" @tap.stop="contact"
+            :disabled="contactSubmitting || (!isErrandPost && !isOwnPost && (soldOut || downlisted))" @tap.stop="handleErrandPrimaryAction"
           >
             {{ contactSubmitting ? '提交中…' : contactButtonText }}
           </button>
@@ -1304,7 +1348,7 @@ function reportPost() {
         </view>
         <button
           v-if="isOwnPost || !isConfession" class="prototype-buy" :class="{ 'errand-action': isErrandPost }"
-          :disabled="contactSubmitting || (!isErrandPost && !isOwnPost && (soldOut || downlisted))" @tap.stop="contact"
+          :disabled="contactSubmitting || (!isErrandPost && !isOwnPost && (soldOut || downlisted))" @tap.stop="handleErrandPrimaryAction"
         >
           {{ contactSubmitting ? '提交中…' : contactButtonText }}
         </button>
@@ -1315,15 +1359,19 @@ function reportPost() {
       <view v-if="showErrandEvidenceComposer" class="comment-overlay" @click="closeErrandEvidenceComposer">
         <view class="errand-evidence-composer" @click.stop>
           <view class="composer-header">
-            <text>{{ errandEvidenceMode === 'complete' ? '提交任务完成凭证' : '发起任务申诉' }}</text>
+            <text v-if="errandEvidenceMode === 'complete'">提交任务完成凭证</text>
+            <text v-else>发起任务申诉</text>
             <text class="composer-close" @click="closeErrandEvidenceComposer">×</text>
           </view>
-          <text class="errand-composer-tip">
-            {{ errandEvidenceMode === 'complete' ? '提交后发布人有 24 小时确认；逾期未申诉将自动结算赏金。' : '申诉提交后赏金立即冻结，平台将依据双方沟通和凭证进行裁决。' }}
-          </text>
+          <text v-if="errandEvidenceMode === 'complete'" class="errand-composer-tip">提交后发布人有 24 小时确认；逾期未申诉将自动结算赏金。</text>
+          <text v-else class="errand-composer-tip">申诉提交后赏金立即冻结，平台将依据双方沟通和凭证进行裁决。</text>
           <textarea
-            v-model="errandEvidenceText" class="errand-evidence-textarea" maxlength="500"
-            :placeholder="errandEvidenceMode === 'complete' ? '说明放置位置、交付时间等完成情况' : '请具体说明任务未完成或不符合约定的情况'"
+            v-if="errandEvidenceMode === 'complete'" v-model="errandEvidenceText"
+            class="errand-evidence-textarea" maxlength="500" placeholder="说明放置位置、交付时间等完成情况"
+          />
+          <textarea
+            v-else v-model="errandEvidenceText" class="errand-evidence-textarea" maxlength="500"
+            placeholder="请具体说明任务未完成或不符合约定的情况"
           />
           <view v-if="errandEvidenceImages.length" class="comment-upload-preview">
             <view v-for="(image, index) in errandEvidenceImages" :key="image" class="comment-upload-item">
@@ -1332,8 +1380,14 @@ function reportPost() {
           </view>
           <view class="errand-evidence-actions">
             <button class="errand-add-evidence" @click="chooseErrandEvidenceImages">＋ 添加凭证（{{ errandEvidenceImages.length }}/3）</button>
-            <button class="errand-submit-evidence" :disabled="errandEvidenceSubmitting" @click="submitErrandEvidence">
-              {{ errandEvidenceSubmitting ? '提交中…' : (errandEvidenceMode === 'complete' ? '确认提交完成' : '提交申诉并冻结赏金') }}
+            <button
+              v-if="errandEvidenceMode === 'complete'" class="errand-submit-evidence"
+              :disabled="errandEvidenceSubmitting" @click="submitErrandEvidence"
+            >
+              {{ errandEvidenceSubmitting ? '提交中…' : '确认提交完成' }}
+            </button>
+            <button v-else class="errand-submit-evidence" :disabled="errandEvidenceSubmitting" @click="submitErrandEvidence">
+              {{ errandEvidenceSubmitting ? '提交中…' : '提交申诉并冻结赏金' }}
             </button>
           </view>
         </view>
