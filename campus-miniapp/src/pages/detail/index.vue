@@ -164,6 +164,29 @@ const canConfirmErrand = computed(() => Boolean(isErrandPublisher.value
   && Number(errandOrder.value?.status) === 1
   && Number(errandOrder.value?.fulfillmentStatus) === 3
   && Number(errandOrder.value?.disputeStatus || 0) === 0));
+const isErrandParticipant = computed(() => isErrandPublisher.value || isErrandHelper.value);
+const errandStatusTitle = computed(() => {
+  const order = errandOrder.value;
+  if (!order)
+    return '';
+  if (!isErrandParticipant.value && [2, 3].includes(Number(order.fulfillmentStatus)))
+    return '已被接单';
+  return order.fulfillmentStatusText || order.statusText;
+});
+const errandPrimaryDisabled = computed(() => {
+  if (contactSubmitting.value)
+    return true;
+  const order = errandOrder.value;
+  if (!order)
+    return !isOwnPost.value;
+  if (isErrandPublisher.value)
+    return false;
+  if (isErrandHelper.value)
+    return !(Number(order.status) === 1 && Number(order.fulfillmentStatus) === 2);
+  return !(Number(order.status) === 1
+    && Number(order.fulfillmentStatus) === 1
+    && !Number(order.sellerId || 0));
+});
 const canOpenErrandChat = computed(() => {
   const order = errandOrder.value;
   return Boolean(isErrandPost.value && order?.sellerId
@@ -188,6 +211,8 @@ const errandStatusNote = computed(() => {
   const order = errandOrder.value;
   if (!order)
     return '';
+  if (!isErrandParticipant.value && [2, 3].includes(Number(order.fulfillmentStatus)))
+    return '任务已被其他同学接取，暂不可重复接单';
   if (order.disputeStatus === 1)
     return '申诉期间赏金保持冻结，等待平台核对双方凭证并裁决';
   if (order.disputeStatus === 2)
@@ -229,7 +254,7 @@ const contactButtonText = computed(() => {
     if (order.fulfillmentStatus === 2)
       return isErrandHelper.value ? '提交完成' : (isErrandPublisher.value ? '接单人办理中' : '已被接单');
     if (order.fulfillmentStatus === 3)
-      return isErrandPublisher.value ? '确认完成' : (isErrandHelper.value ? '等待确认' : '确认中');
+      return isErrandPublisher.value ? '确认完成' : (isErrandHelper.value ? '等待确认' : '已被接单');
     if (order.fulfillmentStatus === 4)
       return isErrandHelper.value ? '收益已入账' : '任务已完成';
   }
@@ -1175,12 +1200,12 @@ function reportPost() {
         </view>
         <view v-if="isErrandPost && errandOrder" class="errand-status-card">
           <view>
-            <text class="errand-status-title">{{ errandOrder.fulfillmentStatusText || errandOrder.statusText }}</text>
+            <text class="errand-status-title">{{ errandStatusTitle }}</text>
             <text class="errand-status-note">
               {{ errandStatusNote }}
             </text>
-            <text v-if="errandOrder.completionNote" class="errand-evidence-note">完成说明：{{ errandOrder.completionNote }}</text>
-            <view v-if="errandOrder.completionImages?.length" class="errand-evidence-preview">
+            <text v-if="isErrandParticipant && errandOrder.completionNote" class="errand-evidence-note">完成说明：{{ errandOrder.completionNote }}</text>
+            <view v-if="isErrandParticipant && errandOrder.completionImages?.length" class="errand-evidence-preview">
               <image v-for="image in errandOrder.completionImages" :key="image" :src="image" mode="aspectFill" @click.stop="previewErrandEvidence(image)" />
             </view>
           </view>
@@ -1206,7 +1231,8 @@ function reportPost() {
           </view>
           <button
             v-if="isOwnPost || !isConfession" class="detail-contact" :class="{ 'errand-action': isErrandPost }"
-            :disabled="contactSubmitting || (!isErrandPost && !isOwnPost && (soldOut || downlisted))" @tap.stop="handleErrandPrimaryAction"
+            :disabled="isErrandPost ? errandPrimaryDisabled : (contactSubmitting || (!isOwnPost && (soldOut || downlisted)))"
+            @tap.stop="handleErrandPrimaryAction"
           >
             {{ contactSubmitting ? '提交中…' : contactButtonText }}
           </button>
@@ -1348,7 +1374,8 @@ function reportPost() {
         </view>
         <button
           v-if="isOwnPost || !isConfession" class="prototype-buy" :class="{ 'errand-action': isErrandPost }"
-          :disabled="contactSubmitting || (!isErrandPost && !isOwnPost && (soldOut || downlisted))" @tap.stop="handleErrandPrimaryAction"
+          :disabled="isErrandPost ? errandPrimaryDisabled : (contactSubmitting || (!isOwnPost && (soldOut || downlisted)))"
+          @tap.stop="handleErrandPrimaryAction"
         >
           {{ contactSubmitting ? '提交中…' : contactButtonText }}
         </button>
@@ -2944,5 +2971,13 @@ function reportPost() {
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.prototype-buy.errand-action[disabled],
+.detail-contact.errand-action[disabled] {
+  opacity: 1;
+  color: #7f8985;
+  background: #e8ecea;
+  box-shadow: none;
 }
 </style>
