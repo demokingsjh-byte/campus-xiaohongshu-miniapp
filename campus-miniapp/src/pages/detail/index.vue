@@ -156,14 +156,22 @@ const isOwnPost = computed(() => {
   const schoolMatches = Boolean(currentSchool && authorSchool && currentSchool === authorSchool);
   return avatarMatches || schoolMatches;
 });
+const isErrandPublisher = computed(() => {
+  const publisherId = Number(errandOrder.value?.buyerId || 0);
+  return publisherId > 0 ? publisherId === currentUserId.value : isOwnPost.value;
+});
+const canConfirmErrand = computed(() => Boolean(isErrandPublisher.value
+  && Number(errandOrder.value?.status) === 1
+  && Number(errandOrder.value?.fulfillmentStatus) === 3
+  && Number(errandOrder.value?.disputeStatus || 0) === 0));
 const canOpenErrandChat = computed(() => {
   const order = errandOrder.value;
   return Boolean(isErrandPost.value && order?.sellerId
-    && (isOwnPost.value || isErrandHelper.value)
+    && (isErrandPublisher.value || isErrandHelper.value)
     && [1, 2].includes(Number(order.status))
     && [2, 3, 4].includes(Number(order.fulfillmentStatus)));
 });
-const errandChatText = computed(() => isOwnPost.value ? '联系接单人' : '联系发布人');
+const errandChatText = computed(() => isErrandPublisher.value ? '联系接单人' : '联系发布人');
 const errandConfirmRemainingText = computed(() => {
   const expiresAt = errandOrder.value?.confirmExpiresAt;
   if (!expiresAt)
@@ -203,27 +211,27 @@ const contactButtonText = computed(() => {
   if (isErrandPost.value) {
     const order = errandOrder.value;
     if (!order)
-      return isOwnPost.value ? '去支付赏金' : '等待发布人付款';
+      return isOwnPost.value ? '支付赏金' : '等待付款';
     if (order.status === 0)
-      return isOwnPost.value ? '继续支付赏金' : '等待发布人付款';
+      return isErrandPublisher.value ? '支付赏金' : '等待付款';
     if (order.disputeStatus === 1)
-      return '申诉处理中 · 赏金已冻结';
+      return '申诉处理中';
     if (order.disputeStatus === 2)
-      return isErrandHelper.value ? `收益 ¥${Number(order.incomeAmount || order.amount || 0).toFixed(2)} 已到账` : '平台已完成裁决';
+      return isErrandHelper.value ? '收益已入账' : '平台已裁决';
     if (order.disputeStatus === 3)
-      return isOwnPost.value ? '平台已裁决退款' : '平台已完成裁决';
+      return isErrandPublisher.value ? (order.refundStatus === 2 ? '赏金已退款' : '退款处理中') : '平台已裁决';
     if (order.status === 1 && order.fulfillmentStatus === 5)
-      return order.refundStatus === 3 ? '退款失败，点击重试' : '任务已取消 · 退款处理中';
+      return order.refundStatus === 3 ? '重新申请退款' : '退款处理中';
     if (order.status === 3 || order.status === 4)
-      return isOwnPost.value ? '重新发布并付款' : '任务已取消';
+      return isErrandPublisher.value ? '重新发布并付款' : '任务已取消';
     if (order.fulfillmentStatus === 1)
-      return isOwnPost.value ? '等待接单 · 可取消退款' : '立即接单';
+      return isErrandPublisher.value ? '取消任务并退款' : '立即接单';
     if (order.fulfillmentStatus === 2)
-      return isErrandHelper.value ? '已完成，提交给发布人' : (isOwnPost.value ? '接单人办理中' : '已被其他同学接单');
+      return isErrandHelper.value ? '提交完成' : (isErrandPublisher.value ? '接单人办理中' : '已被接单');
     if (order.fulfillmentStatus === 3)
-      return isOwnPost.value ? '确认完成并结算收益' : (isErrandHelper.value ? '等待发布人确认' : '任务完成确认中');
+      return isErrandPublisher.value ? '确认完成' : (isErrandHelper.value ? '等待确认' : '确认中');
     if (order.fulfillmentStatus === 4)
-      return isErrandHelper.value ? `收益 ¥${Number(order.incomeAmount || order.amount || 0).toFixed(2)} 已到账` : '任务已完成';
+      return isErrandHelper.value ? '收益已入账' : '任务已完成';
   }
   if (isOwnPost.value)
     return isIdlePost.value ? '管理商品' : '管理内容';
@@ -642,6 +650,24 @@ async function changeCommentSort(sort: 'latest' | 'likes') {
   commentSort.value = sort;
   await loadComments();
 }
+
+function confirmErrandRefund(order: CampusTradeOrder, retry = false) {
+  const amount = Number(order.amount || 0).toFixed(2);
+  return new Promise<boolean>((resolve) => {
+    uni.showModal({
+      title: retry ? '重新申请退款' : '取消任务并退款',
+      content: retry
+        ? `此前退款申请未成功。确认后将重新向微信支付申请退回 ¥${amount}，到账时间以微信支付处理结果为准。确定继续吗？`
+        : `确认后任务将立即关闭，其他学生不能再接单；¥${amount} 赏金将按原支付方式退回，到账时间以微信支付处理结果为准。确定取消任务并申请退款吗？`,
+      cancelText: '暂不取消',
+      confirmText: '确认退款',
+      confirmColor: '#E85D3F',
+      success: result => resolve(Boolean(result.confirm)),
+      fail: () => resolve(false),
+    });
+  });
+}
+
 async function handleErrandAction() {
   if (!ensureLogin() || contactSubmitting.value)
     return;
@@ -657,12 +683,18 @@ async function handleErrandAction() {
       order = await createCampusErrandOrder(postId.value);
       errandOrder.value = order;
     }
-    if (isOwnPost.value && order.status === 1 && order.fulfillmentStatus === 5) {
+    if (isErrandPublisher.value && order.status === 1 && order.fulfillmentStatus === 5) {
+      if (order.refundStatus !== 3) {
+        uni.showToast({ title: order.refundStatus === 2 ? '赏金已原路退回' : '退款正在处理中', icon: 'none' });
+        return;
+      }
+      if (!await confirmErrandRefund(order, true))
+        return;
       errandOrder.value = await cancelCampusErrandOrder(order.id);
       uni.showToast({ title: errandOrder.value.refundStatus === 2 ? '赏金已退款' : '退款正在处理中', icon: 'none' });
       return;
     }
-    if (isOwnPost.value && (order.status === 0 || order.status === 3 || order.status === 4)) {
+    if (isErrandPublisher.value && (order.status === 0 || order.status === 3 || order.status === 4)) {
       if (order.status !== 0)
         order = await createCampusErrandOrder(postId.value);
       uni.navigateTo({ url: `/pages/checkout/index?orderId=${order.id}&postId=${postId.value}&mode=errand` });
@@ -676,20 +708,12 @@ async function handleErrandAction() {
       uni.showToast({ title: '申诉处理中，赏金已冻结', icon: 'none' });
       return;
     }
-    if (order.fulfillmentStatus === 1 && isOwnPost.value) {
-      const confirmed = await new Promise<boolean>((resolve) => {
-        uni.showModal({
-          title: '取消任务并退款',
-          content: '当前还没有同学接单，取消后赏金会按原支付路径退回。确定继续吗？',
-          confirmText: '取消并退款',
-          success: result => resolve(Boolean(result.confirm)),
-          fail: () => resolve(false),
-        });
-      });
+    if (order.fulfillmentStatus === 1 && isErrandPublisher.value) {
+      const confirmed = await confirmErrandRefund(order);
       if (!confirmed)
         return;
       errandOrder.value = await cancelCampusErrandOrder(order.id);
-      uni.showToast({ title: errandOrder.value.refundStatus === 2 ? '赏金已退款' : '退款申请已提交', icon: 'none' });
+      uni.showToast({ title: errandOrder.value.refundStatus === 2 ? '赏金已退款' : '退款正在原路退回', icon: 'none' });
       return;
     }
     if (order.fulfillmentStatus === 1) {
@@ -713,7 +737,7 @@ async function handleErrandAction() {
       openErrandEvidenceComposer('complete');
       return;
     }
-    if (order.fulfillmentStatus === 3 && isOwnPost.value) {
+    if (order.fulfillmentStatus === 3 && isErrandPublisher.value) {
       const confirmed = await new Promise<boolean>((resolve) => {
         uni.showModal({
           title: '确认任务完成',
@@ -726,7 +750,7 @@ async function handleErrandAction() {
       if (!confirmed)
         return;
       errandOrder.value = await confirmCampusErrandOrder(order.id);
-      uni.showToast({ title: '任务已完成，收益已结算', icon: 'success' });
+      uni.showToast({ title: '已计入接单人可提现收益', icon: 'success' });
       return;
     }
     uni.showToast({ title: contactButtonText.value, icon: 'none' });
@@ -1119,10 +1143,16 @@ function reportPost() {
           </view>
           <view class="errand-side">
             <text class="errand-reward">赏金 ¥{{ Number(errandOrder.amount || 0).toFixed(2) }}</text>
-            <button v-if="canOpenErrandChat" class="errand-chat-button" @click.stop="openErrandChat">
+            <button v-if="canOpenErrandChat" class="errand-chat-button" @tap.stop="openErrandChat">
               {{ errandChatText }}
             </button>
-            <button v-if="isOwnPost && errandOrder.fulfillmentStatus === 3 && !errandOrder.disputeStatus" class="errand-dispute-button" @click.stop="startErrandDispute">
+            <button v-if="canConfirmErrand" class="errand-confirm-button" :disabled="contactSubmitting" @tap.stop="handleErrandAction">
+              {{ contactSubmitting ? '结算中…' : '确认完成并结算' }}
+            </button>
+            <button
+              v-if="isErrandPublisher && errandOrder.fulfillmentStatus === 3 && !errandOrder.disputeStatus"
+              class="errand-dispute-button" @tap.stop="startErrandDispute"
+            >
               完成情况有异议
             </button>
           </view>
@@ -1134,7 +1164,10 @@ function reportPost() {
           <view class="detail-action" :class="{ active: collected }" @click="toggleCollect">
             <image src="/static/icons/ui/star.svg" mode="aspectFit" /><text>{{ post.collects || 0 }}人收藏</text>
           </view>
-          <button v-if="isOwnPost || !isConfession" class="detail-contact" :disabled="contactSubmitting || (!isOwnPost && (soldOut || downlisted))" @click="contact">
+          <button
+            v-if="isOwnPost || !isConfession" class="detail-contact" :class="{ 'errand-action': isErrandPost }"
+            :disabled="contactSubmitting || (!isErrandPost && !isOwnPost && (soldOut || downlisted))" @tap.stop="contact"
+          >
             {{ contactSubmitting ? '提交中…' : contactButtonText }}
           </button>
         </view>
@@ -1273,7 +1306,10 @@ function reportPost() {
         >
           <text>{{ collected ? '★' : '☆' }}</text><text>{{ post.collects || 0 }}</text>
         </view>
-        <button v-if="isOwnPost || !isConfession" class="prototype-buy" :disabled="contactSubmitting || (!isOwnPost && (soldOut || downlisted))" @click="contact">
+        <button
+          v-if="isOwnPost || !isConfession" class="prototype-buy" :class="{ 'errand-action': isErrandPost }"
+          :disabled="contactSubmitting || (!isErrandPost && !isOwnPost && (soldOut || downlisted))" @tap.stop="contact"
+        >
           {{ contactSubmitting ? '提交中…' : contactButtonText }}
         </button>
         <button v-else class="prototype-buy" @click="openCommentComposer">
@@ -2834,5 +2870,46 @@ function reportPost() {
 .errand-add-evidence::after,
 .errand-submit-evidence::after {
   border: 0;
+}
+
+.errand-confirm-button {
+  height: 52rpx;
+  margin: 10rpx 0 0;
+  padding: 0 16rpx;
+  border: 0;
+  border-radius: 24rpx;
+  color: #14200a;
+  background: #95f51f;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 52rpx;
+}
+
+.errand-confirm-button::after {
+  border: 0;
+}
+
+.prototype-buy.errand-action {
+  display: flex;
+  width: 230rpx;
+  min-width: 230rpx;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 14rpx;
+  font-size: 24rpx;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-contact.errand-action {
+  min-width: 220rpx;
+  overflow: hidden;
+  padding: 0 16rpx;
+  font-size: 24rpx;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

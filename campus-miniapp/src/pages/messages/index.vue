@@ -91,6 +91,10 @@ function hasQuickActions(item: CampusNotification) {
   return item.type === 'INTERACTION' && (item.eventType === 'COMMENT' || item.eventType === 'REPLY');
 }
 
+function isErrandNotification(item: CampusNotification) {
+  return String(item.eventType || '').startsWith('ERRAND_');
+}
+
 async function loadMessages() {
   if (!userStore.loggedIn)
     return;
@@ -126,6 +130,20 @@ async function openNotification(item: CampusNotification) {
     await notificationStore.markRead(item);
   } catch {
     uni.showToast({ title: '通知状态更新失败', icon: 'none' });
+    return;
+  }
+  if (isErrandNotification(item)) {
+    uni.showModal({
+      title: item.title || '代拿代办通知',
+      content: item.content || '任务状态已经更新，请进入详情查看。',
+      cancelText: '关闭',
+      confirmText: item.targetId ? '查看任务' : '知道了',
+      showCancel: Boolean(item.targetId),
+      success: (result) => {
+        if (result.confirm && item.targetId)
+          uni.navigateTo({ url: `/pages/detail/index?id=${item.targetId}` });
+      },
+    });
     return;
   }
   if ((item.targetType === 'POST' || item.targetType === 'PRODUCT') && item.targetId) {
@@ -177,7 +195,7 @@ onShow(loadMessages);
     <view v-else class="notification-list">
       <view
         v-for="item in filtered" :key="item.id" class="notification-row"
-        :class="{ unread: !item.read, 'with-actions': hasQuickActions(item) }"
+        :class="{ 'unread': !item.read, 'with-actions': hasQuickActions(item), 'errand-notification': isErrandNotification(item) }"
         @click="openNotification(item)"
       >
         <view class="avatar-wrap">
@@ -197,7 +215,7 @@ onShow(loadMessages);
             <text v-if="rowTag(item)" class="relation-tag">{{ rowTag(item) }}</text>
             <i v-if="!item.read" class="row-unread" />
           </view>
-          <view class="action-line">
+          <view class="action-line" :class="{ 'full-content': isErrandNotification(item) }">
             <text class="action-text">{{ actionText(item) }}</text>
             <text class="message-time">{{ item.time }}</text>
           </view>
@@ -508,6 +526,23 @@ onShow(loadMessages);
   word-break: break-all;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.action-line.full-content {
+  display: block;
+}
+
+.action-line.full-content .action-text {
+  display: block;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+  -webkit-line-clamp: unset;
+}
+
+.action-line.full-content .message-time {
+  display: block;
+  margin: 8rpx 0 0;
 }
 
 .message-time {
