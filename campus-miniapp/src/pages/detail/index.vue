@@ -160,10 +160,6 @@ const isErrandPublisher = computed(() => {
   const publisherId = Number(errandOrder.value?.buyerId || 0);
   return publisherId > 0 ? publisherId === currentUserId.value : isOwnPost.value;
 });
-const canConfirmErrand = computed(() => Boolean(isErrandPublisher.value
-  && Number(errandOrder.value?.status) === 1
-  && Number(errandOrder.value?.fulfillmentStatus) === 3
-  && Number(errandOrder.value?.disputeStatus || 0) === 0));
 const canOpenErrandChat = computed(() => {
   const order = errandOrder.value;
   return Boolean(isErrandPost.value && order?.sellerId
@@ -738,11 +734,14 @@ async function handleErrandAction() {
       return;
     }
     if (order.fulfillmentStatus === 3 && isErrandPublisher.value) {
+      const amount = Number(order.amount || 0).toFixed(2);
       const confirmed = await new Promise<boolean>((resolve) => {
         uni.showModal({
-          title: '确认任务完成',
-          content: `确认后 ¥${Number(order?.amount || 0).toFixed(2)} 赏金将结算为接单人收益。`,
+          title: '确认任务已经完成？',
+          content: `请确认接单人已完成本次任务。确认后，¥${amount} 赏金将立即结算到接单人的可提现收益账户，订单同时完成，且无法撤销。若对完成情况有异议，请先返回并发起异议。`,
+          cancelText: '再检查一下',
           confirmText: '确认并结算',
+          confirmColor: '#10A779',
           success: result => resolve(Boolean(result.confirm)),
           fail: () => resolve(false),
         });
@@ -1145,9 +1144,6 @@ function reportPost() {
             <text class="errand-reward">赏金 ¥{{ Number(errandOrder.amount || 0).toFixed(2) }}</text>
             <button v-if="canOpenErrandChat" class="errand-chat-button" @tap.stop="openErrandChat">
               {{ errandChatText }}
-            </button>
-            <button v-if="canConfirmErrand" class="errand-confirm-button" :disabled="contactSubmitting" @tap.stop="handleErrandAction">
-              {{ contactSubmitting ? '结算中…' : '确认完成并结算' }}
             </button>
             <button
               v-if="isErrandPublisher && errandOrder.fulfillmentStatus === 3 && !errandOrder.disputeStatus"
@@ -2869,23 +2865,6 @@ function reportPost() {
 
 .errand-add-evidence::after,
 .errand-submit-evidence::after {
-  border: 0;
-}
-
-.errand-confirm-button {
-  height: 52rpx;
-  margin: 10rpx 0 0;
-  padding: 0 16rpx;
-  border: 0;
-  border-radius: 24rpx;
-  color: #14200a;
-  background: #95f51f;
-  font-size: 20rpx;
-  font-weight: 700;
-  line-height: 52rpx;
-}
-
-.errand-confirm-button::after {
   border: 0;
 }
 
