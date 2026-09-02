@@ -182,13 +182,12 @@ onLoad(() => {
 onShow(async () => {
   await refreshPublishTypeAvailability();
   const requestedType = uni.getStorageSync('campus-publish-active-type');
-  if (typeof requestedType === 'string' && campusPublishTypes.some(item => item.key === requestedType)
-    && isPublishTypeEnabled(requestedType)) {
-    chooseType(requestedType);
+  if (typeof requestedType === 'string') {
+    // 这是首页跳转时写入的一次性目标分类。旧值可能来自已关闭的分类，
+    // 只在当前仍可用时选中；否则沿用上方已选出的可用分类，不做误报。
     uni.removeStorageSync('campus-publish-active-type');
-  } else if (typeof requestedType === 'string') {
-    uni.removeStorageSync('campus-publish-active-type');
-    uni.showToast({ title: '该内容分类已关闭', icon: 'none' });
+    if (selectableTypeKeys.includes(requestedType) && isPublishTypeEnabled(requestedType))
+      chooseType(requestedType);
   }
   if (!userStore.loggedIn)
     return;
