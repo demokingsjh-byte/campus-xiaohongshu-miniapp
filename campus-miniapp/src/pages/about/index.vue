@@ -40,6 +40,9 @@ const DEFAULT_MINE_TRADE_CONFIG: CampusMineTradeConfig = {
 };
 const mineTradeConfig = ref<CampusMineTradeConfig>({ ...DEFAULT_MINE_TRADE_CONFIG });
 const mineTradeConfigLoaded = ref(false);
+let mineTradeConfigRefreshing = false;
+let mineTradeRefreshTimer: ReturnType<typeof setInterval> | undefined;
+let mineTradePageVisible = false;
 const orderStatusCounts = computed(() => myOrders.value.reduce<Record<number, number>>((counts, order) => {
   counts[order.status] = (counts[order.status] || 0) + 1;
   return counts;
@@ -147,7 +150,10 @@ const tradeStates = computed(() => [
 onLoad(() => updateNavigationLayout());
 
 onShow(async () => {
+  mineTradePageVisible = true;
   await loadMineTradeConfig();
+  if (mineTradePageVisible)
+    startMineTradeConfigRefresh();
   if (!userStore.userInfo) {
     try {
       await userStore.initUserInfo();
@@ -184,8 +190,18 @@ onShow(async () => {
   }
 });
 
+function handleMineTradePageLeave() {
+  mineTradePageVisible = false;
+  stopMineTradeConfigRefresh();
+}
+
+onHide(handleMineTradePageLeave);
+onUnload(handleMineTradePageLeave);
+
 async function loadMineTradeConfig() {
-  mineTradeConfigLoaded.value = false;
+  if (mineTradeConfigRefreshing)
+    return;
+  mineTradeConfigRefreshing = true;
   try {
     const response = await getCampusHomeConfig(tenantStore.tenantId || undefined);
     const config = response?.mineTrade;
@@ -198,10 +214,26 @@ async function loadMineTradeConfig() {
       paidEnabled: config?.paidEnabled !== false,
     };
   } catch {
-    mineTradeConfig.value = { ...DEFAULT_MINE_TRADE_CONFIG };
+    if (!mineTradeConfigLoaded.value)
+      mineTradeConfig.value = { ...DEFAULT_MINE_TRADE_CONFIG };
   } finally {
     mineTradeConfigLoaded.value = true;
+    mineTradeConfigRefreshing = false;
   }
+}
+
+function stopMineTradeConfigRefresh() {
+  if (mineTradeRefreshTimer !== undefined) {
+    clearInterval(mineTradeRefreshTimer);
+    mineTradeRefreshTimer = undefined;
+  }
+}
+
+function startMineTradeConfigRefresh() {
+  stopMineTradeConfigRefresh();
+  mineTradeRefreshTimer = setInterval(() => {
+    void loadMineTradeConfig();
+  }, 3000);
 }
 
 async function loadMyOrders() {
@@ -621,17 +653,52 @@ function handleMenu(action: string, requiresLogin: boolean) {
       </view>
     </view>
 
-    <view v-if="visibleTradeItems.length" class="prototype-trade-card">
+    <view v-if="mineTradeConfigLoaded && mineTradeConfig.enabled" class="prototype-trade-card">
       <view class="prototype-section-title">
         我的交易
       </view>
       <view class="prototype-trade-grid" :style="tradeGridStyle">
-        <view v-for="item in visibleTradeItems" :key="item.action" @click="handleMenu(item.action, true)">
+        <view v-if="mineTradeConfig.publishedEnabled" @click="handleMenu('published', true)">
           <view class="prototype-trade-icon-wrap">
-            <image class="prototype-trade-icon" :src="item.icon" mode="aspectFit" />
-            <text v-if="item.badge" class="prototype-trade-badge">{{ displayTradeBadge(item.badge) }}</text>
+            <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-published-clean.svg" mode="aspectFit" />
           </view>
-          <text>{{ item.label }}</text>
+          <text>已发布</text>
+        </view>
+        <view v-if="mineTradeConfig.soldEnabled" @click="handleMenu('sold', true)">
+          <view class="prototype-trade-icon-wrap">
+            <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-sold-clean.svg" mode="aspectFit" />
+            <text v-if="tradeBadgeCounts.sold" class="prototype-trade-badge">
+              {{ displayTradeBadge(tradeBadgeCounts.sold) }}
+            </text>
+          </view>
+          <text>已卖出</text>
+        </view>
+        <view v-if="mineTradeConfig.boughtEnabled" @click="handleMenu('orders', true)">
+          <view class="prototype-trade-icon-wrap">
+            <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-bought-clean.svg" mode="aspectFit" />
+            <text v-if="tradeBadgeCounts.bought" class="prototype-trade-badge">
+              {{ displayTradeBadge(tradeBadgeCounts.bought) }}
+            </text>
+          </view>
+          <text>已买到</text>
+        </view>
+        <view v-if="mineTradeConfig.pendingPaymentEnabled" @click="handleMenu('pending', true)">
+          <view class="prototype-trade-icon-wrap">
+            <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-pending-clean.svg" mode="aspectFit" />
+            <text v-if="tradeBadgeCounts.pending" class="prototype-trade-badge">
+              {{ displayTradeBadge(tradeBadgeCounts.pending) }}
+            </text>
+          </view>
+          <text>待支付</text>
+        </view>
+        <view v-if="mineTradeConfig.paidEnabled" @click="handleMenu('paid', true)">
+          <view class="prototype-trade-icon-wrap">
+            <image class="prototype-trade-icon" src="/static/images/mine-prototype/trade-paid-clean.svg" mode="aspectFit" />
+            <text v-if="tradeBadgeCounts.paid" class="prototype-trade-badge">
+              {{ displayTradeBadge(tradeBadgeCounts.paid) }}
+            </text>
+          </view>
+          <text>已支付</text>
         </view>
       </view>
     </view>
