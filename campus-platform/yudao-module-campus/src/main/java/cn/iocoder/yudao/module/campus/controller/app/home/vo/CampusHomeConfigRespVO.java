@@ -26,6 +26,35 @@ public class CampusHomeConfigRespVO {
     @Schema(description = "首页分类导航")
     private List<Category> categories;
 
+    @Schema(description = "我的页面交易入口开关")
+    private MineTrade mineTrade;
+
+    @Schema(description = "用户 App - 我的交易入口配置")
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class MineTrade {
+
+        @Schema(description = "我的交易总开关", example = "true")
+        private Boolean enabled;
+
+        @Schema(description = "是否显示已发布", example = "true")
+        private Boolean publishedEnabled;
+
+        @Schema(description = "是否显示已卖出", example = "true")
+        private Boolean soldEnabled;
+
+        @Schema(description = "是否显示已买到", example = "true")
+        private Boolean boughtEnabled;
+
+        @Schema(description = "是否显示待支付", example = "true")
+        private Boolean pendingPaymentEnabled;
+
+        @Schema(description = "是否显示已支付", example = "true")
+        private Boolean paidEnabled;
+
+    }
+
     @Schema(description = "用户 App - 校园首页分类")
     @Data
     @NoArgsConstructor

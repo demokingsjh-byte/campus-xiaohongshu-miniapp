@@ -40,6 +40,16 @@ export interface CampusHomeConfig {
   categoryIconVisible?: boolean
   categoryTitleVisible?: boolean
   categories: CampusHomeCategory[]
+  mineTrade?: CampusMineTradeConfig
+}
+
+export interface CampusMineTradeConfig {
+  enabled: boolean
+  publishedEnabled: boolean
+  soldEnabled: boolean
+  boughtEnabled: boolean
+  pendingPaymentEnabled: boolean
+  paidEnabled: boolean
 }
 
 export interface CampusPostComment {

@@ -20,6 +20,7 @@ DROP TABLE IF EXISTS `campus_tenant_profile`;
 DROP TABLE IF EXISTS `campus_region`;
 DROP TABLE IF EXISTS `campus_school_catalog`;
 DROP TABLE IF EXISTS `campus_home_category`;
+DROP TABLE IF EXISTS `campus_mine_trade_config`;
 
 CREATE TABLE `campus_region` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '区域编号',
@@ -91,6 +92,29 @@ VALUES
 ('job', '兼职信息', '兼职', '/static/images/home-prototype/category-job.png', 'job', b'1', b'1', b'1', 50, 'campus', 'campus', 0),
 ('confession', '表白墙', '表白', '/static/images/home-prototype/category-confession.png', 'confession', b'1', b'1', b'1', 60, 'campus', 'campus', 0),
 ('groupbuy', '商家团购', '探店', '/static/images/home-prototype/category-groupbuy.png', 'shop', b'1', b'1', b'1', 70, 'campus', 'campus', 0);
+
+CREATE TABLE `campus_mine_trade_config` (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '配置编号',
+  `config_name` varchar(64) NOT NULL DEFAULT '全局配置' COMMENT '配置名称',
+  `enabled` bit(1) NOT NULL DEFAULT b'1' COMMENT '我的交易总开关',
+  `published_enabled` bit(1) NOT NULL DEFAULT b'1' COMMENT '是否显示已发布',
+  `sold_enabled` bit(1) NOT NULL DEFAULT b'1' COMMENT '是否显示已卖出',
+  `bought_enabled` bit(1) NOT NULL DEFAULT b'1' COMMENT '是否显示已买到',
+  `pending_payment_enabled` bit(1) NOT NULL DEFAULT b'1' COMMENT '是否显示待支付',
+  `paid_enabled` bit(1) NOT NULL DEFAULT b'1' COMMENT '是否显示已支付',
+  `creator` varchar(64) DEFAULT '' COMMENT '创建者',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updater` varchar(64) DEFAULT '' COMMENT '更新者',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `deleted` bit(1) NOT NULL DEFAULT b'0' COMMENT '是否删除',
+  `tenant_id` bigint NOT NULL DEFAULT 0 COMMENT '校区租户编号，0表示全局',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_mine_trade_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='小程序我的交易入口配置';
+
+INSERT INTO `campus_mine_trade_config`
+(`config_name`, `enabled`, `published_enabled`, `sold_enabled`, `bought_enabled`, `pending_payment_enabled`, `paid_enabled`, `creator`, `updater`, `tenant_id`)
+VALUES ('全局配置', b'1', b'1', b'1', b'1', b'1', b'1', 'campus', 'campus', 0);
 
 CREATE TABLE `campus_tenant_profile` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '校区资料编号',
