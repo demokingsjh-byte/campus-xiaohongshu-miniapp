@@ -231,6 +231,14 @@ export const contentMocks = defineMock({
     data: {
       searchPlaceholder: '搜索校园新鲜事',
       notice: '',
+      mineTrade: {
+        enabled: true,
+        publishedEnabled: true,
+        soldEnabled: true,
+        boughtEnabled: true,
+        pendingPaymentEnabled: true,
+        paidEnabled: true,
+      },
       categories: [
           { key: 'recommend', title: '推荐', channel: '推荐', icon: '🚩', enabled: true, sort: 10 },
           { key: 'idle', title: '二手闲置', channel: '二手', icon: '🧺', publishType: 'idle', enabled: true, sort: 20 },

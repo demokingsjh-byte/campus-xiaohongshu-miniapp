@@ -76,6 +76,15 @@
       title="分类功能开关联动说明"
       description="关闭某个分类后，小程序会隐藏该分类入口、发布选项和对应帖子，并禁止新发布及新建相关订单；已有订单与退款记录继续保留。"
     />
+    <el-alert
+      v-if="resource === 'mine-trade-config'"
+      class="mb-16px"
+      type="info"
+      show-icon
+      :closable="false"
+      title="我的交易功能开关联动说明"
+      description="总开关关闭后，小程序“我的”页面会隐藏整个“我的交易”区域；子开关可分别控制已发布、已卖出、已买到、待支付、已支付。修改后用户重新进入“我的”页面即可生效。"
+    />
     <el-table v-loading="loading" :data="list">
       <el-table-column label="编号" align="center" prop="id" width="90" />
       <el-table-column
@@ -112,8 +121,8 @@
       <el-table-column label="操作" align="center" width="210" fixed="right">
         <template #default="scope">
           <el-button link type="primary" @click="openForm('update', scope.row.id)">编辑</el-button>
-          <el-button link type="info" @click="openLog(scope.row.id)">日志</el-button>
-          <el-button link type="danger" @click="handleDelete(scope.row.id)">删除</el-button>
+          <el-button v-if="meta.allowLog !== false" link type="info" @click="openLog(scope.row.id)">日志</el-button>
+          <el-button v-if="meta.allowDelete !== false" link type="danger" @click="handleDelete(scope.row.id)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -223,6 +232,8 @@ interface PageMeta {
   statusKey?: string
   statusOptions?: SelectOption[]
   allowCreate?: boolean
+  allowDelete?: boolean
+  allowLog?: boolean
   filters?: FieldMeta[]
   defaultQuery?: Record<string, any>
   columns: FieldMeta[]
@@ -319,6 +330,32 @@ const metas: Record<string, PageMeta> = {
       { label: '显示名称', prop: 'title_visible', type: 'boolean', defaultValue: true },
       { label: '排序', prop: 'sort', type: 'number', defaultValue: 100 },
       { label: '校区租户ID（0为全局）', prop: 'tenant_id', type: 'number', defaultValue: 0 }
+    ]
+  },
+  'mine-trade-config': {
+    title: '我的交易开关',
+    searchKey: 'config_name',
+    searchLabel: '配置名称',
+    allowCreate: false,
+    allowDelete: false,
+    filters: [{ label: '校区租户ID', prop: 'tenant_id', type: 'number' }],
+    columns: [
+      { label: '配置范围', prop: 'config_name' },
+      { label: '总开关', prop: 'enabled', type: 'boolean' },
+      { label: '已发布', prop: 'published_enabled', type: 'boolean' },
+      { label: '已卖出', prop: 'sold_enabled', type: 'boolean' },
+      { label: '已买到', prop: 'bought_enabled', type: 'boolean' },
+      { label: '待支付', prop: 'pending_payment_enabled', type: 'boolean' },
+      { label: '已支付', prop: 'paid_enabled', type: 'boolean' },
+      { label: '租户ID', prop: 'tenant_id' }
+    ],
+    fields: [
+      { label: '总开关', prop: 'enabled', type: 'boolean' },
+      { label: '已发布', prop: 'published_enabled', type: 'boolean' },
+      { label: '已卖出', prop: 'sold_enabled', type: 'boolean' },
+      { label: '已买到', prop: 'bought_enabled', type: 'boolean' },
+      { label: '待支付', prop: 'pending_payment_enabled', type: 'boolean' },
+      { label: '已支付', prop: 'paid_enabled', type: 'boolean' }
     ]
   },
   'tenant-profile': {
@@ -790,7 +827,11 @@ const handleBooleanChange = async (row: Record<string, any>, prop: string, value
   try {
     await updateCampus(resource.value, { id: row.id, [prop]: value })
     message.success(
-      resource.value === 'home-category' && prop === 'enabled'
+      resource.value === 'mine-trade-config'
+        ? value
+          ? `${prop === 'enabled' ? '我的交易' : '交易子项'}已开启，小程序重新进入“我的”页面后显示`
+          : `${prop === 'enabled' ? '我的交易' : '交易子项'}已关闭，小程序重新进入“我的”页面后隐藏`
+        : resource.value === 'home-category' && prop === 'enabled'
         ? value
           ? '分类功能已开启，小程序将恢复入口、帖子和发布选项'
           : '分类功能已关闭，小程序将隐藏入口、帖子和发布选项'

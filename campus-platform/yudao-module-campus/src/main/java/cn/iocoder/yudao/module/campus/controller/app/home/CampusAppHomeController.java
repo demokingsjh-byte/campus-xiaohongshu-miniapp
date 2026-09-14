@@ -5,6 +5,7 @@ import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
 import cn.iocoder.yudao.module.campus.controller.app.home.vo.CampusHomeConfigRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.home.vo.CampusHomeConfigRespVO.Category;
+import cn.iocoder.yudao.module.campus.controller.app.home.vo.CampusHomeConfigRespVO.MineTrade;
 import cn.iocoder.yudao.module.infra.api.config.ConfigApi;
 import com.fasterxml.jackson.core.type.TypeReference;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,6 +38,7 @@ public class CampusAppHomeController {
 
     private static final String CONFIG_PREFIX = "campus.home.";
     private static final String DEFAULT_SEARCH_PLACEHOLDER = "搜索校园新鲜事";
+    private static final MineTrade DEFAULT_MINE_TRADE = new MineTrade(true, true, true, true, true, true);
 
     private static final List<Category> DEFAULT_CATEGORIES = Arrays.asList(
             new Category("recommend", "推荐", "推荐", "/static/images/home-prototype/category-recommend.png", null, true, true, true, 10),
@@ -66,7 +68,42 @@ public class CampusAppHomeController {
         result.setCategoryIconVisible(getBooleanConfigValue(tenantId, "category-icon-visible", true));
         result.setCategoryTitleVisible(getBooleanConfigValue(tenantId, "category-title-visible", true));
         result.setCategories(getCategories(tenantId));
+        result.setMineTrade(getMineTradeConfig(tenantId));
         return success(result);
+    }
+
+    /**
+     * 读取“我的交易”入口开关。优先使用校区配置，没有时回退到全局配置。
+     * 表尚未升级或没有配置时保持全部开启，确保老环境兼容。
+     */
+    private MineTrade getMineTradeConfig(Long tenantId) {
+        try {
+            List<Map<String, Object>> rows = queryMineTradeConfig(tenantId == null ? 0L : tenantId);
+            if (rows.isEmpty() && tenantId != null && tenantId != 0L) {
+                rows = queryMineTradeConfig(0L);
+            }
+            if (rows.isEmpty()) {
+                return DEFAULT_MINE_TRADE;
+            }
+            Map<String, Object> row = rows.get(0);
+            return new MineTrade(
+                    toBoolean(row.get("enabled")),
+                    toBoolean(row.get("published_enabled")),
+                    toBoolean(row.get("sold_enabled")),
+                    toBoolean(row.get("bought_enabled")),
+                    toBoolean(row.get("pending_payment_enabled")),
+                    toBoolean(row.get("paid_enabled"))
+            );
+        } catch (DataAccessException ex) {
+            return DEFAULT_MINE_TRADE;
+        }
+    }
+
+    private List<Map<String, Object>> queryMineTradeConfig(Long tenantId) {
+        return namedParameterJdbcTemplate.queryForList("SELECT enabled, published_enabled, sold_enabled,"
+                        + " bought_enabled, pending_payment_enabled, paid_enabled FROM campus_mine_trade_config"
+                        + " WHERE tenant_id = :tenantId AND deleted = b'0' ORDER BY id DESC LIMIT 1",
+                new MapSqlParameterSource("tenantId", tenantId));
     }
 
     private List<Category> getCategories(Long tenantId) {
