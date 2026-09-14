@@ -132,10 +132,10 @@ CAMPUS_VOLC_ASR_APP_ID=<火山AppId>
 CAMPUS_VOLC_ASR_ACCESS_TOKEN=<火山AccessToken>
 CAMPUS_VOLC_TTS_APP_ID=<火山AppId>
 CAMPUS_VOLC_TTS_ACCESS_TOKEN=<火山AccessToken>
-CAMPUS_VOLC_TTS_VOICE_TYPE=zh_male_m191_uranus_bigtts
+CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_roumeinvyou_uranus_bigtts
 ```
 
-当前默认资源为 `seed-icl-2.0`，音色为火山“男声 M191”（`zh_male_m191_uranus_bigtts`）；如需切换其他音色，只覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE` 即可。
+当前默认资源为 `seed-icl-2.0`，音色为火山“如梦”（`zh_female_roumeinvyou_uranus_bigtts`）；如需切换其他音色，只覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE` 即可。
 
 如果暂时不需要用户语音转文字日志，可设：
 
