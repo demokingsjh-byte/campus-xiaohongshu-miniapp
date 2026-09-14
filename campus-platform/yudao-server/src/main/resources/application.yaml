@@ -312,6 +312,9 @@ yudao:
     enable: true
     ignore-urls:
       - /jmreport/* # 积木报表，无法携带租户编号
+      - /app-api/campus/esp32/assistant/health # ESP32 健康检查，使用设备 Token 而非租户身份
+      - /app-api/campus/esp32/assistant/ws # ESP32 WebSocket，设备无法携带 tenant-id
+      - /ai_guide_service/api/v1/esp32/assistant/ws # 兼容旧固件的 WebSocket 路径
     ignore-visit-urls:
       - /admin-api/system/user/profile/**
       - /admin-api/system/auth/**

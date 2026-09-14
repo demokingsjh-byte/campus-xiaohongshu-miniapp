@@ -1,0 +1,70 @@
+package cn.iocoder.yudao.module.campus.framework.esp32;
+
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * ESP32-S3 视听说网关配置。
+ */
+@Data
+@Component
+@ConfigurationProperties(prefix = "campus.esp32-assistant")
+public class CampusEsp32AssistantProperties {
+
+    private boolean enabled = false;
+    private String path = "/app-api/campus/esp32/assistant/ws";
+    /** 兼容 AI_GUIDE 原有固件，迁移时可不立即升级固件路径。 */
+    private String legacyPath = "/ai_guide_service/api/v1/esp32/assistant/ws";
+    private String deviceTokens = "";
+    private int maxAudioSeconds = 30;
+    private int maxConnectionsPerIp = 20;
+    private int cooldownMillis = 650;
+    private int outputAudioChunkBytes = 1920;
+    private int playbackPacePercent = 90;
+
+    private String modelUrl = "ws://82.156.49.60:8088/ws/guide";
+    private String modelToken = "";
+
+    private String asrUrl = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
+    private boolean asrEnabled = true;
+    private String asrAppId = "";
+    private String asrAccessToken = "";
+    private String asrResourceId = "volc.bigasr.sauc.duration";
+
+    private String ttsUrl = "wss://openspeech.bytedance.com/api/v3/tts/bidirection";
+    private String ttsAppId = "";
+    private String ttsAccessToken = "";
+    private String ttsResourceId = "seed-icl-1.0";
+    private String ttsVoiceType = "S_TTIwjz9J1";
+
+    public List<String> getDeviceTokenList() {
+        if (deviceTokens == null || deviceTokens.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(deviceTokens.split(","))
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .collect(Collectors.toList());
+    }
+
+    public boolean isFullyConfigured() {
+        return enabled
+                && !getDeviceTokenList().isEmpty()
+                && hasText(modelUrl)
+                && hasText(modelToken)
+                && (!asrEnabled || (hasText(asrAppId) && hasText(asrAccessToken)))
+                && hasText(ttsAppId)
+                && hasText(ttsAccessToken)
+                && hasText(ttsVoiceType);
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+}
