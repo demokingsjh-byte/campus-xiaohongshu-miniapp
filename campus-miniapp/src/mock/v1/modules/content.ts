@@ -12,6 +12,7 @@ const COMMENTS_KEY = 'campus-mock-server-comments';
 const COMMENT_LIKES_KEY = 'campus-mock-server-comment-likes';
 const COMMENT_REPORTS_KEY = 'campus-mock-server-comment-reports';
 const PROFILE_KEY = 'campus-mock-profile';
+const FOLLOWING_KEY = 'campus-mock-following-user-ids';
 
 interface MockComment {
   id: number
@@ -96,11 +97,34 @@ function allPosts() {
   const favorites = getIds(FAVORITES_KEY);
   return [...getStoredPosts(), ...campusPosts].map(post => ({
     ...post,
+    userId: post.userId || 20000 + post.id,
+    anonymous: post.anonymous ?? post.author === '匿名用户',
+    type: post.type || Object.keys(channelMap).find(type => channelMap[type] === post.channel),
     liked: likes.includes(post.id),
     collected: favorites.includes(post.id),
     owner: getStoredPosts().some(item => item.id === post.id),
     collects: post.collects || (favorites.includes(post.id) ? 1 : 0),
   }));
+}
+
+function getFollowingIds() {
+  const value = uni.getStorageSync(FOLLOWING_KEY);
+  return Array.isArray(value) ? value.map(Number).filter(Boolean) : [];
+}
+
+function mockFollowUser(userId: number) {
+  const targetPost = allPosts().find(post => Number(post.userId) === userId && !post.anonymous);
+  if (!targetPost)
+    return undefined;
+  return {
+    userId,
+    nickname: targetPost.author || '校园同学',
+    avatar: targetPost.avatar || '',
+    schoolName: targetPost.school || '',
+    campusName: targetPost.campusName || '',
+    mutual: false,
+    followedAt: new Date().toISOString(),
+  };
 }
 
 function page(list: CampusPost[]) {
@@ -227,6 +251,20 @@ function setInteraction(id: number, active: boolean, key: string, countKey: 'lik
 }
 
 export const contentMocks = defineMock({
+  '[PUT]/api/campus/follow/set': (params) => {
+    const targetUserId = Number(queryOf(params).targetUserId);
+    const active = String(queryOf(params).active) !== 'false';
+    const ids = getFollowingIds();
+    uni.setStorageSync(FOLLOWING_KEY, active
+      ? [...new Set([...ids, targetUserId])]
+      : ids.filter(id => id !== targetUserId));
+    return createMock({ data: active });
+  },
+  '[GET]/api/campus/follow/status': params => createMock({
+    data: getFollowingIds().includes(Number(queryOf(params).targetUserId)),
+  }),
+  '[GET]/api/campus/follow/count': () => createMock({ data: getFollowingIds().length }),
+  '[GET]/api/campus/follow/page': () => page(getFollowingIds().map(mockFollowUser).filter(Boolean) as any),
   '[GET]/api/campus/home/config': () => createMock({
     data: {
       searchPlaceholder: '搜索校园新鲜事',
@@ -240,13 +278,13 @@ export const contentMocks = defineMock({
         paidEnabled: true,
       },
       categories: [
-          { key: 'recommend', title: '推荐', channel: '推荐', icon: '🚩', enabled: true, sort: 10 },
-          { key: 'idle', title: '二手闲置', channel: '二手', icon: '🧺', publishType: 'idle', enabled: true, sort: 20 },
-          { key: 'errand', title: '代拿代办', channel: '互助', icon: '🏃', publishType: 'help', enabled: true, sort: 30 },
-          { key: 'fun', title: '校园趣事', channel: '社团', icon: '🎒', publishType: 'club', enabled: true, sort: 40 },
-          { key: 'job', title: '兼职信息', channel: '兼职', icon: '🧰', publishType: 'job', enabled: true, sort: 50 },
-          { key: 'confession', title: '表白墙', channel: '表白', icon: '💗', publishType: 'confession', enabled: true, sort: 60 },
-          { key: 'groupbuy', title: '商家团购', channel: '探店', icon: '🏪', publishType: 'shop', enabled: true, sort: 70 },
+        { key: 'recommend', title: '推荐', channel: '推荐', icon: '🚩', enabled: true, sort: 10 },
+        { key: 'idle', title: '二手闲置', channel: '二手', icon: '🧺', publishType: 'idle', enabled: true, sort: 20 },
+        { key: 'errand', title: '代拿代办', channel: '互助', icon: '🏃', publishType: 'help', enabled: true, sort: 30 },
+        { key: 'fun', title: '校园趣事', channel: '社团', icon: '🎒', publishType: 'club', enabled: true, sort: 40 },
+        { key: 'job', title: '兼职信息', channel: '兼职', icon: '🧰', publishType: 'job', enabled: true, sort: 50 },
+        { key: 'confession', title: '表白墙', channel: '表白', icon: '💗', publishType: 'confession', enabled: true, sort: 60 },
+        { key: 'groupbuy', title: '商家团购', channel: '探店', icon: '🏪', publishType: 'shop', enabled: true, sort: 70 },
       ],
     },
   }),
@@ -320,6 +358,21 @@ export const contentMocks = defineMock({
       return !keyword || [post.title, post.content, post.author, post.school, ...post.tags].join(' ').toLowerCase().includes(keyword);
     });
     return page(result.map(withoutMerchantLocation));
+  },
+  '[GET]/api/campus/post/user-page': (params) => {
+    const query = queryOf(params);
+    const userId = Number(query.userId);
+    const type = String(query.type || '').trim();
+    const pageNo = Math.max(Number(query.pageNo || 1), 1);
+    const pageSize = Math.max(Number(query.pageSize || 20), 1);
+    const result = allPosts().filter(post => Number(post.userId) === userId
+      && !post.anonymous && !post.downlisted && (post.status === undefined || post.status === 1)
+      && (!type || post.type === type));
+    const offset = (pageNo - 1) * pageSize;
+    return createMock({ data: {
+      list: result.slice(offset, offset + pageSize).map(withoutMerchantLocation),
+      total: result.length,
+    } });
   },
   '[GET]/api/campus/post/my-page': () => page(allPosts().filter(post => post.owner && !post.downlisted).map(withoutMerchantLocation)),
   '[GET]/api/campus/post/favorite-page': () => page(allPosts().filter(post => post.collected).map(withoutMerchantLocation)),

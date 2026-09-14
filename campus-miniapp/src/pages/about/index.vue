@@ -340,6 +340,14 @@ watch(() => userStore.userInfo?.avatar, syncProfileAvatar, { immediate: true });
 function goLogin(mode: 'login' | 'edit' = 'login') {
   uni.navigateTo({ url: `/pages/login/index${mode === 'edit' ? '?mode=edit' : ''}` });
 }
+function openMyPublicProfile() {
+  const userId = Number(profile.value?.id || 0);
+  if (!loggedIn.value || !userId) {
+    goLogin();
+    return;
+  }
+  uni.navigateTo({ url: `/pages/user-home/index?userId=${userId}` });
+}
 function handleCampusPass() {
   goLogin(loggedIn.value ? 'edit' : 'login');
 }
@@ -613,7 +621,7 @@ function handleMenu(action: string, requiresLogin: boolean) {
           </text>
         </view>
 
-        <view class="prototype-profile-copy" @click="goLogin(loggedIn ? 'edit' : 'login')">
+        <view class="prototype-profile-copy" @click="openMyPublicProfile">
           <view class="prototype-name-row">
             <text>{{ loggedIn ? (profile?.nickname || '同校同学') : '登录后开启校园生活' }}</text>
             <text class="prototype-chevron">

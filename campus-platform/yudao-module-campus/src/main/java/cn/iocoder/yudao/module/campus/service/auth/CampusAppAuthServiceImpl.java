@@ -9,9 +9,11 @@ import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstant
 import cn.iocoder.yudao.framework.tenant.core.util.TenantUtils;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusAuthLoginRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusPhoneBindReqVO;
+import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusPublicUserRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusUserProfileUpdateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusUserRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusWechatLoginReqVO;
+import cn.iocoder.yudao.module.campus.service.home.CampusCategoryAvailabilityService;
 import cn.iocoder.yudao.module.infra.api.file.FileApi;
 import cn.iocoder.yudao.module.system.api.social.SocialClientApi;
 import cn.iocoder.yudao.module.system.api.social.SocialUserApi;
@@ -20,6 +22,7 @@ import cn.iocoder.yudao.module.system.api.social.dto.SocialWxPhoneNumberInfoResp
 import cn.iocoder.yudao.module.system.enums.oauth2.OAuth2ClientConstants;
 import cn.iocoder.yudao.module.system.enums.social.SocialTypeEnum;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -32,9 +35,11 @@ import javax.annotation.Resource;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import static cn.iocoder.yudao.framework.common.exception.util.ServiceExceptionUtil.exception0;
 
@@ -56,6 +61,8 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
     private SocialClientApi socialClientApi;
     @Resource
     private FileApi fileApi;
+    @Resource
+    private CampusCategoryAvailabilityService categoryAvailabilityService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -126,6 +133,81 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "校园用户不存在");
         }
         return toUserResp(rows.get(0));
+    }
+
+    @Override
+    public CampusPublicUserRespVO getPublicUser(Long targetUserId, Long loginUserId) {
+        if (targetUserId == null || targetUserId <= 0) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "用户编号不正确");
+        }
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("targetUserId", targetUserId)
+                .addValue("loginUserId", loginUserId);
+        List<Map<String, Object>> rows = namedParameterJdbcTemplate.queryForList(
+                "SELECT u.id, u.tenant_id, u.nickname, u.avatar, u.school_name, u.campus_name, u.grade, u.gender,"
+                        + " (SELECT COUNT(*) FROM campus_user_follow follower"
+                        + " WHERE follower.follow_user_id = u.id AND follower.deleted = b'0') AS follower_count,"
+                        + " (SELECT COUNT(*) FROM campus_user_follow following"
+                        + " WHERE following.user_id = u.id AND following.deleted = b'0') AS following_count,"
+                        + " CASE WHEN :loginUserId IS NULL THEN b'0' ELSE EXISTS(SELECT 1 FROM campus_user_follow mine"
+                        + " WHERE mine.user_id = :loginUserId AND mine.follow_user_id = u.id AND mine.deleted = b'0') END AS followed"
+                        + " FROM campus_miniapp_user u"
+                        + " WHERE u.id = :targetUserId AND u.deleted = b'0' LIMIT 1", params);
+        if (rows.isEmpty()) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "用户不存在或已注销");
+        }
+
+        Map<String, Object> row = rows.get(0);
+        Long tenantId = toLong(row.get("tenant_id"));
+        CampusPublicUserRespVO respVO = new CampusPublicUserRespVO();
+        respVO.setUserId(toLong(row.get("id")));
+        respVO.setTenantId(tenantId);
+        respVO.setNickname(StrUtil.blankToDefault(toStr(row.get("nickname")), "校园同学"));
+        respVO.setAvatar(refreshAvatarUrl(toStr(row.get("avatar"))));
+        respVO.setSchoolName(toStr(row.get("school_name")));
+        respVO.setCampusName(toStr(row.get("campus_name")));
+        respVO.setGrade(toStr(row.get("grade")));
+        respVO.setGender(toStr(row.get("gender")));
+        respVO.setProvince(findProvince(tenantId));
+        respVO.setFollowerCount(toLong(row.get("follower_count")));
+        respVO.setFollowingCount(toLong(row.get("following_count")));
+        respVO.setFollowed(toBoolean(row.get("followed")));
+        respVO.setSelf(loginUserId != null && loginUserId.equals(targetUserId));
+        respVO.setPostCounts(getPublicPostCounts(targetUserId, tenantId));
+        return respVO;
+    }
+
+    private String findProvince(Long tenantId) {
+        try {
+            List<String> rows = namedParameterJdbcTemplate.queryForList(
+                    "SELECT province FROM campus_tenant_profile"
+                            + " WHERE system_tenant_id = :tenantId AND deleted = b'0' LIMIT 1",
+                    new MapSqlParameterSource("tenantId", tenantId), String.class);
+            return rows.isEmpty() ? "" : StrUtil.blankToDefault(rows.get(0), "");
+        } catch (DataAccessException ex) {
+            // 兼容尚未建立校区资料表的旧环境，省份标签缺失不应阻塞整个公开主页。
+            return "";
+        }
+    }
+
+    private Map<String, Long> getPublicPostCounts(Long targetUserId, Long tenantId) {
+        List<Map<String, Object>> rows = namedParameterJdbcTemplate.queryForList(
+                "SELECT p.type, COUNT(*) AS post_count FROM campus_post p"
+                        + " WHERE p.user_id = :targetUserId AND p.status = 1 AND p.deleted = b'0'"
+                        + " AND p.anonymous = b'0'"
+                        + " AND (p.type <> 'help' OR EXISTS (SELECT 1 FROM campus_trade_order eo"
+                        + " WHERE eo.product_id = p.id AND eo.biz_type = 4 AND eo.status IN (1, 2)"
+                        + " AND eo.fulfillment_status IN (1, 2, 3, 4) AND eo.deleted = b'0'))"
+                        + " GROUP BY p.type", new MapSqlParameterSource("targetUserId", targetUserId));
+        Set<String> disabledTypes = categoryAvailabilityService.getDisabledPublishTypes(tenantId);
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (Map<String, Object> countRow : rows) {
+            String type = toStr(countRow.get("type"));
+            if (StrUtil.isNotBlank(type) && !disabledTypes.contains(type)) {
+                counts.put(type, toLong(countRow.get("post_count")));
+            }
+        }
+        return counts;
     }
 
     @Override
@@ -297,6 +379,20 @@ public class CampusAppAuthServiceImpl implements CampusAppAuthService {
             return ((Number) value).longValue();
         }
         return value == null ? null : Long.valueOf(String.valueOf(value));
+    }
+
+    private static boolean toBoolean(Object value) {
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() != 0;
+        }
+        if (value instanceof byte[]) {
+            byte[] bytes = (byte[]) value;
+            return bytes.length > 0 && bytes[0] != 0;
+        }
+        return "1".equals(String.valueOf(value)) || "true".equalsIgnoreCase(String.valueOf(value));
     }
 
 }

@@ -8,6 +8,7 @@ export interface CampusPost {
   channel: string
   title: string
   content: string
+  anonymous?: boolean
   author: string
   avatar?: string
   avatarText: string

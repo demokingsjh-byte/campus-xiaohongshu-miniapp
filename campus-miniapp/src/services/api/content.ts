@@ -107,6 +107,13 @@ export interface CampusPostPageParams {
   pageSize?: number
 }
 
+export interface CampusUserPostPageParams {
+  userId: number
+  type?: string
+  pageNo?: number
+  pageSize?: number
+}
+
 export interface CampusPostReportParams {
   reason: string
   detail?: string
@@ -271,6 +278,15 @@ export function createCampusPost(params: CampusPostCreateParams) {
 
 export function getCampusPostPage(params: CampusPostPageParams) {
   return request.Get<CampusPostPage>(`${POST_BASE}/page`, { params, cacheFor: 0, meta: { ignoreAuth: true } });
+}
+
+/** 获取指定用户可公开展示的发布，服务端会过滤匿名、下架和已关闭分类。 */
+export function getCampusUserPostPage(params: CampusUserPostPageParams) {
+  return request.Get<CampusPostPage>(`${POST_BASE}/user-page`, {
+    params,
+    cacheFor: 0,
+    meta: { ignoreAuth: true, silentError: true },
+  });
 }
 
 /**

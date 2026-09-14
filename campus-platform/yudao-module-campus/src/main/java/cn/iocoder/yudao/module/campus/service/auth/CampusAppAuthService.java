@@ -2,6 +2,7 @@ package cn.iocoder.yudao.module.campus.service.auth;
 
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusAuthLoginRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusPhoneBindReqVO;
+import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusPublicUserRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusUserProfileUpdateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusUserRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusWechatLoginReqVO;
@@ -15,6 +16,8 @@ public interface CampusAppAuthService {
     CampusAuthLoginRespVO refreshToken(String refreshToken);
 
     CampusUserRespVO getLoginUser(Long userId);
+
+    CampusPublicUserRespVO getPublicUser(Long targetUserId, Long loginUserId);
 
     CampusUserRespVO updateProfile(Long userId, @Valid CampusUserProfileUpdateReqVO reqVO);
 

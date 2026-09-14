@@ -156,6 +156,7 @@ const isOwnPost = computed(() => {
   const schoolMatches = Boolean(currentSchool && authorSchool && currentSchool === authorSchool);
   return avatarMatches || schoolMatches;
 });
+const authorProfileAvailable = computed(() => Number(post.value?.userId || 0) > 0 && post.value?.anonymous !== true);
 const isErrandPublisher = computed(() => {
   const publisherId = Number(errandOrder.value?.buyerId || 0);
   return publisherId > 0 ? publisherId === currentUserId.value : isOwnPost.value;
@@ -675,6 +676,18 @@ async function changeCommentSort(sort: 'latest' | 'likes') {
   commentSort.value = sort;
   await loadComments();
 }
+function openUserProfile(userId?: number, type?: string) {
+  const resolvedUserId = Number(userId || 0);
+  if (!resolvedUserId)
+    return;
+  const typeQuery = type ? `&type=${encodeURIComponent(type)}` : '';
+  uni.navigateTo({ url: `/pages/user-home/index?userId=${resolvedUserId}${typeQuery}` });
+}
+
+function openAuthorProfile() {
+  if (authorProfileAvailable.value)
+    openUserProfile(post.value.userId, post.value.type);
+}
 
 function confirmErrandRefund(order: CampusTradeOrder, retry = false) {
   const amount = Number(order.amount || 0).toFixed(2);
@@ -1142,9 +1155,9 @@ function reportPost() {
       </view>
       <view class="content-card" :class="{ 'confession-content-card': isConfession }">
         <view class="author-row">
-          <view class="author-avatar">
+          <view class="author-avatar" :class="{ clickable: authorProfileAvailable }" @click="openAuthorProfile">
             <image :src="resolveCampusAvatar(post.avatar)" mode="aspectFill" />
-          </view><view class="author-main">
+          </view><view class="author-main" :class="{ clickable: authorProfileAvailable }" @click="openAuthorProfile">
             <view class="author-name">
               <text>{{ post.author }}</text><text class="verified-badge">
                 ✓ 同校
@@ -1152,7 +1165,12 @@ function reportPost() {
             </view><view class="author-sub">
               {{ post.school }} · {{ post.time }}
             </view>
-          </view><button class="follow-btn" :class="{ followed: followed || isOwnPost }" @click="isOwnPost ? managePost() : toggleFollow()">
+          </view><button
+            v-if="isOwnPost || authorProfileAvailable"
+            class="follow-btn"
+            :class="{ followed: followed || isOwnPost }"
+            @click="isOwnPost ? managePost() : toggleFollow()"
+          >
             {{ isOwnPost ? '管理' : (followed ? '已关注' : '＋ 关注') }}
           </button><button class="author-share" open-type="share" aria-label="转发给微信好友">
             <image src="/static/icons/ui/wechat-green.svg" mode="aspectFit" />
@@ -1263,10 +1281,10 @@ function reportPost() {
         </view>
         <view v-for="item in topLevelComments" :key="item.id" class="comment-block">
           <view class="comment" @click="replyToComment(item)">
-            <view class="comment-avatar">
+            <view class="comment-avatar" @click.stop="openUserProfile(item.userId)">
               <image :src="resolveCampusAvatar(item.avatar)" mode="aspectFill" />
             </view><view class="comment-main">
-              <view class="comment-name">
+              <view class="comment-name" @click.stop="openUserProfile(item.userId)">
                 {{ item.author }}
               </view><view class="comment-content">
                 {{ item.content }}
@@ -1304,10 +1322,10 @@ function reportPost() {
               v-for="reply in visibleRepliesOf(item.id)" :key="reply.id" class="comment comment-reply"
               @click="replyToComment(reply)"
             >
-              <view class="comment-avatar">
+              <view class="comment-avatar" @click.stop="openUserProfile(reply.userId)">
                 <image :src="resolveCampusAvatar(reply.avatar)" mode="aspectFill" />
               </view><view class="comment-main">
-                <view class="comment-name">
+                <view class="comment-name" @click.stop="openUserProfile(reply.userId)">
                   {{ reply.author }}
                 </view><view class="comment-content">
                   <text class="reply-mark">

@@ -2,6 +2,7 @@ import { defineMock } from '@alova/mock';
 import multiavatar from '@multiavatar/multiavatar';
 import { join, random, sampleSize } from 'lodash-es';
 import { ResultEnum } from '@/enums/httpEnum';
+import { campusPosts } from '@/mock/campus';
 import { createMock } from '@/mock/utils';
 import { getRandomChsString } from '@/utils/character';
 
@@ -11,6 +12,18 @@ function createRandomToken(len = 36 * 6) {
 }
 
 const MOCK_PROFILE_KEY = 'campus-mock-profile';
+const MOCK_POSTS_KEY = 'campus-mock-server-posts';
+const MOCK_FOLLOWING_KEY = 'campus-mock-following-user-ids';
+const mockTypeByChannel: Record<string, string> = {
+  二手: 'idle',
+  互助: 'help',
+  表白: 'confession',
+  拼车: 'ride',
+  探店: 'shop',
+  失物: 'lost',
+  社团: 'club',
+  兼职: 'job',
+};
 function getMockProfile() {
   const cached = uni.getStorageSync(MOCK_PROFILE_KEY);
   return cached && typeof cached === 'object' ? cached : null;
@@ -103,6 +116,49 @@ export const authMocks = defineMock({
         lastLoginTime: '2026-07-05 10:00:00',
       },
     });
+  },
+  '[GET]/api/campus/auth/public-profile': (params) => {
+    const query = params?.query || params?.params || {};
+    const userId = Number(query.userId);
+    const currentProfile = getMockProfile() || {};
+    const storedPosts = uni.getStorageSync(MOCK_POSTS_KEY);
+    const posts = [...(Array.isArray(storedPosts) ? storedPosts : []), ...campusPosts]
+      .map(post => ({
+        ...post,
+        userId: post.userId || 20000 + post.id,
+        type: post.type || mockTypeByChannel[post.channel],
+        anonymous: post.anonymous ?? post.author === '匿名用户',
+      }));
+    const targetPost = posts.find(post => Number(post.userId) === userId && !post.anonymous);
+    const isSelf = userId === 10001;
+    if (!isSelf && !targetPost)
+      return createMock({ data: null, code: ResultEnum.FAIL, message: '用户不存在或已注销' });
+    const ownPosts = posts.filter(post => Number(post.userId) === userId
+      && !post.anonymous && !post.downlisted && (post.status === undefined || post.status === 1));
+    const postCounts = ownPosts.reduce<Record<string, number>>((counts, post) => {
+      const type = post.type || '';
+      if (type)
+        counts[type] = (counts[type] || 0) + 1;
+      return counts;
+    }, {});
+    const followingIds = uni.getStorageSync(MOCK_FOLLOWING_KEY);
+    const normalizedFollowingIds = Array.isArray(followingIds) ? followingIds.map(Number) : [];
+    return createMock({ data: {
+      userId,
+      tenantId: Number(isSelf ? (ownPosts[0]?.tenantId || 201) : targetPost?.tenantId || 201),
+      nickname: isSelf ? (currentProfile.nickname || '校园体验用户') : (targetPost?.author || '校园同学'),
+      avatar: isSelf ? (currentProfile.avatar || '') : (targetPost?.avatar || ''),
+      schoolName: isSelf ? (currentProfile.schoolName || '吉首大学') : (targetPost?.school || '吉首大学'),
+      campusName: isSelf ? (currentProfile.campusName || '吉首校区') : (targetPost?.campusName || '吉首校区'),
+      grade: isSelf ? (currentProfile.grade || '2023级') : '2023级',
+      gender: isSelf ? (currentProfile.gender || '不公开') : (userId % 2 ? '女' : '男'),
+      province: '湖南省',
+      followerCount: ownPosts.reduce((total, post) => total + Number(post.likes || 0), 0),
+      followingCount: isSelf ? normalizedFollowingIds.length : userId % 47,
+      followed: normalizedFollowingIds.includes(userId),
+      self: isSelf,
+      postCounts,
+    } });
   },
   '[PUT]/api/campus/auth/profile': (params) => {
     const currentProfile = getMockProfile() || {};

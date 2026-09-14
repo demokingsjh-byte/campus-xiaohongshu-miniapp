@@ -17,6 +17,9 @@ public interface CampusPostService {
     PageResult<CampusPostRespVO> getPostPage(Long loginUserId, Long tenantId, String channel,
                                              String keyword, Integer pageNo, Integer pageSize);
 
+    PageResult<CampusPostRespVO> getUserPostPage(Long loginUserId, Long targetUserId, String type,
+                                                 Integer pageNo, Integer pageSize);
+
     PageResult<CampusPostRespVO> getMyPostPage(Long userId, Integer pageNo, Integer pageSize);
 
     PageResult<CampusPostRespVO> getFavoritePostPage(Long userId, Integer pageNo, Integer pageSize);

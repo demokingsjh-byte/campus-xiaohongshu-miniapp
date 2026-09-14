@@ -255,6 +255,31 @@ public class CampusPostServiceImpl implements CampusPostService {
     }
 
     @Override
+    public PageResult<CampusPostRespVO> getUserPostPage(Long loginUserId, Long targetUserId, String type,
+                                                        Integer pageNo, Integer pageSize) {
+        if (targetUserId == null || targetUserId <= 0) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "用户编号不正确");
+        }
+        Map<String, Object> targetUser = getUser(targetUserId);
+        long tenantId = toLong(targetUser.get("tenant_id"), DEFAULT_TENANT_ID);
+        String normalizedType = StrUtil.blankToDefault(type, "").trim();
+        if (StrUtil.isNotBlank(normalizedType) && !SUPPORTED_TYPES.contains(normalizedType)) {
+            throw exception0(GlobalErrorCodeConstants.BAD_REQUEST.getCode(), "不支持的内容分类");
+        }
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("targetUserId", targetUserId)
+                .addValue("type", StrUtil.isBlank(normalizedType) ? null : normalizedType)
+                .addValue("loginUserId", loginUserId);
+        // 公开主页可以保留已售商品的历史展示，但绝不公开匿名、下架、审核中内容；
+        // 后台分类开关和代办付款可见性继续沿用首页的服务端规则。
+        String where = " WHERE p.user_id = :targetUserId AND p.deleted = b'0' AND p.status = 1"
+                + " AND p.anonymous = b'0' AND (:type IS NULL OR p.type = :type)"
+                + ERRAND_PUBLIC_VISIBILITY;
+        where += disabledPublishTypeCondition(tenantId, params);
+        return page(where, params, loginUserId, pageNo, pageSize, "p.create_time DESC");
+    }
+
+    @Override
     public PageResult<CampusPostRespVO> getMyPostPage(Long userId, Integer pageNo, Integer pageSize) {
         requireUserId(userId);
         MapSqlParameterSource params = new MapSqlParameterSource("loginUserId", userId);
@@ -919,11 +944,14 @@ public class CampusPostServiceImpl implements CampusPostService {
                 .collect(Collectors.toList());
         vo.setId(id);
         vo.setTenantId(toLongObject(row.get("tenant_id")));
-        vo.setUserId(toLongObject(row.get("user_id")));
+        Long authorUserId = toLongObject(row.get("user_id"));
+        boolean owner = loginUserId != null && loginUserId.equals(authorUserId);
+        vo.setUserId(anonymous && !owner ? null : authorUserId);
         vo.setType(type);
         vo.setChannel(value(row, "channel"));
         vo.setTitle(value(row, "title"));
         vo.setContent(value(row, "content"));
+        vo.setAnonymous(anonymous);
         vo.setAuthor(author);
         vo.setAvatar(anonymous ? "" : refreshFileUrl(value(row, "user_avatar")));
         vo.setAvatarText(StrUtil.isBlank(author) ? "校" : author.substring(0, 1));
@@ -942,7 +970,6 @@ public class CampusPostServiceImpl implements CampusPostService {
             vo.setSoldOut(saleStatus == 2 || stockAvailable <= 0);
         }
         vo.setLocation(value(row, "location"));
-        boolean owner = loginUserId != null && loginUserId.equals(vo.getUserId());
         if (includeMerchantLocation && "shop".equals(type)) {
             vo.setMerchantAddress(value(row, "merchant_address"));
             vo.setMerchantLocationName(value(row, "merchant_location_name"));

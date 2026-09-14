@@ -17,6 +17,8 @@ public class CampusPostRespVO {
     private String channel;
     private String title;
     private String content;
+    @Schema(description = "是否匿名发布；匿名内容不会关联公开主页")
+    private Boolean anonymous;
     private String author;
     private String avatar;
     private String avatarText;

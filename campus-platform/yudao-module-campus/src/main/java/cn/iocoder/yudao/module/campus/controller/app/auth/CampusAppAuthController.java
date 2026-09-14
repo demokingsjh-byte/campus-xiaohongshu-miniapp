@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusAuthLoginRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusPhoneBindReqVO;
+import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusPublicUserRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusUserProfileUpdateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusUserRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.auth.vo.CampusWechatLoginReqVO;
@@ -90,6 +91,14 @@ public class CampusAppAuthController {
     @Operation(summary = "获取当前校园用户信息")
     public CommonResult<CampusUserRespVO> getLoginUser() {
         return success(campusAppAuthService.getLoginUser(getLoginUserId()));
+    }
+
+    @GetMapping("/public-profile")
+    @PermitAll
+    @TenantIgnore
+    @Operation(summary = "获取校园用户公开主页资料")
+    public CommonResult<CampusPublicUserRespVO> getPublicUser(@RequestParam("userId") Long userId) {
+        return success(campusAppAuthService.getPublicUser(userId, getLoginUserId()));
     }
 
     @PutMapping("/profile")

@@ -66,6 +66,18 @@ public class CampusAppPostController {
         return success(campusPostService.getPostPage(getLoginUserId(), tenantId, channel, keyword, pageNo, pageSize));
     }
 
+    @GetMapping("/user-page")
+    @PermitAll
+    @TenantIgnore
+    @Operation(summary = "获取指定用户的公开发布")
+    public CommonResult<PageResult<CampusPostRespVO>> getUserPostPage(
+            @RequestParam("userId") Long userId,
+            @RequestParam(value = "type", required = false) String type,
+            @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
+            @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize) {
+        return success(campusPostService.getUserPostPage(getLoginUserId(), userId, type, pageNo, pageSize));
+    }
+
     @GetMapping("/my-page")
     @Operation(summary = "获取我的发布")
     public CommonResult<PageResult<CampusPostRespVO>> getMyPostPage(

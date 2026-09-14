@@ -184,6 +184,12 @@ function openPost(id?: number) {
     uni.navigateTo({ url: `/pages/detail/index?id=${id}` });
 }
 
+function openUserProfile(userId?: number) {
+  const resolvedUserId = Number(userId || 0);
+  if (resolvedUserId)
+    uni.navigateTo({ url: `/pages/user-home/index?userId=${resolvedUserId}` });
+}
+
 function goFollow() {
   uni.switchTab({ url: '/pages/index/index' });
 }
@@ -253,12 +259,12 @@ function formatDate(timestamp: number) {
       />
 
       <view v-else-if="mode === 'following' && filteredFollowing.length" class="record-card following-list">
-        <view v-for="item in filteredFollowing" :key="item.userId" class="following-row">
+        <view v-for="item in filteredFollowing" :key="item.userId" class="following-row" @click="openUserProfile(item.userId)">
           <image class="following-avatar" :src="resolveCampusAvatar(item.avatar)" mode="aspectFill" />
           <view class="record-main">
             <text class="record-title">{{ item.nickname }}</text>
           </view>
-          <button @click="unfollow(item)">已关注</button>
+          <button @click.stop="unfollow(item)">已关注</button>
         </view>
       </view>
 

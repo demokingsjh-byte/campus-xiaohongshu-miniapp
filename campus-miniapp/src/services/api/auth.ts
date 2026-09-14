@@ -8,6 +8,24 @@ const CAMPUS_CURRENT_USER = '/campus/auth/me';
 const CAMPUS_PROFILE = '/campus/auth/profile';
 const CAMPUS_PHONE = '/campus/auth/phone';
 const CAMPUS_ACCOUNT = '/campus/auth/account';
+const CAMPUS_PUBLIC_PROFILE = '/campus/auth/public-profile';
+
+export interface CampusPublicUserProfile {
+  userId: number
+  tenantId: number
+  nickname: string
+  avatar?: string
+  schoolName?: string
+  campusName?: string
+  grade?: string
+  gender?: string
+  province?: string
+  followerCount: number
+  followingCount: number
+  followed: boolean
+  self: boolean
+  postCounts: Record<string, number>
+}
 
 /**
  * 登录
@@ -60,6 +78,15 @@ export function getCurrentCampusUser() {
     meta: {
       silentError: true,
     },
+  });
+}
+
+/** 获取不包含手机号、OpenID 等隐私字段的公开主页资料。 */
+export function getCampusPublicUserProfile(userId: number) {
+  return request.Get<CampusPublicUserProfile>(CAMPUS_PUBLIC_PROFILE, {
+    params: { userId },
+    cacheFor: 0,
+    meta: { ignoreAuth: true, silentError: true },
   });
 }
 
