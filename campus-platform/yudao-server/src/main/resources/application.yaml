@@ -352,3 +352,37 @@ yudao:
       type: redis # 消息总线的类型
 
 debug: false
+
+--- #################### ESP32-S3 视听说机器人 ####################
+
+campus:
+  esp32-assistant:
+    # 未填完凭证前保持关闭，避免设备连上后才发现上游不可用。
+    enabled: ${CAMPUS_ESP32_ASSISTANT_ENABLED:false}
+    path: /app-api/campus/esp32/assistant/ws
+    legacy-path: /ai_guide_service/api/v1/esp32/assistant/ws
+    # 多个设备 token 使用英文逗号分隔。
+    device-tokens: ${CAMPUS_ESP32_DEVICE_TOKENS:esp32_1KwVNp4Uv9C1_i5iE89eiFgySb32wxCQYsitrABMRO4}
+    max-audio-seconds: 30
+    max-connections-per-ip: 20
+    cooldown-millis: 650
+    output-audio-chunk-bytes: 1920
+    playback-pace-percent: 90
+
+    # 视频导览模型：直接接收 WAV 音频与本轮 JPEG 图片。
+    model-url: ${CAMPUS_ESP32_MODEL_URL:ws://82.156.49.60:8088/ws/guide}
+    model-token: ${CAMPUS_ESP32_MODEL_TOKEN:sk-zgf-test-X3iqDEQyX_qR3SWsHJL5EJfbBZrt-63D}
+
+    # ASR 只异步生成问题文字日志，不参与模型请求闸门。
+    asr-enabled: ${CAMPUS_ESP32_ASR_ENABLED:true}
+    asr-url: wss://openspeech.bytedance.com/api/v3/sauc/bigmodel
+    asr-app-id: ${CAMPUS_VOLC_ASR_APP_ID:1828671130}
+    asr-access-token: ${CAMPUS_VOLC_ASR_ACCESS_TOKEN:L4BzfT6j8PzqV8HbVEawdygGsrT8llg4}
+    asr-resource-id: volc.bigasr.sauc.duration
+
+    # TTS 使用原视频通话链路的男声音色，输出 PCM16LE / 24kHz / 单声道。
+    tts-url: wss://openspeech.bytedance.com/api/v3/tts/bidirection
+    tts-app-id: ${CAMPUS_VOLC_TTS_APP_ID:1828671130}
+    tts-access-token: ${CAMPUS_VOLC_TTS_ACCESS_TOKEN:L4BzfT6j8PzqV8HbVEawdygGsrT8llg4}
+    tts-resource-id: seed-icl-1.0
+    tts-voice-type: ${CAMPUS_VOLC_TTS_VOICE_TYPE:S_TTIwjz9J1}
