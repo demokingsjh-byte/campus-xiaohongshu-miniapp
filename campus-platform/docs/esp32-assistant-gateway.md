@@ -132,7 +132,10 @@ CAMPUS_VOLC_ASR_APP_ID=<火山AppId>
 CAMPUS_VOLC_ASR_ACCESS_TOKEN=<火山AccessToken>
 CAMPUS_VOLC_TTS_APP_ID=<火山AppId>
 CAMPUS_VOLC_TTS_ACCESS_TOKEN=<火山AccessToken>
+CAMPUS_VOLC_TTS_VOICE_TYPE=zh_male_m191_uranus_bigtts
 ```
+
+当前默认资源为 `seed-icl-2.0`，音色为火山“男声 M191”（`zh_male_m191_uranus_bigtts`）；如需切换其他音色，只覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE` 即可。
 
 如果暂时不需要用户语音转文字日志，可设：
 
@@ -160,7 +163,21 @@ location /app-api/campus/esp32/assistant/ws {
 }
 ```
 
-## 7. 编译与上线检查
+## 7. 后台链路日志
+
+执行 `sql/mysql/campus-esp32-log-upgrade.sql` 后，管理后台“校园运营 → ESP32链路日志”会展示每轮请求的设备编号、请求编号、状态及以下耗时：采集、提交模型、ASR、模型首 token、模型总耗时、TTS 首包、TTS 输出和本轮总耗时。
+
+页面对应接口为：
+
+```text
+GET /admin-api/campus/esp32/log/page
+GET /admin-api/campus/esp32/log/summary
+GET /admin-api/campus/esp32/log/get?id=日志编号
+```
+
+日志不会落库 device_token、音频、图片或对话原文；数据库未执行升级脚本时，设备链路仍可运行，但后台不会有记录。
+
+## 8. 编译与上线检查
 
 在 `campus-platform` 目录执行：
 

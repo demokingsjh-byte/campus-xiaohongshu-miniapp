@@ -29,6 +29,11 @@ unpackage/
 /.env.local
 application-local.yml
 
+# Production database backups: only encrypted snapshots may be committed
+/backups/production/*.sql
+/backups/production/*.sql.gz
+/backups/production/*.key
+
 # Build caches
 .cache/
 .vite/
