@@ -1,6 +1,7 @@
 package cn.iocoder.yudao.module.campus.framework.esp32;
 
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
+import cn.iocoder.yudao.module.campus.service.esp32.CampusEsp32LogService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     private final DoubaoAsrClient asrClient;
     private final DoubaoTtsClient ttsClient;
     private final GuideModelClient modelClient;
+    private final CampusEsp32LogService logService;
 
     private final Map<String, DeviceContext> sessions = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> activeIps = new ConcurrentHashMap<>();
@@ -174,7 +176,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             String id = requestId == null || requestId.trim().isEmpty()
                     ? "esp32_turn_" + UUID.randomUUID().toString().replace("-", "")
                     : requestId.trim().substring(0, Math.min(100, requestId.trim().length()));
-            context.turn = new TurnBuffer(id);
+            Long logId = logService.startTurn(context.session.getId(), context.deviceId, context.clientIp, id);
+            context.turn = new TurnBuffer(id, logId);
             setStateLocked(context, DeviceState.CAPTURING, id, "正在聆听");
             sendJsonLocked(context, event("turn_ready", "request_id", id));
         }
@@ -241,6 +244,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             turn = context.turn.snapshot();
             context.turn = null;
             if (turn.pcm.length < Esp32ProtocolUtils.MIN_AUDIO_BYTES) {
+                logService.markIgnored(turn.logId, turn.pcm.length, turn.images.size(), "audio_too_short");
                 Map<String, Object> ignored = event("turn_ignored", "request_id", turn.requestId);
                 ignored.put("reason", "audio_too_short");
                 sendJsonLocked(context, ignored);
@@ -252,9 +256,11 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 return;
             }
             context.activeRequestId = turn.requestId;
+            context.activeLogId = turn.logId;
             context.turnStartedAt = turn.startedAt;
             setStateLocked(context, DeviceState.THINKING, turn.requestId, "正在理解");
         }
+        long captureMs = elapsedMillis(turn.startedAt);
         byte[] wav = Esp32ProtocolUtils.pcm16LeToWav(
                 turn.pcm, Esp32ProtocolUtils.INPUT_SAMPLE_RATE);
         Map<String, Object> chat = event("chat", "request_id", turn.requestId);
@@ -269,33 +275,41 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         modelContext.put("client", "esp32-s3");
         modelContext.put("device_id", context.deviceId);
         chat.put("context", modelContext);
-        if (!context.modelSession.send(chat)) {
+        long submitStartedAt = System.nanoTime();
+        if (context.modelSession == null || !context.modelSession.send(chat)) {
+            logService.markFailed(turn.logId, "MODEL_UNAVAILABLE", "模型连接不可用",
+                    elapsedMillis(turn.startedAt));
             sendError(context, "MODEL_UNAVAILABLE", "模型连接不可用", true, turn.requestId);
             synchronized (context.lock) {
                 context.activeRequestId = "";
+                context.activeLogId = null;
                 setStateLocked(context, DeviceState.LISTENING, turn.requestId,
                         "服务异常，请重试");
             }
             return;
         }
+        long submitMs = elapsedMillis(submitStartedAt);
+        logService.markSubmitted(turn.logId, turn.pcm.length, turn.images.size(), captureMs, submitMs);
         log.info("[ESP32_TURN_SUBMITTED] deviceId={} requestId={} audioBytes={} imageCount={} submitMs={}",
                 context.deviceId, turn.requestId, turn.pcm.length, turn.images.size(),
-                elapsedMillis(turn.startedAt));
+                captureMs);
 
         // 模型原生支持音频输入，ASR 仅异步补充文字日志，失败不能阻断模型回答。
         if (properties.isAsrEnabled()) {
-            mediaExecutor.execute(() -> transcribeInBackground(context, turn.requestId, wav));
+            mediaExecutor.execute(() -> transcribeInBackground(context, turn.requestId, turn.logId, wav));
         }
     }
 
-    private void transcribeInBackground(DeviceContext context, String requestId, byte[] wav) {
+    private void transcribeInBackground(DeviceContext context, String requestId, Long logId, byte[] wav) {
         long startedAt = System.nanoTime();
         try {
             String transcript = asrClient.transcribe(wav).trim();
+            logService.markAsr(logId, elapsedMillis(startedAt), true);
             log.info("[ESP32_ASR_COMPLETED] deviceId={} requestId={} elapsedMs={} transcript={}",
                     context.deviceId, requestId, elapsedMillis(startedAt),
                     abbreviate(transcript, 160));
         } catch (Exception exception) {
+            logService.markAsr(logId, elapsedMillis(startedAt), false);
             log.warn("[ESP32_ASR_FAILED] deviceId={} requestId={} elapsedMs={}",
                     context.deviceId, requestId, elapsedMillis(startedAt), exception);
         }
@@ -344,6 +358,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 if (context.tts != null) {
                     context.tts.finish();
                 }
+                Long modelTotalMs = nullableStatMillis(event.path("stats").path("total_ms"));
+                Long modelFirstTokenMs = nullableStatMillis(event.path("stats").path("first_token_ms"));
+                logService.markModelDone(context.activeLogId, modelTotalMs, modelFirstTokenMs);
                 log.info("[ESP32_MODEL_DONE] deviceId={} requestId={} totalMs={} firstTokenMs={} text={}",
                         context.deviceId, requestId,
                         event.path("stats").path("total_ms").asLong(-1),
@@ -353,7 +370,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
             if ("interrupted".equals(type)) {
                 closeTtsLocked(context);
+                logService.markInterrupted(context.activeLogId, elapsedMillis(context.turnStartedAt));
                 context.activeRequestId = "";
+                context.activeLogId = null;
                 sendTextLocked(context, event.toString());
                 setStateLocked(context, DeviceState.LISTENING, requestId,
                         "已停止，请开始提问");
@@ -361,7 +380,11 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
             if ("error".equals(type)) {
                 closeTtsLocked(context);
+                logService.markFailed(context.activeLogId, "MODEL_ERROR",
+                        abbreviate(event.path("message").asText("模型服务返回错误"), 255),
+                        elapsedMillis(context.turnStartedAt));
                 context.activeRequestId = "";
+                context.activeLogId = null;
                 sendTextLocked(context, event.toString());
                 setStateLocked(context, DeviceState.LISTENING, requestId,
                         "服务异常，请重试");
@@ -376,6 +399,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         context.ttsRequestId = requestId;
         context.ttsFirstAudio = true;
         context.ttsHasText = false;
+        context.ttsFirstAudioAt = 0L;
         context.pendingTtsText.setLength(0);
         Map<String, Object> start = event("audio_start", "request_id", requestId);
         start.put("format", "pcm_s16le");
@@ -411,7 +435,10 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
             if (context.ttsFirstAudio) {
                 context.ttsFirstAudio = false;
+                context.ttsFirstAudioAt = System.nanoTime();
                 setStateLocked(context, DeviceState.SPEAKING, requestId, "AI 正在讲解");
+                logService.markTtsFirstAudio(context.activeLogId,
+                        TimeUnit.NANOSECONDS.toMillis(context.ttsFirstAudioAt - context.turnStartedAt));
                 log.info("[ESP32_FIRST_TTS_AUDIO] deviceId={} requestId={} elapsedMs={}",
                         context.deviceId, requestId,
                         TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - context.turnStartedAt));
@@ -428,6 +455,12 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
             sendJsonLocked(context, event("audio_done", "request_id", requestId));
             sendJsonLocked(context, event("turn_done", "request_id", requestId));
+            Long logId = context.activeLogId;
+            long totalMs = elapsedMillis(context.turnStartedAt);
+            Long ttsAudioMs = context.ttsFirstAudioAt > 0
+                    ? elapsedMillis(context.ttsFirstAudioAt) : null;
+            logService.markCompleted(logId, totalMs, ttsAudioMs);
+            context.activeLogId = null;
             context.tts = null;
             context.ttsRequestId = "";
             setStateLocked(context, DeviceState.COOLDOWN, requestId, "即将恢复聆听");
@@ -439,6 +472,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                     return;
                 }
                 context.activeRequestId = "";
+                context.activeLogId = null;
                 setStateLocked(context, DeviceState.LISTENING, requestId, "可以提问了");
             }
         }, Math.max(0, properties.getCooldownMillis()), TimeUnit.MILLISECONDS);
@@ -451,11 +485,14 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             if (!requestId.equals(context.activeRequestId)) {
                 return;
             }
+            logService.markFailed(context.activeLogId, "TTS_FAILED", "语音合成暂时不可用",
+                    elapsedMillis(context.turnStartedAt));
             sendErrorLocked(context, "TTS_FAILED", "语音合成暂时不可用", true, requestId);
             sendJsonLocked(context, event("turn_done", "request_id", requestId));
             context.tts = null;
             context.ttsRequestId = "";
             context.activeRequestId = "";
+            context.activeLogId = null;
             setStateLocked(context, DeviceState.LISTENING, requestId, "可以提问了");
         }
     }
@@ -469,6 +506,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 return;
             }
             String requestId = context.turn.requestId;
+            logService.markIgnored(context.turn.logId, context.turn.pcm.size(), context.turn.images.size(),
+                    "capture_cancelled");
             context.turn = null;
             setStateLocked(context, DeviceState.LISTENING, requestId,
                     "已取消，请重新提问");
@@ -486,7 +525,10 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 }
             }
             closeTtsLocked(context);
+            logService.markInterrupted(context.activeLogId, context.turnStartedAt > 0
+                    ? elapsedMillis(context.turnStartedAt) : null);
             context.activeRequestId = "";
+            context.activeLogId = null;
             context.turn = null;
             sendJsonLocked(context, event("interrupt_ack", "request_id", requestId));
             setStateLocked(context, DeviceState.LISTENING, requestId,
@@ -517,6 +559,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         log.warn("[ESP32_MODEL_FAILED] deviceId={} sessionId={}",
                 context.deviceId, context.session.getId(), throwable);
         synchronized (context.lock) {
+            logService.markFailed(context.activeLogId, "MODEL_FAILED", "模型服务暂时不可用",
+                    context.turnStartedAt > 0 ? elapsedMillis(context.turnStartedAt) : null);
             sendErrorLocked(context, "GATEWAY_ERROR", "模型服务暂时不可用", true,
                     context.activeRequestId);
             try {
@@ -637,6 +681,13 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
     }
 
+    private static Long nullableStatMillis(JsonNode value) {
+        if (value == null || !value.isNumber() || value.asLong() < 0) {
+            return null;
+        }
+        return value.asLong();
+    }
+
     private static String abbreviate(String value, int maxLength) {
         if (value == null) {
             return "";
@@ -651,6 +702,11 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
         synchronized (context.lock) {
+            Long logId = context.activeLogId != null ? context.activeLogId
+                    : context.turn == null ? null : context.turn.logId;
+            long startedAt = context.turnStartedAt > 0 ? context.turnStartedAt
+                    : context.turn == null ? 0L : context.turn.startedAt;
+            logService.markDisconnected(logId, startedAt > 0 ? elapsedMillis(startedAt) : null);
             closeTtsLocked(context);
             if (context.modelSession != null) {
                 context.modelSession.close();
@@ -709,6 +765,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private boolean ttsFirstAudio;
         private boolean ttsHasText;
         private long turnStartedAt;
+        private long ttsFirstAudioAt;
+        private Long activeLogId;
 
         private DeviceContext(WebSocketSession session, String deviceId, String clientIp) {
             this.session = session;
@@ -719,27 +777,31 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
 
     private static class TurnBuffer {
         private final String requestId;
+        private final Long logId;
         private final long startedAt = System.nanoTime();
         private final ByteArrayOutputStream pcm = new ByteArrayOutputStream();
         private final List<byte[]> images = new ArrayList<>();
 
-        private TurnBuffer(String requestId) {
+        private TurnBuffer(String requestId, Long logId) {
             this.requestId = requestId;
+            this.logId = logId;
         }
 
         private TurnData snapshot() {
-            return new TurnData(requestId, startedAt, pcm.toByteArray(), new ArrayList<>(images));
+            return new TurnData(requestId, logId, startedAt, pcm.toByteArray(), new ArrayList<>(images));
         }
     }
 
     private static class TurnData {
         private final String requestId;
+        private final Long logId;
         private final long startedAt;
         private final byte[] pcm;
         private final List<byte[]> images;
 
-        private TurnData(String requestId, long startedAt, byte[] pcm, List<byte[]> images) {
+        private TurnData(String requestId, Long logId, long startedAt, byte[] pcm, List<byte[]> images) {
             this.requestId = requestId;
+            this.logId = logId;
             this.startedAt = startedAt;
             this.pcm = pcm;
             this.images = Collections.unmodifiableList(images);

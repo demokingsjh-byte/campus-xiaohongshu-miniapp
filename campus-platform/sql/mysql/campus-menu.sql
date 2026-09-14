@@ -25,7 +25,8 @@ VALUES
     (900800, '内容管理', 'campus:post:query', 2, 8, 900000, 'post', 'ep:document', 'campus/base/index', 'CampusPost', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900930, '兼职审核', 'campus:job-audit:query', 2, 9, 900000, 'job-audit', 'ep:checked', 'campus/job-audit/index', 'CampusJobAudit', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
     (900850, '表白管理', 'campus:post:query', 2, 9, 900000, 'confession', 'ep:chat-line-round', 'campus/confession/index', 'CampusConfession', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
-    (900910, '联系申请', 'campus:contact-request:query', 2, 10, 900000, 'contact-request', 'ep:chat-dot-round', 'campus/base/index', 'CampusContactRequest', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
+    (900910, '联系申请', 'campus:contact-request:query', 2, 10, 900000, 'contact-request', 'ep:chat-dot-round', 'campus/base/index', 'CampusContactRequest', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0'),
+    (900960, 'ESP32链路日志', 'campus:esp32-log:query', 2, 12, 900000, 'esp32-log', 'ep:connection', 'campus/esp32-log/index', 'CampusEsp32Log', 0, b'1', b'1', b'1', 'campus', NOW(), 'campus', NOW(), b'0')
 ON DUPLICATE KEY UPDATE name = VALUES(name), permission = VALUES(permission), sort = VALUES(sort), parent_id = VALUES(parent_id), path = VALUES(path), icon = VALUES(icon), component = VALUES(component), component_name = VALUES(component_name), status = 0, visible = b'1', updater = 'campus', update_time = NOW(), deleted = b'0';
 
 INSERT INTO system_menu
