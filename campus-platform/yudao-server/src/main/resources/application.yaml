@@ -372,9 +372,10 @@ campus:
     output-audio-chunk-bytes: 1920
     playback-pace-percent: 90
 
-    # 视频导览模型：直接接收 WAV 音频与本轮 JPEG 图片。
-    model-url: ${CAMPUS_ESP32_MODEL_URL:ws://82.156.49.60:8088/ws/guide}
-    model-token: ${CAMPUS_ESP32_MODEL_TOKEN:sk-zgf-test-X3iqDEQyX_qR3SWsHJL5EJfbBZrt-63D}
+    # 火山方舟多模态模型：网关将 ESP32 的 WAV 音频与 JPEG 图片转为 Chat Completions 请求。
+    model-url: ${CAMPUS_VOLC_ARK_MODEL_URL:https://ark.cn-beijing.volces.com/api/v3/chat/completions}
+    model-name: ${CAMPUS_VOLC_ARK_MODEL:doubao-seed-2-0-mini-260428}
+    model-token: ${CAMPUS_VOLC_ARK_API_KEY:}
 
     # ASR 只异步生成问题文字日志，不参与模型请求闸门。
     asr-enabled: ${CAMPUS_ESP32_ASR_ENABLED:true}
@@ -383,7 +384,7 @@ campus:
     asr-access-token: ${CAMPUS_VOLC_ASR_ACCESS_TOKEN:L4BzfT6j8PzqV8HbVEawdygGsrT8llg4}
     asr-resource-id: volc.bigasr.sauc.duration
 
-    # TTS 使用火山“男声 M191”音色，输出 PCM16LE / 24kHz / 单声道。
+    # TTS 使用火山“如梦”音色，输出 PCM16LE / 24kHz / 单声道。
     tts-url: wss://openspeech.bytedance.com/api/v3/tts/bidirection
     tts-app-id: ${CAMPUS_VOLC_TTS_APP_ID:1828671130}
     tts-access-token: ${CAMPUS_VOLC_TTS_ACCESS_TOKEN:L4BzfT6j8PzqV8HbVEawdygGsrT8llg4}

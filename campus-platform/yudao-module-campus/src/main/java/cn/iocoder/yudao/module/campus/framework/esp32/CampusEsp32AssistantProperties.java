@@ -28,7 +28,9 @@ public class CampusEsp32AssistantProperties {
     private int outputAudioChunkBytes = 1920;
     private int playbackPacePercent = 90;
 
-    private String modelUrl = "ws://82.156.49.60:8088/ws/guide";
+    /** 火山方舟 Chat Completions 地址；如需兼容旧自建模型，可改为 ws:// 地址。 */
+    private String modelUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+    private String modelName = "doubao-seed-2-0-mini-260428";
     private String modelToken = "";
 
     private String asrUrl = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
@@ -58,6 +60,7 @@ public class CampusEsp32AssistantProperties {
         return enabled
                 && !getDeviceTokenList().isEmpty()
                 && hasText(modelUrl)
+                && hasText(modelName)
                 && hasText(modelToken)
                 && (!asrEnabled || (hasText(asrAppId) && hasText(asrAccessToken)))
                 && hasText(ttsAppId)

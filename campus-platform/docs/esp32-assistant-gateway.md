@@ -2,7 +2,7 @@
 
 ## 1. 目标与边界
 
-本服务位于 `yudao-module-campus`，复用 AI_GUIDE 视频通话的多模态模型、火山 ASR 和火山 TTS，给 XIAO ESP32-S3 Sense 提供“听、看、理解、说”的闭环。
+本服务位于 `yudao-module-campus`，默认通过火山方舟 Chat Completions 调用多模态模型，并复用火山 ASR 和火山 TTS，给 XIAO ESP32-S3 Sense 提供“听、看、理解、说”的闭环。
 
 它是校园平台内的一条独立设备链路，不修改原 AI_GUIDE H5 视频通话接口。设备只有提交一轮语音后才会请求模型，摄像头画面变化不会单独触发回答。
 
@@ -18,7 +18,7 @@ ESP32-S3                      campus-platform                     外部服务
    ├── 0x01 + PCM 音频帧 ──────────>│                                │
    ├── 0x02 + JPEG（0~3 张）────────>│                                │
    ├── turn_commit ────────────────>│                                │
-   │                                ├── WAV + JPEG ────────────────> 多模态模型
+   │                                ├── WAV + JPEG ────────────────> 火山方舟多模态模型
    │                                ├── WAV（异步）────────────────> 火山 ASR
    │                                │<── text_delta / text_done ─── 多模态模型
    │                                ├── 分句文字流 ────────────────> 火山 TTS
@@ -31,7 +31,8 @@ ESP32-S3                      campus-platform                     外部服务
 
 关键设计：
 
-- 模型原生接收音频，`turn_commit` 后立即请求模型。
+- `turn_commit` 后将 WAV 音频和本轮 JPEG 图片转成方舟 Chat Completions 的多模态消息，一次请求完成语音理解和图片理解。
+- 方舟接口使用流式响应，网关将每个文本增量转换为设备协议的 `text_delta`，因此仍可按句启动 TTS。
 - ASR 与模型并行，只记录用户说话文字和耗时；ASR 失败不会阻断回答。
 - TTS 按完整短句流式合成，避免逐字合成造成“一段一段”的播音。
 - 返回音频按 PCM 播放速度节流，避免数据灌入过快撑满 ESP32 播放缓冲。
@@ -127,13 +128,19 @@ yudao-server/src/main/resources/application.yaml
 ```bash
 CAMPUS_ESP32_ASSISTANT_ENABLED=true
 CAMPUS_ESP32_DEVICE_TOKENS=<随机设备token，多个用逗号分隔>
-CAMPUS_ESP32_MODEL_TOKEN=<多模态模型token>
+CAMPUS_VOLC_ARK_API_KEY=<火山方舟 API Key>
+CAMPUS_VOLC_ARK_MODEL=doubao-seed-2-0-mini-260428
+CAMPUS_VOLC_ARK_MODEL_URL=https://ark.cn-beijing.volces.com/api/v3/chat/completions
 CAMPUS_VOLC_ASR_APP_ID=<火山AppId>
 CAMPUS_VOLC_ASR_ACCESS_TOKEN=<火山AccessToken>
 CAMPUS_VOLC_TTS_APP_ID=<火山AppId>
 CAMPUS_VOLC_TTS_ACCESS_TOKEN=<火山AccessToken>
 CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_roumeinvyou_uranus_bigtts
 ```
+
+`CAMPUS_VOLC_ARK_MODEL` 应填写方舟控制台中已开通的模型或推理接入点 ID。默认示例为 `doubao-seed-2-0-mini-260428`；需要更强推理能力时可以改成已开通的 Seed Pro 接入点。`CAMPUS_VOLC_ARK_API_KEY` 只放在服务器环境变量（例如 `/opt/campus-platform/backend/campus.env`），不要写入 Git。
+
+网关默认走方舟 HTTP 流式接口。如果仍需兼容旧的自建模型，可把 `CAMPUS_VOLC_ARK_MODEL_URL` 改成 `ws://` 或 `wss://` 地址，此时会沿用原有 WebSocket 模型协议；HTTP 地址则按方舟 Chat Completions 协议发送 `input_audio`、`image_url` 和 `text` 内容块。
 
 当前默认资源为 `seed-icl-2.0`，音色为火山“如梦”（`zh_female_roumeinvyou_uranus_bigtts`）；如需切换其他音色，只覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE` 即可。
 
