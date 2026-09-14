@@ -40,9 +40,9 @@ public class CampusEsp32AssistantProperties {
     private String ttsUrl = "wss://openspeech.bytedance.com/api/v3/tts/bidirection";
     private String ttsAppId = "";
     private String ttsAccessToken = "";
-    private String ttsResourceId = "seed-icl-1.0";
-    /** 火山 TTS：魅力女友 2.0。可通过 CAMPUS_VOLC_TTS_VOICE_TYPE 覆盖。 */
-    private String ttsVoiceType = "zh_female_meilinvyou_uranus_bigtts";
+    private String ttsResourceId = "seed-icl-2.0";
+    /** 火山 TTS：男声 M191。可通过 CAMPUS_VOLC_TTS_VOICE_TYPE 覆盖。 */
+    private String ttsVoiceType = "zh_male_m191_uranus_bigtts";
 
     public List<String> getDeviceTokenList() {
         if (deviceTokens == null || deviceTokens.trim().isEmpty()) {
