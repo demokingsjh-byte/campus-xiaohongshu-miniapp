@@ -132,7 +132,10 @@ CAMPUS_VOLC_ASR_APP_ID=<火山AppId>
 CAMPUS_VOLC_ASR_ACCESS_TOKEN=<火山AccessToken>
 CAMPUS_VOLC_TTS_APP_ID=<火山AppId>
 CAMPUS_VOLC_TTS_ACCESS_TOKEN=<火山AccessToken>
+CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_meilinvyou_uranus_bigtts
 ```
+
+当前默认音色为火山“魅力女友 2.0”（`zh_female_meilinvyou_uranus_bigtts`），如需切换其他音色，只覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE` 即可。
 
 如果暂时不需要用户语音转文字日志，可设：
 

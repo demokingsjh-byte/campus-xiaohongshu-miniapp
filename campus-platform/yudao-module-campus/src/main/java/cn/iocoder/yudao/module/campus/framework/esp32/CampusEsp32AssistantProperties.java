@@ -41,7 +41,8 @@ public class CampusEsp32AssistantProperties {
     private String ttsAppId = "";
     private String ttsAccessToken = "";
     private String ttsResourceId = "seed-icl-1.0";
-    private String ttsVoiceType = "S_TTIwjz9J1";
+    /** 火山 TTS：魅力女友 2.0。可通过 CAMPUS_VOLC_TTS_VOICE_TYPE 覆盖。 */
+    private String ttsVoiceType = "zh_female_meilinvyou_uranus_bigtts";
 
     public List<String> getDeviceTokenList() {
         if (deviceTokens == null || deviceTokens.trim().isEmpty()) {
