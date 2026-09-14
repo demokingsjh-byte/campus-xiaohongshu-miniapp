@@ -72,7 +72,55 @@ GET /app-api/campus/esp32/assistant/health
 
 ## 4. 设备协议 `esp32-av/1.0`
 
-### 4.1 设备发送的 JSON
+### 4.1 固件状态机
+
+设备端只需维护以下状态，不要在 `speaking` 时继续录音：
+
+```text
+DISCONNECTED --连接成功--> LISTENING --按键/唤醒--> CAPTURING
+      ^                         ^                         |
+      |                         |                         | turn_commit
+      |                         |                         v
+      +----重连-----------------+---- turn_done ---- THINKING/SPEAKING
+                                      （中间会短暂进入 COOLDOWN）
+```
+
+建议固件行为：
+
+1. Wi-Fi 就绪后建立 WSS，只有收到 `state=listening` 才允许开始一轮。
+2. 按键或唤醒后发送 `turn_start`，收到 `turn_ready` 后上传音频和可选图片。
+3. 停止说话后发送 `turn_commit`；进入 `thinking` 后停止上行媒体。
+4. 收到 `audio_start` 后打开 24kHz I2S 播放；二进制消息全部放进播放队列。
+5. 收到 `audio_done` 后排空播放队列；收到 `turn_done` 后等待服务再次下发 `listening`。
+6. 播放中需要打断时发送 `interrupt`，收到 `interrupt_ack` 后清空播放队列。
+7. 网络断开后采用 1、2、4、8、15 秒退避重连；每 30 秒可发送一次 `ping` 保活。
+
+### 4.2 建连与鉴权
+
+成功握手的 HTTP 状态是 `101 Switching Protocols`。缺失或错误 token 返回 `401`，服务未启用或配置不完整返回 `503`；同一 IP 超过连接上限后，WebSocket 会以 `4429` 关闭。
+
+建连成功后，服务会先返回能力描述：
+
+```json
+{
+  "type": "connected",
+  "session_id": "server-session-id",
+  "device_id": "xiao-esp32s3-01",
+  "protocol_version": "esp32-av/1.0",
+  "mode": "half_duplex",
+  "input_audio": {"binary_prefix": 1, "format": "pcm_s16le", "sample_rate": 16000, "channels": 1},
+  "input_image": {"binary_prefix": 2, "format": "jpeg", "max_count": 3},
+  "output_audio": {"format": "pcm_s16le", "sample_rate": 24000, "channels": 1}
+}
+```
+
+随后返回：
+
+```json
+{"type":"state","state":"listening","message":"可以提问了"}
+```
+
+### 4.3 设备发送的 JSON
 
 开始一轮：
 
@@ -94,7 +142,7 @@ GET /app-api/campus/esp32/assistant/health
 {"type":"ping","ts":1720000000}
 ```
 
-### 4.2 设备发送的二进制帧
+### 4.4 设备发送的二进制帧
 
 每条 WebSocket 二进制消息的第一个字节表示媒体类型：
 
@@ -103,7 +151,15 @@ GET /app-api/campus/esp32/assistant/health
 
 建议顺序：`turn_start` → 连续音频帧 → 0~3 张 JPEG → `turn_commit`。只有 `turn_commit` 会触发模型回答。
 
-### 4.3 服务返回
+音频要求与建议：
+
+- 音频是裸 PCM，不带 WAV 文件头；格式为有符号 16 位小端、16000Hz、单声道。
+- 每个 WebSocket 二进制消息前加一个字节 `0x01`，后面建议放 20ms（640 字节）或 40ms（1280 字节）音频。
+- 有效音频至少 8000 字节（250ms），默认最多 960000 字节（30 秒）。
+- JPEG 必须在同一条 WebSocket 二进制消息中完整发送，前面加一个字节 `0x02`；不允许拆成多条协议消息。
+- 图片单张最大 2MB，每轮最多 3 张、合计最大 6MB。没有图片时只发音频即可。
+
+### 4.5 服务返回
 
 控制事件包括：
 
@@ -115,7 +171,117 @@ GET /app-api/campus/esp32/assistant/health
 
 `audio_start` 与 `audio_done` 之间的二进制消息没有类型前缀，内容固定为 PCM16LE、24000Hz、单声道，可直接送入 ESP32 I2S 播放队列。
 
-## 5. YAML 配置
+一轮成功响应的典型顺序：
+
+```text
+state(capturing) → turn_ready → state(thinking)
+→ text_delta(多次) → audio_start → state(speaking)
+→ PCM 二进制帧(多次) → text_done → audio_done → turn_done
+→ state(cooldown) → state(listening)
+```
+
+文本事件示例：
+
+```json
+{"type":"text_delta","request_id":"turn-001","text":"你好"}
+{"type":"text_done","request_id":"turn-001","text":"你好，需要我帮你看什么？","stats":{"first_token_ms":820,"total_ms":1450}}
+{"type":"audio_start","request_id":"turn-001","format":"pcm_s16le","sample_rate":24000,"channels":1}
+{"type":"audio_done","request_id":"turn-001"}
+{"type":"turn_done","request_id":"turn-001"}
+```
+
+### 4.6 错误处理
+
+| code | 原因 | 固件处理 |
+| --- | --- | --- |
+| `INVALID_JSON` / `UNKNOWN_EVENT` | 控制消息格式或类型错误 | 记录并修正固件协议，不重连 |
+| `NO_ACTIVE_TURN` | 未开始一轮就提交 | 等待 `listening`，重新发送 `turn_start` |
+| `INVALID_AUDIO` / `AUDIO_TOO_LARGE` | PCM 长度或时长不合法 | 丢弃本轮并重新采集 |
+| `INVALID_IMAGE` / `IMAGE_TOO_LARGE` | JPEG 不完整或过大 | 本轮不发该图片，可继续提交音频 |
+| `TOO_MANY_IMAGES` / `IMAGES_TOO_LARGE` | 图片数量或总大小超限 | 最多保留 3 张并压缩 |
+| `MODEL_UNAVAILABLE` / `GATEWAY_ERROR` | 模型链路不可用 | `retryable=true` 时退避后重试/重连 |
+| `TTS_FAILED` | 语音合成失败 | 显示文本，等待 `turn_done` 后进入下一轮 |
+
+任何 `error` 都包含 `retryable`。设备应保留 `request_id`，只处理当前轮次的事件；旧轮次迟到的数据直接丢弃。
+
+## 5. ESP32 固件对接流程
+
+### 5.1 初始化
+
+1. 初始化 Wi-Fi、摄像头、麦克风/I2S RX、扬声器/I2S TX 和播放环形缓冲区。
+2. 从 NVS 读取 `device_token`、唯一 `device_id` 和服务器地址；不要把生产 token 打印到串口日志。
+3. 校时并校验证书，连接 `wss://huanwoshidai.com.cn/app-api/campus/esp32/assistant/ws`。
+4. 建议优先在请求头放 `Authorization: Bearer <token>` 和 `X-Device-Id`；库不支持自定义头时使用查询参数。
+
+### 5.2 一轮采集
+
+```text
+按键按下/唤醒
+  → 发送 turn_start
+  → 等 turn_ready
+  → 每 20~40ms 发送 [0x01][PCM]
+  → 需要视觉时抓拍 JPEG，发送 [0x02][完整 JPEG]
+  → VAD 静音或按键松开
+  → 发送 turn_commit
+```
+
+上传音频期间不要进行采样率转换；麦克风若输出 32 位 I2S 数据，应先在设备端转换为饱和的 PCM16LE。摄像头图片建议使用 QVGA/VGA JPEG，优先把单张控制在 200KB 内，以降低延迟和内存占用。
+
+### 5.3 接收与播放
+
+收到 `audio_start` 后，将 I2S TX 配置为 24000Hz、16 位、单声道。之后每个二进制 WebSocket 消息都是音频，不含 `0x01`/`0x02` 前缀。推荐至少准备 8~16KB 环形缓冲，累计 40~80ms 后开始播放；缓冲不足时补零，收到 `interrupt_ack` 时立即清空。
+
+### 5.4 request_id 规则
+
+建议格式为 `<device-id>-<启动计数>-<轮次>`，最长 100 字符，例如 `xiao-01-18-0032`。一次连接内必须唯一，方便后台按设备和轮次定位每一段耗时。
+
+## 6. 联调和验收
+
+### 6.1 健康检查
+
+```bash
+curl --fail --silent --show-error \
+  https://huanwoshidai.com.cn/app-api/campus/esp32/assistant/health
+```
+
+期望 `code=0`、`enabled=true`、`configured=true`。该接口不验证某个具体设备 token，只表示服务端配置项齐全。
+
+### 6.2 完整 WSS、模型、TTS 冒烟测试
+
+仓库提供只依赖 Python 标准库的脚本：
+
+```bash
+python3 scripts/esp32-assistant-smoke.py \
+  --url wss://huanwoshidai.com.cn/app-api/campus/esp32/assistant/ws \
+  --token "$CAMPUS_ESP32_DEVICE_TOKEN" \
+  --device-id esp32-smoke-01 \
+  --seconds 1 \
+  --output esp32-smoke-output.wav
+```
+
+默认上传 1 秒静音；要验证真实语音和视觉输入，可增加：
+
+```bash
+python3 scripts/esp32-assistant-smoke.py \
+  --url wss://huanwoshidai.com.cn/app-api/campus/esp32/assistant/ws \
+  --token "$CAMPUS_ESP32_DEVICE_TOKEN" \
+  --pcm question-16k-mono.pcm \
+  --jpeg camera.jpg \
+  --output answer-24k-mono.wav
+```
+
+脚本打印 `RESULT` 且 `audio_bytes` 大于 0，即表示设备鉴权、媒体上行、方舟模型、TTS 和音频下行全部成功。输出文件固定封装为 PCM16LE/24000Hz/单声道 WAV。
+
+### 6.3 验收标准
+
+1. 错误 token 的 WSS 握手返回 `401`，正确 token 返回 `101`。
+2. 建连后 5 秒内收到 `connected` 和 `state=listening`。
+3. 每轮收到 `turn_ready`；250ms 以下音频返回 `turn_ignored`，有效音频进入 `thinking`。
+4. 正常轮次收到 `text_done`、非空音频、`audio_done`、`turn_done`。
+5. `interrupt` 能在 1 秒内停止设备播放并收到 `interrupt_ack`。
+6. 后台日志能按相同 `device_id`、`request_id` 查到该轮记录和各阶段耗时。
+
+## 7. YAML 配置
 
 配置已加入：
 
@@ -135,6 +301,7 @@ CAMPUS_VOLC_ASR_APP_ID=<火山AppId>
 CAMPUS_VOLC_ASR_ACCESS_TOKEN=<火山AccessToken>
 CAMPUS_VOLC_TTS_APP_ID=<火山AppId>
 CAMPUS_VOLC_TTS_ACCESS_TOKEN=<火山AccessToken>
+CAMPUS_VOLC_TTS_RESOURCE_ID=seed-tts-2.0
 CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_roumeinvyou_uranus_bigtts
 ```
 
@@ -142,7 +309,7 @@ CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_roumeinvyou_uranus_bigtts
 
 网关默认走方舟 HTTP 流式接口。如果仍需兼容旧的自建模型，可把 `CAMPUS_VOLC_ARK_MODEL_URL` 改成 `ws://` 或 `wss://` 地址，此时会沿用原有 WebSocket 模型协议；HTTP 地址则按方舟 Chat Completions 协议发送 `input_audio`、`image_url` 和 `text` 内容块。
 
-当前默认资源为 `seed-icl-2.0`，音色为火山“如梦”（`zh_female_roumeinvyou_uranus_bigtts`）；如需切换其他音色，只覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE` 即可。
+当前默认资源为 `seed-tts-2.0`，音色为火山“如梦”（`zh_female_roumeinvyou_uranus_bigtts`）。预置的 `zh_...` 音色必须搭配 TTS 资源；`seed-icl-2.0` 只用于已复刻的音色 ID（通常为 `S_...`）。如需切换音色或资源，可分别覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE`、`CAMPUS_VOLC_TTS_RESOURCE_ID`。
 
 如果暂时不需要用户语音转文字日志，可设：
 
@@ -154,7 +321,7 @@ CAMPUS_ESP32_ASR_ENABLED=false
 
 也可以直接把实际值写入部署环境的 YAML；不要把正式凭证提交到公开仓库。
 
-## 6. Nginx 配置
+## 8. Nginx 配置
 
 校园平台和普通 HTTP 接口使用同一端口时，在现有站点配置中确保 WebSocket 升级头透传：
 
@@ -170,7 +337,7 @@ location /app-api/campus/esp32/assistant/ws {
 }
 ```
 
-## 7. 后台链路日志
+## 9. 后台链路日志
 
 执行 `sql/mysql/campus-esp32-log-upgrade.sql` 后，管理后台“校园运营 → ESP32链路日志”会展示每轮请求的设备编号、请求编号、状态及以下耗时：采集、提交模型、ASR、模型首 token、模型总耗时、TTS 首包、TTS 输出和本轮总耗时。
 
@@ -184,7 +351,20 @@ GET /admin-api/campus/esp32/log/get?id=日志编号
 
 日志不会落库 device_token、音频、图片或对话原文；数据库未执行升级脚本时，设备链路仍可运行，但后台不会有记录。
 
-## 8. 编译与上线检查
+耗时字段定义：
+
+| 字段 | 起止点 |
+| --- | --- |
+| `captureMs` | 收到 `turn_start` 到收到 `turn_commit` |
+| `submitMs` | 网关组装数据并提交上游模型所用时间 |
+| `asrMs` | 异步 ASR 请求总耗时，不阻塞模型回答 |
+| `modelFirstTokenMs` | 提交模型到收到第一个文本增量 |
+| `modelTotalMs` | 提交模型到收到 `text_done` |
+| `ttsFirstAudioMs` | 本轮开始到收到第一包 TTS 音频 |
+| `ttsAudioMs` | 第一包 TTS 音频到 TTS 完成 |
+| `totalMs` | 收到 `turn_start` 到发送 `turn_done` |
+
+## 10. 编译与上线检查
 
 在 `campus-platform` 目录执行：
 

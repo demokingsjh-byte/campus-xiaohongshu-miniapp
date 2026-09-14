@@ -42,7 +42,7 @@ public class CampusEsp32AssistantProperties {
     private String ttsUrl = "wss://openspeech.bytedance.com/api/v3/tts/bidirection";
     private String ttsAppId = "";
     private String ttsAccessToken = "";
-    private String ttsResourceId = "seed-icl-2.0";
+    private String ttsResourceId = "seed-tts-2.0";
     /** 火山 TTS：如梦音色。可通过 CAMPUS_VOLC_TTS_VOICE_TYPE 覆盖。 */
     private String ttsVoiceType = "zh_female_roumeinvyou_uranus_bigtts";
 

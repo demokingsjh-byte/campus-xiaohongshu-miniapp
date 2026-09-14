@@ -388,5 +388,6 @@ campus:
     tts-url: wss://openspeech.bytedance.com/api/v3/tts/bidirection
     tts-app-id: ${CAMPUS_VOLC_TTS_APP_ID:1828671130}
     tts-access-token: ${CAMPUS_VOLC_TTS_ACCESS_TOKEN:L4BzfT6j8PzqV8HbVEawdygGsrT8llg4}
-    tts-resource-id: seed-icl-2.0
+    # 预置音色使用 TTS 2.0 资源；seed-icl-2.0 仅用于已复刻的音色 ID。
+    tts-resource-id: ${CAMPUS_VOLC_TTS_RESOURCE_ID:seed-tts-2.0}
     tts-voice-type: ${CAMPUS_VOLC_TTS_VOICE_TYPE:zh_female_roumeinvyou_uranus_bigtts}
