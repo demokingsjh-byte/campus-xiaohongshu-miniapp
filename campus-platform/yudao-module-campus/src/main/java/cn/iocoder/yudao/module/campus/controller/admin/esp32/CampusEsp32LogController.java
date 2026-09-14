@@ -6,6 +6,10 @@ import cn.iocoder.yudao.module.campus.controller.admin.esp32.vo.CampusEsp32LogPa
 import cn.iocoder.yudao.module.campus.service.esp32.CampusEsp32LogService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -49,5 +53,17 @@ public class CampusEsp32LogController {
     public CommonResult<Map<String, Object>> getSummary(
             @Valid CampusEsp32LogPageReqVO reqVO) {
         return success(logService.getSummary(reqVO));
+    }
+
+    @GetMapping("/image")
+    @Operation(summary = "获得 ESP32 助手日志图片")
+    @PreAuthorize("@ss.hasPermission('campus:esp32-log:query')")
+    public ResponseEntity<byte[]> getImage(@RequestParam("id") Long id) {
+        byte[] image = logService.getImage(id);
+        return ResponseEntity.ok()
+                .contentType(MediaType.IMAGE_JPEG)
+                .cacheControl(CacheControl.noStore().mustRevalidate())
+                .header(HttpHeaders.PRAGMA, "no-cache")
+                .body(image);
     }
 }

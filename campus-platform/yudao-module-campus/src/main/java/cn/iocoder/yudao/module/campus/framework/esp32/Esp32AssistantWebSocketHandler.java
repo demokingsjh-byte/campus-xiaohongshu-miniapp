@@ -294,22 +294,28 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 context.deviceId, turn.requestId, turn.pcm.length, turn.images.size(),
                 captureMs);
 
+        // 图片体积较大，异步落库，不能让数据库写入阻塞模型首 token 和设备播放。
+        mediaExecutor.execute(() -> logService.saveImages(turn.logId, turn.images));
+
         // 模型原生支持音频输入，ASR 仅异步补充文字日志，失败不能阻断模型回答。
         if (properties.isAsrEnabled()) {
             mediaExecutor.execute(() -> transcribeInBackground(context, turn.requestId, turn.logId, wav));
+        } else {
+            logService.markAsrDisabled(turn.logId);
         }
     }
 
     private void transcribeInBackground(DeviceContext context, String requestId, Long logId, byte[] wav) {
         long startedAt = System.nanoTime();
         try {
-            String transcript = asrClient.transcribe(wav).trim();
-            logService.markAsr(logId, elapsedMillis(startedAt), true);
+            String transcript = asrClient.transcribe(wav);
+            transcript = transcript == null ? "" : transcript.trim();
+            logService.markAsr(logId, elapsedMillis(startedAt), true, transcript);
             log.info("[ESP32_ASR_COMPLETED] deviceId={} requestId={} elapsedMs={} transcript={}",
                     context.deviceId, requestId, elapsedMillis(startedAt),
                     abbreviate(transcript, 160));
         } catch (Exception exception) {
-            logService.markAsr(logId, elapsedMillis(startedAt), false);
+            logService.markAsr(logId, elapsedMillis(startedAt), false, null);
             log.warn("[ESP32_ASR_FAILED] deviceId={} requestId={} elapsedMs={}",
                     context.deviceId, requestId, elapsedMillis(startedAt), exception);
         }
@@ -360,7 +366,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 }
                 Long modelTotalMs = nullableStatMillis(event.path("stats").path("total_ms"));
                 Long modelFirstTokenMs = nullableStatMillis(event.path("stats").path("first_token_ms"));
-                logService.markModelDone(context.activeLogId, modelTotalMs, modelFirstTokenMs);
+                logService.markModelDone(context.activeLogId, modelTotalMs, modelFirstTokenMs,
+                        event.path("text").asText(""));
                 log.info("[ESP32_MODEL_DONE] deviceId={} requestId={} totalMs={} firstTokenMs={} text={}",
                         context.deviceId, requestId,
                         event.path("stats").path("total_ms").asLong(-1),

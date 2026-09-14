@@ -1,5 +1,6 @@
 -- ESP32 助手 WebSocket 链路耗时日志。
--- 只记录设备、请求和阶段耗时，不保存 device_token、音频、图片或对话原文。
+-- 创建设备、请求和阶段耗时基础表。图片、提问和回答由后续
+-- campus-esp32-log-content-upgrade.sql 按需增加，device_token 与原始音频始终不落库。
 SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS campus_esp32_assistant_log (

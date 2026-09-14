@@ -84,7 +84,7 @@ CURRENT_STEP="checking database connection"
 
 mkdir -p "$BACKUP_DIR"
 backup_tables=()
-for table in infra_config system_menu system_dict_data system_tenant system_social_client campus_region campus_school_catalog campus_home_category campus_mine_trade_config campus_tenant_profile campus_miniapp_user campus_user_follow campus_post campus_post_interaction campus_post_comment campus_post_comment_like campus_post_comment_report campus_post_report campus_content_audit campus_notification campus_contact_request campus_trade_order campus_trade_message; do
+for table in infra_config system_menu system_dict_data system_tenant system_social_client campus_region campus_school_catalog campus_home_category campus_mine_trade_config campus_tenant_profile campus_miniapp_user campus_user_follow campus_post campus_post_interaction campus_post_comment campus_post_comment_like campus_post_comment_report campus_post_report campus_content_audit campus_notification campus_contact_request campus_trade_order campus_trade_message campus_esp32_assistant_log campus_esp32_assistant_log_image; do
   exists="$("$mysql_bin" "${mysql_args[@]}" --batch --skip-column-names \
     -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '$table'")"
   if [ "$exists" = "1" ]; then
@@ -122,6 +122,8 @@ migrations=(
   campus-menu-prune.sql
   campus-menu-encoding-repair.sql
   campus-menu.sql
+  campus-esp32-log-upgrade.sql
+  campus-esp32-log-content-upgrade.sql
   campus-content-governance-upgrade.sql
   campus-contact-request-upgrade.sql
   campus-school-data-upgrade.sql

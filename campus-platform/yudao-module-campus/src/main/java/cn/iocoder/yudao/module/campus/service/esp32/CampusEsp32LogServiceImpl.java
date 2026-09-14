@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -44,13 +45,16 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                     .addValue("requestId", limit(requestId, 100));
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbcTemplate.update("INSERT INTO " + TABLE
-                            + " (session_id, device_id, request_id, client_ip, status, creator, updater, tenant_id)"
-                            + " VALUES (:sessionId, :deviceId, :requestId, :clientIp, 'CAPTURING', '', '', 0)"
+                            + " (session_id, device_id, request_id, client_ip, status, content_recorded,"
+                            + " asr_status, question_text, answer_text, creator, updater, tenant_id)"
+                            + " VALUES (:sessionId, :deviceId, :requestId, :clientIp, 'CAPTURING', b'1',"
+                            + " 'PENDING', NULL, NULL, '', '', 0)"
                             + " ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), status = 'CAPTURING',"
                             + " audio_bytes = 0, image_count = 0, capture_ms = NULL, submit_ms = NULL,"
                             + " asr_ms = NULL, model_first_token_ms = NULL, model_total_ms = NULL,"
                             + " tts_first_audio_ms = NULL, tts_audio_ms = NULL, total_ms = NULL,"
-                            + " error_code = NULL, error_message = NULL,"
+                            + " error_code = NULL, error_message = NULL, content_recorded = b'1',"
+                            + " asr_status = 'PENDING', question_text = NULL, answer_text = NULL,"
                             + " update_time = NOW(), deleted = b'0'",
                     params, keyHolder, new String[]{"id"});
             Number key = keyHolder.getKey();
@@ -70,16 +74,89 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
 
     @Override
     public void markAsr(Long logId, long asrMs, boolean success) {
-        update(logId, "asr_ms = :asrMs" + (success ? "" : ", error_code = COALESCE(error_code, 'ASR_FAILED')"),
-                new MapSqlParameterSource("asrMs", nonNegative(asrMs)));
+        markAsr(logId, asrMs, success, null);
+    }
+
+    @Override
+    public void markAsr(Long logId, long asrMs, boolean success, String questionText) {
+        if (success) {
+            update(logId, "asr_ms = :asrMs, asr_status = 'SUCCESS', content_recorded = b'1',"
+                            + " question_text = :questionText",
+                    new MapSqlParameterSource("asrMs", nonNegative(asrMs))
+                            .addValue("questionText", limitText(questionText)));
+        } else {
+            update(logId, "asr_ms = :asrMs, asr_status = 'FAILED', content_recorded = b'1',"
+                            + " error_code = COALESCE(error_code, 'ASR_FAILED')",
+                    new MapSqlParameterSource("asrMs", nonNegative(asrMs)));
+        }
+    }
+
+    @Override
+    public void markAsrDisabled(Long logId) {
+        update(logId, "asr_status = 'DISABLED', content_recorded = b'1'",
+                new MapSqlParameterSource());
     }
 
     @Override
     public void markModelDone(Long logId, Long modelTotalMs, Long modelFirstTokenMs) {
+        markModelDone(logId, modelTotalMs, modelFirstTokenMs, null);
+    }
+
+    @Override
+    public void markModelDone(Long logId, Long modelTotalMs, Long modelFirstTokenMs, String answerText) {
         update(logId, "status = 'MODEL_DONE', model_total_ms = :modelTotalMs,"
-                        + " model_first_token_ms = :modelFirstTokenMs",
+                        + " model_first_token_ms = :modelFirstTokenMs, content_recorded = b'1',"
+                        + " answer_text = :answerText",
                 new MapSqlParameterSource("modelTotalMs", nullableNonNegative(modelTotalMs))
-                        .addValue("modelFirstTokenMs", nullableNonNegative(modelFirstTokenMs)));
+                        .addValue("modelFirstTokenMs", nullableNonNegative(modelFirstTokenMs))
+                        .addValue("answerText", limitText(answerText)));
+    }
+
+    @Override
+    public void saveImages(Long logId, List<byte[]> images) {
+        if (logId == null || images == null || images.isEmpty()) {
+            return;
+        }
+        safe(() -> {
+            int imageIndex = 0;
+            for (byte[] image : images) {
+                if (image == null || image.length == 0) {
+                    imageIndex++;
+                    continue;
+                }
+                MapSqlParameterSource params = new MapSqlParameterSource()
+                        .addValue("logId", logId)
+                        .addValue("imageIndex", imageIndex)
+                        .addValue("mimeType", "image/jpeg")
+                        .addValue("sizeBytes", image.length)
+                        .addValue("imageData", image);
+                jdbcTemplate.update("INSERT INTO campus_esp32_assistant_log_image"
+                                + " (log_id, image_index, mime_type, size_bytes, image_data, creator, updater, tenant_id)"
+                                + " VALUES (:logId, :imageIndex, :mimeType, :sizeBytes, :imageData, '', '', 0)"
+                                + " ON DUPLICATE KEY UPDATE mime_type = :mimeType, size_bytes = :sizeBytes,"
+                                + " image_data = :imageData, updater = '', update_time = NOW(), deleted = b'0'",
+                        params);
+                imageIndex++;
+            }
+            update(logId, "content_recorded = b'1'", new MapSqlParameterSource());
+            return null;
+        });
+    }
+
+    @Override
+    public byte[] getImage(Long imageId) {
+        if (imageId == null) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "ESP32 日志图片不存在");
+        }
+        byte[] image = safe(() -> jdbcTemplate.queryForObject(
+                "SELECT image_data FROM campus_esp32_assistant_log_image"
+                        + " WHERE id = :id AND deleted = b'0' LIMIT 1",
+                new MapSqlParameterSource("id", imageId),
+                (resultSet, rowNum) -> resultSet.getBytes("image_data")));
+        if (image == null || image.length == 0) {
+            throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "ESP32 日志图片不存在");
+        }
+        return image;
     }
 
     @Override
@@ -139,18 +216,25 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
         Long total = safe(() -> jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM " + TABLE + where, params, Long.class), 0L);
         List<Map<String, Object>> list = safe(() -> jdbcTemplate.queryForList(selectSql() + where
-                + " ORDER BY id DESC LIMIT :offset, :pageSize", params));
+                + " ORDER BY id DESC LIMIT :offset, :pageSize", params), Collections.emptyList());
         return new PageResult<>(list, total == null ? 0L : total);
     }
 
     @Override
     public Map<String, Object> get(Long id) {
-        List<Map<String, Object>> rows = safe(() -> jdbcTemplate.queryForList(selectSql()
+        List<Map<String, Object>> rows = safe(() -> jdbcTemplate.queryForList(selectDetailSql()
                 + " WHERE id = :id AND deleted = b'0' LIMIT 1", new MapSqlParameterSource("id", id)));
         if (rows == null || rows.isEmpty()) {
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "ESP32 链路日志不存在");
         }
-        return rows.get(0);
+        Map<String, Object> detail = rows.get(0);
+        List<Map<String, Object>> images = safe(() -> jdbcTemplate.queryForList(
+                "SELECT id, image_index AS imageIndex, size_bytes AS sizeBytes, mime_type AS mimeType"
+                        + " FROM campus_esp32_assistant_log_image"
+                        + " WHERE log_id = :logId AND deleted = b'0' ORDER BY image_index ASC",
+                new MapSqlParameterSource("logId", id)), Collections.emptyList());
+        detail.put("images", images);
+        return detail;
     }
 
     @Override
@@ -196,8 +280,21 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
     }
 
     private String selectSql() {
+        return selectSql("LEFT(question_text, 160)", "LEFT(answer_text, 160)");
+    }
+
+    private String selectDetailSql() {
+        return selectSql("question_text", "answer_text");
+    }
+
+    private String selectSql(String questionExpression, String answerExpression) {
         return "SELECT id, session_id AS sessionId, device_id AS deviceId, request_id AS requestId,"
                 + " client_ip AS clientIp, status, audio_bytes AS audioBytes, image_count AS imageCount,"
+                + " IF(content_recorded = b'1', TRUE, FALSE) AS contentRecorded,"
+                + " COALESCE((SELECT COUNT(*) FROM campus_esp32_assistant_log_image li"
+                + " WHERE li.log_id = " + TABLE + ".id AND li.deleted = b'0'), 0) AS storedImageCount,"
+                + " asr_status AS asrStatus, " + questionExpression + " AS questionText,"
+                + " " + answerExpression + " AS answerText,"
                 + " capture_ms AS captureMs, submit_ms AS submitMs, asr_ms AS asrMs,"
                 + " model_first_token_ms AS modelFirstTokenMs, model_total_ms AS modelTotalMs,"
                 + " tts_first_audio_ms AS ttsFirstAudioMs, tts_audio_ms AS ttsAudioMs, total_ms AS totalMs,"
@@ -228,6 +325,12 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
         }
         String trimmed = value.trim();
         return trimmed.length() <= max ? trimmed : trimmed.substring(0, max);
+    }
+
+    private static String limitText(String value) {
+        // MEDIUMTEXT can hold more, but an accidental unbounded upstream response should not
+        // make a log row or the admin drawer unusable.
+        return limit(value, 64 * 1024);
     }
 
     private <T> T safe(Work<T> work, T fallback) {

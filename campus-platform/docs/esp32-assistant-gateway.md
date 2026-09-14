@@ -339,7 +339,9 @@ location /app-api/campus/esp32/assistant/ws {
 
 ## 9. 后台链路日志
 
-执行 `sql/mysql/campus-esp32-log-upgrade.sql` 后，管理后台“校园运营 → ESP32链路日志”会展示每轮请求的设备编号、请求编号、状态及以下耗时：采集、提交模型、ASR、模型首 token、模型总耗时、TTS 首包、TTS 输出和本轮总耗时。
+管理后台“校园运营 → ESP32链路日志”展示每轮请求的图片、用户提问、模型回答，以及采集、提交模型、ASR、模型首 token、模型总耗时、TTS 首包、TTS 输出和本轮总耗时。列表显示问答摘要，点击“详情”查看完整问答和图片，点击图片放大查看。
+
+数据库按顺序执行 `sql/mysql/campus-esp32-log-upgrade.sql` 和 `sql/mysql/campus-esp32-log-content-upgrade.sql`。自动部署已包含这两个幂等脚本，并在迁移前备份现有日志表。新内容字段仅作用于升级后的轮次；升级前未保存过的图片和问答无法恢复。
 
 页面对应接口为：
 
@@ -347,9 +349,16 @@ location /app-api/campus/esp32/assistant/ws {
 GET /admin-api/campus/esp32/log/page
 GET /admin-api/campus/esp32/log/summary
 GET /admin-api/campus/esp32/log/get?id=日志编号
+GET /admin-api/campus/esp32/log/image?id=图片编号
 ```
 
-日志不会落库 device_token、音频、图片或对话原文；数据库未执行升级脚本时，设备链路仍可运行，但后台不会有记录。
+用户提问取自本轮 ASR 转写全文；回答取自模型本轮返回的全文。`asrStatus` 区分 `PENDING`（转写中）、`SUCCESS`、`FAILED`、`DISABLED`，旧日志该字段为空。ASR 异步完成后回填同一条日志，刷新详情即可查看，不会延迟模型回答。
+
+图片异步保存到独立的私有数据库表，每轮最多 3 张 JPEG，单张最多 2MB。列表和详情仅返回图片数量、编号与大小，图片内容通过单独的鉴权接口读取，要求已登录且有 `campus:esp32-log:query` 权限。前端用携带登录身份的请求加载图片，关闭详情时释放临时预览地址，不生成公开图片链接。
+
+列表新增 `questionText`、`answerText`（最多 160 字的摘要）、`asrStatus`、`contentRecorded`、`storedImageCount`。详情返回完整问答和 `images: [{id, imageIndex, sizeBytes, mimeType}]`；`contentRecorded=false` 表示该轮未启用内容保存，`storedImageCount` 表示实际已保存图片数，不等同于设备上报数量。图片接口返回原始 `image/jpeg`，设置禁止缓存。
+
+设备 Token 和原始语音不写入日志。数据库写入故障仍以对话不中断为优先，排障时应同时检查服务端日志。
 
 耗时字段定义：
 
