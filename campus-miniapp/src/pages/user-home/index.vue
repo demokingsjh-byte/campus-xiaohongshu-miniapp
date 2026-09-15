@@ -402,17 +402,20 @@ async function toggleFollow() {
   flex: 1;
   min-width: 0;
   margin-left: 24rpx;
+  padding-right: 16rpx;
 }
 
 .profile-name {
-  display: block;
+  display: -webkit-box;
   overflow: hidden;
+  max-height: 80rpx;
   color: #111;
   font-size: 32rpx;
   font-weight: 650;
-  line-height: 46rpx;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 40rpx;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .profile-stats {
@@ -427,21 +430,24 @@ async function toggleFollow() {
 
 .follow-button {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 0 124rpx;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  min-width: 136rpx;
-  height: 64rpx;
+  width: 124rpx;
+  min-width: 124rpx;
+  max-width: 124rpx;
+  height: 58rpx;
   margin: 0;
-  padding: 0 25rpx;
+  padding: 0 8rpx;
   border: 0;
-  border-radius: 24rpx;
+  border-radius: 22rpx;
   color: #171717;
   background: #8cf408;
-  font-size: 29rpx;
+  font-size: 27rpx;
   font-weight: 600;
-  line-height: 64rpx;
+  line-height: 58rpx;
+  white-space: nowrap;
 }
 
 .follow-button::after {
