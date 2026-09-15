@@ -7,6 +7,12 @@ export interface CampusPostPage {
   total: number
 }
 
+export interface CampusHotSearch {
+  keyword: string
+  heat: number
+  postCount: number
+}
+
 export interface CampusFollowUser {
   userId: number
   nickname: string
@@ -277,7 +283,23 @@ export function createCampusPost(params: CampusPostCreateParams) {
 }
 
 export function getCampusPostPage(params: CampusPostPageParams) {
-  return request.Get<CampusPostPage>(`${POST_BASE}/page`, { params, cacheFor: 0, meta: { ignoreAuth: true } });
+  return request.Get<CampusPostPage>(`${POST_BASE}/page`, {
+    params,
+    cacheFor: 0,
+    // 生产环境帖子查询在图片签名和跨区网络波动时可能超过全局 12 秒；
+    // 首页属于核心只读内容，单独放宽超时，避免接口最终成功但页面提前进入错误态。
+    timeout: 25000,
+    meta: { ignoreAuth: true },
+  });
+}
+
+/** 最近 30 天按真实发布标签、互动热度与发布时间动态计算的本校热搜。 */
+export function getCampusHotSearch(tenantId?: number, limit = 6) {
+  return request.Get<CampusHotSearch[]>(`${POST_BASE}/hot-search`, {
+    params: { tenantId, limit },
+    cacheFor: 0,
+    meta: { ignoreAuth: true, silentError: true },
+  });
 }
 
 /** 获取指定用户可公开展示的发布，服务端会过滤匿名、下架和已关闭分类。 */

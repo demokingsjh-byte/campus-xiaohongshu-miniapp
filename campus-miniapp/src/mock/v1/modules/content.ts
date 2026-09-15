@@ -1,4 +1,5 @@
 import type { CampusPost } from '@/mock/campus';
+import type { CampusHotSearch } from '@/services/api/content';
 import { defineMock } from '@alova/mock';
 import { ResultEnum } from '@/enums/httpEnum';
 import { campusPosts } from '@/mock/campus';
@@ -145,6 +146,43 @@ function findPost(id: number) {
   return allPosts().find(item => item.id === id);
 }
 
+function buildMockHotSearch(tenantId: number, limit: number): CampusHotSearch[] {
+  const heatByTag = new Map<string, { contentHeat: number, postCount: number }>();
+  const now = Date.now();
+  allPosts().filter(post => post.tenantId === tenantId && !post.downlisted
+    && (post.status === undefined || post.status === 1)
+    && (!(post.type === 'idle' || post.channel === '二手') || !post.soldOut)).forEach((post) => {
+    const parsedCreateTime = post.createTime ? Date.parse(post.createTime) : Number.NaN;
+    const ageHours = Number.isFinite(parsedCreateTime)
+      ? Math.max(0, (now - parsedCreateTime) / 3600000)
+      : 24;
+    if (ageHours > 30 * 24)
+      return;
+    const recencyWeight = 0.5 ** (ageHours / 72);
+    const contentHeat = (1
+      + Math.min(Number(post.views || 0), 100000) * 0.05
+      + Math.min(Number(post.likes || 0), 10000) * 3
+      + Math.min(Number(post.collects || 0), 10000) * 4
+      + Math.min(Number(post.comments || 0), 10000) * 5) * recencyWeight;
+    const tags = new Set((post.tags || [])
+      .map(tag => String(tag).replace(/^#+/, '').trim())
+      .filter(tag => tag.length >= 2 && tag.length <= 20 && !['校园新鲜事', '推荐'].includes(tag)));
+    tags.forEach((tag) => {
+      const current = heatByTag.get(tag) || { contentHeat: 0, postCount: 0 };
+      current.contentHeat += contentHeat;
+      current.postCount += 1;
+      heatByTag.set(tag, current);
+    });
+  });
+  return [...heatByTag.entries()].map(([keyword, value]) => ({
+    keyword,
+    heat: Math.max(1, Math.round(value.contentHeat + value.postCount * 6)),
+    postCount: value.postCount,
+  })).sort((left, right) => right.heat - left.heat
+    || right.postCount - left.postCount
+    || left.keyword.localeCompare(right.keyword, 'zh-CN')).slice(0, Math.min(Math.max(limit, 1), 20));
+}
+
 function getMockComment(postId: number, commentId: number) {
   return (getStoredComments()[String(postId)] || []).find(item => item.id === commentId);
 }
@@ -288,6 +326,12 @@ export const contentMocks = defineMock({
       ],
     },
   }),
+  '[GET]/api/campus/post/hot-search': (params) => {
+    const query = queryOf(params);
+    return createMock({
+      data: buildMockHotSearch(Number(query.tenantId || 201), Number(query.limit || 6)),
+    });
+  },
   '[POST]/api/campus/post/create': (params) => {
     const data = params.data || {};
     const profile = uni.getStorageSync(PROFILE_KEY) || {};

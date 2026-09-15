@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.campus.controller.app.post;
 import cn.iocoder.yudao.framework.common.pojo.CommonResult;
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.tenant.core.aop.TenantIgnore;
+import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusHotSearchRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRespVO;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.annotation.Resource;
 import javax.annotation.security.PermitAll;
 import javax.validation.Valid;
+import java.util.List;
 
 import static cn.iocoder.yudao.framework.common.pojo.CommonResult.success;
 import static cn.iocoder.yudao.framework.security.core.util.SecurityFrameworkUtils.getLoginUserId;
@@ -64,6 +66,16 @@ public class CampusAppPostController {
             @RequestParam(value = "pageNo", defaultValue = "1") Integer pageNo,
             @RequestParam(value = "pageSize", defaultValue = "20") Integer pageSize) {
         return success(campusPostService.getPostPage(getLoginUserId(), tenantId, channel, keyword, pageNo, pageSize));
+    }
+
+    @GetMapping("/hot-search")
+    @PermitAll
+    @TenantIgnore
+    @Operation(summary = "获取校园实时热搜")
+    public CommonResult<List<CampusHotSearchRespVO>> getHotSearch(
+            @RequestParam(value = "tenantId", required = false) Long tenantId,
+            @RequestParam(value = "limit", defaultValue = "6") Integer limit) {
+        return success(campusPostService.getHotSearch(tenantId, limit));
     }
 
     @GetMapping("/user-page")

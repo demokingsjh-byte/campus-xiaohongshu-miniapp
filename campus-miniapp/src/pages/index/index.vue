@@ -176,11 +176,18 @@ async function loadConfig() {
 async function loadFeed(showLoading = true) {
   if (showLoading)
     state.value = 'loading';
+  const params = {
+    tenantId: tenantStore.tenantId || undefined,
+    channel: activeCategory.value.channel || '推荐',
+  };
   try {
-    await contentStore.loadPosts({
-      tenantId: tenantStore.tenantId || undefined,
-      channel: activeCategory.value.channel || '推荐',
-    });
+    try {
+      await contentStore.loadPosts(params);
+    } catch {
+      // 首页是公开核心内容，短暂网络抖动时自动恢复一次，
+      // 避免用户首次进入就只看到整页错误态。
+      await contentStore.loadPosts(params);
+    }
     state.value = visiblePosts.value.length ? 'content' : 'empty';
   } catch {
     state.value = visiblePosts.value.length ? 'content' : 'error';

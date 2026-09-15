@@ -7,6 +7,7 @@ import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstant
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.framework.common.util.http.HttpUtils;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
+import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusHotSearchRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentReportReqVO;
@@ -36,8 +37,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -53,6 +56,9 @@ public class CampusPostServiceImpl implements CampusPostService {
     private static final Set<String> SUPPORTED_TYPES = Collections.unmodifiableSet(
             new java.util.HashSet<>(Arrays.asList("idle", "help", "confession", "ride", "shop", "lost", "club", "job")));
     private static final String PHONE_PATTERN = "^(?:1[3-9]\\d{9}|0\\d{2,3}-?\\d{7,8})$";
+    private static final int HOT_SEARCH_WINDOW_DAYS = 30;
+    private static final Set<String> HOT_SEARCH_IGNORED_TAGS = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList("校园新鲜事", "推荐")));
     private static final String ERRAND_PUBLIC_VISIBILITY =
             " AND (p.type <> 'help' OR EXISTS (SELECT 1 FROM campus_trade_order eo WHERE eo.product_id = p.id"
                     + " AND eo.biz_type = 4 AND eo.status IN (1, 2) AND eo.fulfillment_status IN (1, 2, 3, 4)"
@@ -252,6 +258,80 @@ public class CampusPostServiceImpl implements CampusPostService {
                 + ERRAND_PUBLIC_VISIBILITY;
         where += disabledPublishTypeCondition(resolvedTenantId, params);
         return page(where, params, loginUserId, pageNo, pageSize, "p.create_time DESC");
+    }
+
+    @Override
+    public List<CampusHotSearchRespVO> getHotSearch(Long tenantId, Integer limit) {
+        long resolvedTenantId = tenantId == null ? DEFAULT_TENANT_ID : tenantId;
+        int safeLimit = Math.min(Math.max(limit == null ? 6 : limit, 1), 20);
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("tenantId", resolvedTenantId);
+        String where = " WHERE p.deleted = b'0' AND p.status = 1 AND p.tenant_id = :tenantId"
+                + " AND p.create_time >= DATE_SUB(NOW(), INTERVAL " + HOT_SEARCH_WINDOW_DAYS + " DAY)"
+                + " AND (p.type <> 'idle' OR (p.sale_status = 1 AND p.stock_available > 0))"
+                + ERRAND_PUBLIC_VISIBILITY;
+        where += disabledPublishTypeCondition(resolvedTenantId, params);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT p.tags_json, p.view_count, p.like_count, p.collect_count, p.comment_count, p.create_time"
+                        + " FROM campus_post p" + where,
+                params);
+        return buildHotSearch(rows, safeLimit, LocalDateTime.now());
+    }
+
+    /**
+     * 以最近 30 天的真实发布为样本：每条帖子的浏览、点赞、收藏、评论共同形成内容热度，
+     * 再按发布时间做 72 小时半衰期衰减；同一标签被更多有效帖子使用时继续累积标签热度。
+     */
+    static List<CampusHotSearchRespVO> buildHotSearch(List<Map<String, Object>> rows, int limit,
+                                                       LocalDateTime now) {
+        Map<String, HotSearchAccumulator> heatByTag = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            LocalDateTime createTime = toLocalDateTime(row.get("create_time"));
+            long ageHours = createTime == null ? HOT_SEARCH_WINDOW_DAYS * 24L
+                    : Math.max(Duration.between(createTime, now).toHours(), 0L);
+            double recencyWeight = Math.pow(0.5D, ageHours / 72D);
+            double contentHeat = (1D
+                    + Math.min(toInt(row.get("view_count")), 100000) * 0.05D
+                    + Math.min(toInt(row.get("like_count")), 10000) * 3D
+                    + Math.min(toInt(row.get("collect_count")), 10000) * 4D
+                    + Math.min(toInt(row.get("comment_count")), 10000) * 5D) * recencyWeight;
+            Set<String> postTags = parseStringList(value(row, "tags_json")).stream()
+                    .map(CampusPostServiceImpl::normalizeHotSearchTag)
+                    .filter(StrUtil::isNotBlank)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            for (String tag : postTags) {
+                HotSearchAccumulator accumulator = heatByTag.computeIfAbsent(tag,
+                        ignored -> new HotSearchAccumulator());
+                accumulator.contentHeat += contentHeat;
+                accumulator.postCount++;
+            }
+        }
+        return heatByTag.entrySet().stream().map(entry -> {
+            CampusHotSearchRespVO item = new CampusHotSearchRespVO();
+            item.setKeyword(entry.getKey());
+            item.setPostCount(entry.getValue().postCount);
+            item.setHeat(Math.max(1L, Math.round(entry.getValue().contentHeat
+                    + entry.getValue().postCount * 6D)));
+            return item;
+        }).sorted(Comparator.comparingLong((CampusHotSearchRespVO item) -> item.getHeat()).reversed()
+                .thenComparing(Comparator.comparingInt(
+                        (CampusHotSearchRespVO item) -> item.getPostCount()).reversed())
+                .thenComparing(CampusHotSearchRespVO::getKeyword))
+                .limit(Math.max(limit, 0))
+                .collect(Collectors.toList());
+    }
+
+    private static String normalizeHotSearchTag(String tag) {
+        String normalized = StrUtil.blankToDefault(tag, "").replaceFirst("^#+", "").trim();
+        if (normalized.length() < 2 || normalized.length() > 20 || HOT_SEARCH_IGNORED_TAGS.contains(normalized)) {
+            return "";
+        }
+        return normalized;
+    }
+
+    private static final class HotSearchAccumulator {
+        private double contentHeat;
+        private int postCount;
     }
 
     @Override

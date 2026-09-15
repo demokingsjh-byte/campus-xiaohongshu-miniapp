@@ -1,12 +1,15 @@
 package cn.iocoder.yudao.module.campus.service.post;
 
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
+import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusHotSearchRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentCreateReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostCommentRespVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostReportReqVO;
 import cn.iocoder.yudao.module.campus.controller.app.post.vo.CampusPostRespVO;
+
+import java.util.List;
 
 public interface CampusPostService {
 
@@ -16,6 +19,8 @@ public interface CampusPostService {
 
     PageResult<CampusPostRespVO> getPostPage(Long loginUserId, Long tenantId, String channel,
                                              String keyword, Integer pageNo, Integer pageSize);
+
+    List<CampusHotSearchRespVO> getHotSearch(Long tenantId, Integer limit);
 
     PageResult<CampusPostRespVO> getUserPostPage(Long loginUserId, Long targetUserId, String type,
                                                  Integer pageNo, Integer pageSize);

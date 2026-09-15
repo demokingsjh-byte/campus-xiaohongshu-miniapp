@@ -1,6 +1,8 @@
 <script lang="ts" setup>
+import type { CampusHotSearch } from '@/services/api/content';
 import CampusPostCard from '@/components/CampusFeedCard/index.vue';
 import StatePanel from '@/components/StatePanel/index.vue';
+import { getCampusHotSearch } from '@/services/api/content';
 import { useCampusContentStore, useTenantStore } from '@/stores/modules/tenant';
 
 const keyword = ref('');
@@ -10,13 +12,71 @@ const favoritesMode = ref(false);
 const modeTitle = computed(() => onlyMine.value ? '我发布的' : (favoritesMode.value ? '我的收藏' : ''));
 const activeTab = ref('全部');
 const activeFilter = ref('综合');
+const DEFAULT_RECENT_SEARCHES = ['折叠桌', '高铁站拼车', '计算器'];
+const DEFAULT_HOT_SEARCHES: CampusHotSearch[] = [
+  { keyword: '毕业热搜季', heat: 0, postCount: 0 },
+  { keyword: '校园卡热', heat: 0, postCount: 0 },
+  { keyword: '周末活动', heat: 0, postCount: 0 },
+  { keyword: '校门口美食', heat: 0, postCount: 0 },
+  { keyword: '四六级', heat: 0, postCount: 0 },
+  { keyword: '找搭子', heat: 0, postCount: 0 },
+];
 const cachedRecent = uni.getStorageSync('campus-search-recent');
-const recent = ref<string[]>(Array.isArray(cachedRecent) ? cachedRecent : ['折叠桌', '高铁站拼车', '计算器']);
-const hot = ['毕业闲置', '校园卡', '周末活动', '校门口美食', '四六级', '找搭子'];
+const recent = ref<string[]>(Array.isArray(cachedRecent) ? cachedRecent : [...DEFAULT_RECENT_SEARCHES]);
+const hot = ref<CampusHotSearch[]>([...DEFAULT_HOT_SEARCHES]);
+const hotLoading = ref(false);
 const tabs = ['全部', '二手', '互助', '活动', '用户'];
 const tabChannels: Record<string, string[]> = { 二手: ['二手'], 互助: ['互助'], 活动: ['社团'] };
 const contentStore = useCampusContentStore();
 const tenantStore = useTenantStore();
+const statusBarHeight = ref(0);
+const navBarHeight = ref(44);
+const capsuleSafeRight = ref(12);
+const navigationStyle = computed(() => ({
+  '--status-bar-height': `${statusBarHeight.value}px`,
+  '--nav-bar-height': `${navBarHeight.value}px`,
+  '--capsule-safe-right': `${capsuleSafeRight.value}px`,
+}));
+let hotRefreshTimer: ReturnType<typeof setInterval> | undefined;
+
+function updateNavigationLayout() {
+  const runtime = uni as any;
+  const windowInfo = runtime.getWindowInfo?.() || runtime.getSystemInfoSync?.() || {};
+  const menuButton = runtime.getMenuButtonBoundingClientRect?.();
+  statusBarHeight.value = Number(windowInfo.statusBarHeight || 0);
+  if (menuButton?.height && menuButton?.top) {
+    navBarHeight.value = menuButton.height + 2 * Math.max(0, menuButton.top - statusBarHeight.value);
+    capsuleSafeRight.value = Math.max(12, Number(windowInfo.windowWidth || 0) - menuButton.left + 12);
+  }
+}
+
+async function loadHotSearch() {
+  if (onlyMine.value || favoritesMode.value || hotLoading.value)
+    return;
+  hotLoading.value = true;
+  try {
+    const result = await getCampusHotSearch(tenantStore.tenantId || undefined, 6);
+    const liveHotSearches = Array.isArray(result) ? result.filter(item => item?.keyword).slice(0, 6) : [];
+    hot.value = liveHotSearches.length ? liveHotSearches : [...DEFAULT_HOT_SEARCHES];
+  } catch {
+    // 服务端尚未产生榜单或暂不可用时保留设计稿初始内容；
+    // 一旦返回真实标签热度，会在本次进入页面或下一个 60 秒刷新周期自动替换。
+  } finally {
+    hotLoading.value = false;
+  }
+}
+
+function stopHotSearchRefresh() {
+  if (hotRefreshTimer)
+    clearInterval(hotRefreshTimer);
+  hotRefreshTimer = undefined;
+}
+
+function startHotSearchRefresh() {
+  stopHotSearchRefresh();
+  void loadHotSearch();
+  hotRefreshTimer = setInterval(() => void loadHotSearch(), 60000);
+}
 const results = computed(() => {
   const query = keyword.value.trim().toLowerCase();
   const source = onlyMine.value
@@ -72,8 +132,15 @@ function clear() {
 }
 function clearRecent() {
   recent.value = [];
-  uni.removeStorageSync('campus-search-recent');
+  uni.setStorageSync('campus-search-recent', []);
 }
+onMounted(updateNavigationLayout);
+onShow(() => {
+  updateNavigationLayout();
+  startHotSearchRefresh();
+});
+onHide(stopHotSearchRefresh);
+onUnload(stopHotSearchRefresh);
 onLoad(async (query) => {
   onlyMine.value = query?.mine === '1';
   favoritesMode.value = query?.favorites === '1';
@@ -102,7 +169,7 @@ onLoad(async (query) => {
 </script>
 
 <template>
-  <view class="search-page">
+  <view class="search-page" :style="navigationStyle">
     <view class="search-status" />
     <view v-if="modeTitle" class="prototype-subpage-nav">
       <view class="back" @click="uni.navigateBack()">
@@ -115,21 +182,19 @@ onLoad(async (query) => {
         <image src="/static/icons/ui/back.svg" mode="aspectFit" />
       </view><view class="search-input">
         <image class="search-icon" src="/static/icons/ui/search.svg" mode="aspectFit" />
-        <input v-model="keyword" :autofocus="!modeTitle" :placeholder="modeTitle ? `搜索${modeTitle}内容` : '搜校园内容和同学'" confirm-type="search" @confirm="search()">
+        <input v-model="keyword" :autofocus="!modeTitle" :placeholder="modeTitle ? `搜索${modeTitle}内容` : '搜索'" confirm-type="search" @confirm="search()">
         <view v-if="keyword" class="clear" @click="clear">
           <image src="/static/icons/ui/close.svg" mode="aspectFit" />
         </view>
-      </view><text v-if="!modeTitle" class="search-text" @click="search()">
-        搜索
-      </text>
+      </view>
     </view>
 
     <view v-if="!searched" class="discover">
       <view class="discover-section">
         <view class="discover-head">
-          <b>最近搜索</b><text @click="clearRecent">
-            清空
-          </text>
+          <b>最近搜索</b><view class="clear-recent" @click="clearRecent">
+            <i aria-hidden="true" /><text>清空</text>
+          </view>
         </view><view v-if="recent.length" class="chip-list">
           <text v-for="item in recent" :key="item" @click="search(item)">
             {{ item }}
@@ -140,12 +205,21 @@ onLoad(async (query) => {
       </view>
       <view class="discover-section">
         <view class="discover-head">
-          <b>校园热搜</b><text>实时更新</text>
+          <b>校园热搜</b><text class="live-label">
+            实时更新
+          </text>
         </view><view class="hot-list">
-          <view v-for="(item, index) in hot" :key="item" @click="search(item)">
-            <text class="rank" :class="{ top: index < 3 }">
+          <view v-for="(item, index) in hot" :key="item.keyword" class="hot-item" @click="search(item.keyword)">
+            <text class="rank">
               {{ index + 1 }}
-            </text><span>{{ item }}</span><i v-if="index < 2">热</i>
+            </text><view class="hot-topic">
+              <view class="hot-badge">
+                <text>#</text><i>🔥</i>
+              </view>
+              <text class="hot-keyword">
+                {{ item.keyword }}
+              </text>
+            </view>
           </view>
         </view>
       </view>
@@ -167,10 +241,16 @@ onLoad(async (query) => {
         />
         <view v-else class="result-grid">
           <view class="column">
-            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" :owner-context="onlyMine" :collection-context="favoritesMode" />
+            <CampusPostCard
+              v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post"
+              :owner-context="onlyMine" :collection-context="favoritesMode"
+            />
           </view>
           <view class="column">
-            <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" :owner-context="onlyMine" :collection-context="favoritesMode" />
+            <CampusPostCard
+              v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post"
+              :owner-context="onlyMine" :collection-context="favoritesMode"
+            />
           </view>
         </view>
       </template>
@@ -197,9 +277,15 @@ onLoad(async (query) => {
             {{ onlyMine ? `我的发布共 ${results.length} 条` : (favoritesMode ? `我的收藏共 ${results.length} 条` : `找到 ${results.length} 条与“${keyword}”相关的内容`) }}
           </view><view class="result-grid">
             <view class="column">
-              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post" :owner-context="onlyMine" :collection-context="favoritesMode" />
+              <CampusPostCard
+                v-for="post in results.filter((_, i) => i % 2 === 0)" :key="post.id" :post="post"
+                :owner-context="onlyMine" :collection-context="favoritesMode"
+              />
             </view><view class="column">
-              <CampusPostCard v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post" :owner-context="onlyMine" :collection-context="favoritesMode" />
+              <CampusPostCard
+                v-for="post in results.filter((_, i) => i % 2 === 1)" :key="post.id" :post="post"
+                :owner-context="onlyMine" :collection-context="favoritesMode"
+              />
             </view>
           </view>
         </template>
@@ -699,22 +785,46 @@ onLoad(async (query) => {
   column-gap: 23.08rpx;
 }
 
-/* 搜索首页视觉整理：纯白卡片、稳定安全区和更清晰的热搜层级。 */
+/* UI 设计稿：顶部浅绿导航、白色圆角卡片和三列校园热搜。 */
 .search-status {
-  height: 72rpx;
-  min-height: 72rpx;
-  height: calc(var(--status-bar-height) + 24rpx);
+  height: var(--status-bar-height, env(safe-area-inset-top));
+  min-height: var(--status-bar-height, env(safe-area-inset-top));
+  background: #eaf7ee !important;
 }
 
 .search-top {
-  padding: 18rpx 30rpx 28rpx;
+  min-height: var(--nav-bar-height, 44px);
+  padding: 0 var(--capsule-safe-right, 24rpx) 18rpx 28rpx;
+  gap: 10rpx;
+  background: #eaf7ee !important;
+  box-sizing: content-box;
+}
+
+.search-top.mode-search-top {
+  padding-right: 32rpx;
+}
+
+.back {
+  flex-basis: 54rpx;
+  width: 54rpx;
+  height: 76rpx;
+}
+
+.back image {
+  width: 34rpx;
+  height: 34rpx;
+}
+
+.back:active {
+  background: transparent;
+  opacity: 0.55;
 }
 
 .search-input {
-  height: 80rpx;
-  padding: 0 24rpx;
+  height: 76rpx;
+  padding: 0 28rpx;
   border: 0;
-  border-radius: 40rpx;
+  border-radius: 999rpx;
   background: #fff !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
@@ -722,107 +832,218 @@ onLoad(async (query) => {
 }
 
 .search-input input {
-  height: 80rpx;
+  height: 76rpx;
   margin-left: 12rpx;
   background: #fff !important;
-  color: #1f1f1f;
+  color: #242424;
   font-size: 28rpx;
-  line-height: 80rpx;
+  line-height: 76rpx;
 }
 
-.search-text {
-  height: 80rpx;
-  font-size: 28rpx;
-}
-
-.back:active,
-.search-text:active {
-  background: transparent;
+.search-icon {
+  width: 34rpx;
+  height: 34rpx;
+  opacity: 0.58;
 }
 
 .discover {
-  padding: 18rpx 30rpx 48rpx;
+  min-height: calc(100vh - var(--status-bar-height, 0px) - var(--nav-bar-height, 44px));
+  padding: 28rpx 30rpx 60rpx;
+  background: #f5f5f5;
+  box-sizing: border-box;
 }
 
 .discover-section {
-  margin-top: 20rpx;
-  padding: 30rpx 28rpx 32rpx;
+  margin-top: 0;
+  padding: 26rpx 24rpx 30rpx;
   border: 0;
-  border-radius: 28rpx;
+  border-radius: 30rpx;
   background: #fff !important;
   box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
 
+.discover-section + .discover-section {
+  margin-top: 32rpx;
+  padding-bottom: 24rpx;
+}
+
 .discover-head b {
-  color: #1f1f1f;
+  color: #202020;
   font-size: 32rpx;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 44rpx;
 }
 
-.discover-head text {
-  color: #8b8b8b;
-  font-size: 23rpx;
+.discover-head > text,
+.discover-head .live-label {
+  color: #929292;
+  font-size: 25rpx;
+  font-weight: 600;
   line-height: 36rpx;
 }
 
+.clear-recent {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  color: #ff4d55;
+}
+
+.clear-recent text {
+  color: #ff4d55;
+  font-size: 25rpx;
+  line-height: 36rpx;
+}
+
+.clear-recent i {
+  position: relative;
+  width: 17rpx;
+  height: 21rpx;
+  border: 3rpx solid #ff4d55;
+  border-top: 0;
+  border-radius: 2rpx;
+  box-sizing: border-box;
+}
+
+.clear-recent i::before {
+  position: absolute;
+  top: -7rpx;
+  left: -5rpx;
+  width: 21rpx;
+  height: 3rpx;
+  border-radius: 2rpx;
+  background: #ff4d55;
+  content: '';
+}
+
+.clear-recent i::after {
+  position: absolute;
+  top: -11rpx;
+  left: 3rpx;
+  width: 7rpx;
+  height: 4rpx;
+  border: 2rpx solid #ff4d55;
+  border-bottom: 0;
+  border-radius: 3rpx 3rpx 0 0;
+  content: '';
+}
+
 .chip-list {
-  gap: 16rpx;
-  margin-top: 22rpx;
+  gap: 16rpx 30rpx;
+  margin-top: 26rpx;
 }
 
 .chip-list text {
   min-height: 60rpx;
-  padding: 12rpx 24rpx;
-  border: 1rpx solid #eeeeee;
-  border-radius: 30rpx;
-  color: #646464;
+  padding: 11rpx 22rpx;
+  border: 1rpx solid #e9e9e9;
+  border-radius: 22rpx;
+  color: #8a8a8a;
   background: #fff !important;
-  box-shadow: none !important;
-  font-size: 24rpx;
+  box-shadow: 0 2rpx 5rpx rgba(0, 0, 0, 0.02) !important;
+  font-size: 25rpx;
   line-height: 36rpx;
   box-sizing: border-box;
 }
 
 .recent-empty {
   margin-top: 24rpx;
+  color: #a1a1a1;
   font-size: 24rpx;
   line-height: 36rpx;
 }
 
 .hot-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12rpx 42rpx;
-  margin-top: 22rpx;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8rpx 4rpx;
+  margin-top: 24rpx;
 }
 
-.hot-list > view {
+.hot-list > .hot-item {
+  position: relative;
+  display: flex;
   min-width: 0;
-  min-height: 88rpx;
-  font-size: 29rpx;
-  line-height: 40rpx;
+  min-height: 72rpx;
+  align-items: center;
+  font-size: 27rpx;
+  line-height: 38rpx;
 }
 
 .rank {
-  flex: 0 0 42rpx;
-  width: 42rpx;
-  font-size: 27rpx;
-  font-weight: 600;
+  flex: 0 0 28rpx;
+  width: 28rpx;
+  color: #d5d5d5;
+  font-size: 45rpx;
+  font-weight: 800;
+  line-height: 54rpx;
+  text-align: center;
 }
 
-.hot-list span {
+.hot-item:nth-child(1) .rank {
+  color: #ff7f87;
+}
+
+.hot-item:nth-child(2) .rank {
+  color: #ff9ba1;
+}
+
+.hot-item:nth-child(3) .rank {
+  color: #ffb0b5;
+}
+
+.hot-topic {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  margin-left: -3rpx;
+}
+
+.hot-badge {
+  position: relative;
+  display: flex;
+  flex: 0 0 35rpx;
+  width: 35rpx;
+  height: 35rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #1d1d1d;
+}
+
+.hot-badge > text {
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 35rpx;
+}
+
+.hot-badge i {
+  position: absolute;
+  right: -7rpx;
+  bottom: -5rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 17rpx;
+  font-style: normal;
+  line-height: 20rpx;
+}
+
+.hot-keyword {
   overflow: hidden;
-  color: #303330;
-  font-size: 29rpx;
-  font-weight: 400;
+  margin-left: 12rpx;
+  color: #252525;
+  font-size: 27rpx;
+  font-weight: 500;
+  line-height: 38rpx;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.hot-list i {
-  margin-left: 8rpx;
-  font-size: 19rpx;
 }
 </style>
