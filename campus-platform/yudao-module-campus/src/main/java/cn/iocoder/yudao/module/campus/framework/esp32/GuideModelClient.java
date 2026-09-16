@@ -518,10 +518,6 @@ public class GuideModelClient {
         }
     }
 
-    private static String ensureAudioDataUri(String value) {
-        return value.startsWith("data:") ? value : "data:audio/wav;base64," + value;
-    }
-
     private static long elapsedMillis(long startedAt) {
         return elapsedMillis(startedAt, System.nanoTime());
     }

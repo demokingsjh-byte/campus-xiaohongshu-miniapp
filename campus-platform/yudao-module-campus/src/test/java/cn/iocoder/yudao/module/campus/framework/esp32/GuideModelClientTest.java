@@ -7,11 +7,15 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -36,11 +40,12 @@ class GuideModelClientTest {
         List<JsonNode> events = new ArrayList<>();
         CountDownLatch done = new CountDownLatch(1);
         try (GuideModelClient.ModelSession session = client.connect(listener(events, done))) {
-            assertTrue(session.send(Map.of(
-                    "type", "chat",
-                    "request_id", "req-1",
-                    "question", "这里是哪里？",
-                    "images", List.of("https://example.com/camera.jpg"))));
+            Map<String, Object> chat = new LinkedHashMap<>();
+            chat.put("type", "chat");
+            chat.put("request_id", "req-1");
+            chat.put("question", "这里是哪里？");
+            chat.put("images", Collections.singletonList("https://example.com/camera.jpg"));
+            assertTrue(session.send(chat));
 
             assertTrue(done.await(5, TimeUnit.SECONDS));
         } finally {
@@ -58,6 +63,7 @@ class GuideModelClientTest {
         assertEquals("https://example.com/camera.jpg", content.get(0).path("image_url").path("url").asText());
         assertEquals("text", content.get(1).path("type").asText());
         assertTrue(content.get(1).path("text").asText().contains("这里是哪里？"));
+        assertTrue(requestBody.get().indexOf("input_audio") < 0);
 
         assertEquals("text_delta", events.get(1).path("type").asText());
         assertEquals("你好", events.get(1).path("text").asText());
@@ -75,7 +81,10 @@ class GuideModelClientTest {
         List<JsonNode> events = new ArrayList<>();
         CountDownLatch finished = new CountDownLatch(1);
         try (GuideModelClient.ModelSession session = client.connect(listener(events, finished))) {
-            assertTrue(session.send(Map.of("type", "chat", "request_id", "req-2")));
+            Map<String, Object> chat = new LinkedHashMap<>();
+            chat.put("type", "chat");
+            chat.put("request_id", "req-2");
+            assertTrue(session.send(chat));
             assertTrue(finished.await(5, TimeUnit.SECONDS));
         } finally {
             client.destroy();
@@ -97,12 +106,22 @@ class GuideModelClientTest {
 
     private static void respond(HttpExchange exchange, AtomicReference<String> requestBody, String sseBody)
             throws IOException {
-        requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+        requestBody.set(new String(readAllBytes(exchange.getRequestBody()), StandardCharsets.UTF_8));
         byte[] response = sseBody.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
         exchange.sendResponseHeaders(200, response.length);
         exchange.getResponseBody().write(response);
         exchange.close();
+    }
+
+    private static byte[] readAllBytes(InputStream input) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[4096];
+        int count;
+        while ((count = input.read(buffer)) != -1) {
+            output.write(buffer, 0, count);
+        }
+        return output.toByteArray();
     }
 
     private static GuideModelClient createClient(HttpServer server) throws Exception {
