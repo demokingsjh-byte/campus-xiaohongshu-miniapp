@@ -44,8 +44,8 @@ export interface CampusEsp32Log {
   totalMs?: number
   errorCode?: string
   errorMessage?: string
-  createTime: string
-  updateTime: string
+  createTime: string | number
+  updateTime: string | number
 }
 
 export interface CampusEsp32LogDetail extends CampusEsp32Log {
@@ -69,7 +69,7 @@ export interface CampusEsp32LogSummary {
   averageTotalMs?: number
   averageFirstAudioMs?: number
   averageModelMs?: number
-  lastTime?: string
+  lastTime?: string | number
 }
 
 export const getCampusEsp32LogPage = (params: CampusEsp32LogQuery) =>

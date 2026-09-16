@@ -181,6 +181,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, watch } from 'vue'
+import { formatDate } from '@/utils/formatTime'
 import {
   getCampusEsp32Log,
   getCampusEsp32LogImage,
@@ -420,7 +421,13 @@ const formatBytes = (value?: number) => {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
-const formatTime = (value?: string) => value ? String(value).replace('T', ' ').slice(0, 19) : '-'
+const formatTime = (value?: string | number) => {
+  if (value == null || value === '') return '-'
+  const normalizedValue = typeof value === 'number' && value < 10_000_000_000
+    ? value * 1000
+    : value
+  return formatDate(normalizedValue) || '-'
+}
 const statusText = (status: CampusEsp32LogStatus) => statusOptions.find((item) => item.value === status)?.label || status || '未知'
 type TagType = 'success' | 'warning' | 'danger' | 'info'
 const statusTag = (status: CampusEsp32LogStatus): TagType => {
