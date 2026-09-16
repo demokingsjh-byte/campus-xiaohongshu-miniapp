@@ -32,6 +32,8 @@ public class CampusEsp32AssistantController {
         data.put("websocketPath", properties.getPath());
         data.put("protocolVersion", "esp32-av/1.0");
         data.put("mode", "half_duplex");
+        data.put("model", properties.getModelName());
+        data.put("modelAudioFormat", "wav");
         return success(data);
     }
 

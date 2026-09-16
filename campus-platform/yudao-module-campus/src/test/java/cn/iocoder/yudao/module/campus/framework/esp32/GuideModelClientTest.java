@@ -44,6 +44,8 @@ class GuideModelClientTest {
             chat.put("type", "chat");
             chat.put("request_id", "req-1");
             chat.put("question", "这里是哪里？");
+            chat.put("audio", "data:audio/wav;base64,QUJD");
+            chat.put("audio_format", "wav");
             chat.put("images", Collections.singletonList("https://example.com/camera.jpg"));
             assertTrue(session.send(chat));
 
@@ -58,12 +60,15 @@ class GuideModelClientTest {
         assertTrue(body.path("stream").asBoolean());
         assertEquals(512, body.path("max_tokens").asInt());
         JsonNode content = body.path("messages").get(1).path("content");
-        assertEquals(2, content.size());
-        assertEquals("image_url", content.get(0).path("type").asText());
-        assertEquals("https://example.com/camera.jpg", content.get(0).path("image_url").path("url").asText());
-        assertEquals("text", content.get(1).path("type").asText());
-        assertTrue(content.get(1).path("text").asText().contains("这里是哪里？"));
-        assertTrue(requestBody.get().indexOf("input_audio") < 0);
+        assertEquals(3, content.size());
+        assertEquals("input_audio", content.get(0).path("type").asText());
+        assertEquals("QUJD", content.get(0).path("input_audio").path("data").asText());
+        assertEquals("wav", content.get(0).path("input_audio").path("format").asText());
+        assertTrue(content.get(0).path("input_audio").path("audio_url").isMissingNode());
+        assertEquals("image_url", content.get(1).path("type").asText());
+        assertEquals("https://example.com/camera.jpg", content.get(1).path("image_url").path("url").asText());
+        assertEquals("text", content.get(2).path("type").asText());
+        assertTrue(content.get(2).path("text").asText().contains("这里是哪里？"));
 
         assertEquals("text_delta", events.get(1).path("type").asText());
         assertEquals("你好", events.get(1).path("text").asText());

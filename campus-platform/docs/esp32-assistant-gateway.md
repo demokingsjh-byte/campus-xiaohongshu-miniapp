@@ -2,7 +2,7 @@
 
 ## 1. 目标与边界
 
-本服务位于 `yudao-module-campus`，先通过火山 ASR 将设备音频转成文字，再通过火山方舟 Chat Completions 调用 `doubao-seed-2-1-turbo-260628` 理解文字与图片，最后复用火山 TTS 给 XIAO ESP32-S3 Sense 提供“听、看、理解、说”的闭环。
+本服务位于 `yudao-module-campus`，将设备音频封装为 WAV 后，通过火山方舟 Chat Completions 调用支持音频理解的 `doubao-seed-2-0-lite-260428`，同时理解音频与图片，最后复用火山 TTS 给 XIAO ESP32-S3 Sense 提供“听、看、理解、说”的闭环。火山 ASR 仅异步补充后台问题文本日志，不阻塞模型回答。
 
 它是校园平台内的一条独立设备链路，不修改原 AI_GUIDE H5 视频通话接口。设备只有提交一轮语音后才会请求模型，摄像头画面变化不会单独触发回答。
 
@@ -18,9 +18,8 @@ ESP32-S3                      campus-platform                     外部服务
    ├── 0x01 + PCM 音频帧 ──────────>│                                │
    ├── 0x02 + JPEG（0~3 张）────────>│                                │
    ├── turn_commit ────────────────>│                                │
-   │                                ├── WAV ───────────────────────> 火山 ASR
-   │                                │<── 用户问题文字 ────────────── 火山 ASR
-   │                                ├── 问题文字 + JPEG ───────────> 火山方舟多模态模型
+   │                                ├── WAV + JPEG ────────────────> 火山方舟音频理解模型
+   │                                ├── WAV（异步）────────────────> 火山 ASR
    │                                │<── text_delta / text_done ─── 多模态模型
    │                                ├── 分句文字流 ────────────────> 火山 TTS
    │<── audio_start ────────────────┤                                │
@@ -32,9 +31,11 @@ ESP32-S3                      campus-platform                     外部服务
 
 关键设计：
 
-- `turn_commit` 后先将 WAV 音频提交火山 ASR，再把转写文字和本轮 JPEG 图片组成方舟 Chat Completions 多模态消息。
+- `turn_commit` 后将 WAV 的纯 Base64 数据放入 Chat API 的 `input_audio.data`，格式使用 `input_audio.format=wav`；JPEG 继续使用 `image_url` 内容块。
+- 火山方舟音频理解还支持 MP3、AAC、M4A；本项目固定使用 WAV，因为 ESP32 上送的是 16 kHz、单声道 PCM16LE，网关可无损补 WAV 头。
 - 方舟接口使用流式响应，网关将每个文本增量转换为设备协议的 `text_delta`，因此仍可按句启动 TTS。
-- ASR 是模型调用的前置步骤；转写失败时本轮返回 `ASR_FAILED`，提示设备重新提问。
+- `doubao-seed-2-1-turbo-260628` 不支持音频输入，因此网关默认使用官方音频理解模型 `doubao-seed-2-0-lite-260428`。
+- ASR 与模型并行，仅用于保存用户问题文本；ASR 失败不会阻断回答。
 - TTS 按完整短句流式合成，避免逐字合成造成“一段一段”的播音。
 - 返回音频按 PCM 播放速度节流，避免数据灌入过快撑满 ESP32 播放缓冲。
 - AI 播放期间采用半双工，不自动采集下一轮；设备发送 `interrupt` 可手动打断。
@@ -296,7 +297,7 @@ yudao-server/src/main/resources/application.yaml
 CAMPUS_ESP32_ASSISTANT_ENABLED=true
 CAMPUS_ESP32_DEVICE_TOKENS=<随机设备token，多个用逗号分隔>
 CAMPUS_VOLC_ARK_API_KEY=<火山方舟 API Key>
-CAMPUS_VOLC_ARK_MODEL=doubao-seed-2-1-turbo-260628
+CAMPUS_VOLC_ARK_MODEL=doubao-seed-2-0-lite-260428
 CAMPUS_VOLC_ARK_MODEL_URL=https://ark.cn-beijing.volces.com/api/v3/chat/completions
 CAMPUS_VOLC_ASR_APP_ID=<火山AppId>
 CAMPUS_VOLC_ASR_ACCESS_TOKEN=<火山AccessToken>
@@ -306,13 +307,13 @@ CAMPUS_VOLC_TTS_RESOURCE_ID=seed-tts-2.0
 CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_roumeinvyou_uranus_bigtts
 ```
 
-`CAMPUS_VOLC_ARK_MODEL` 应填写方舟控制台中已开通的模型或推理接入点 ID。当前使用 `doubao-seed-2-1-turbo-260628`，适合需要低延迟的 ESP32 图文问答。`CAMPUS_VOLC_ARK_API_KEY` 只放在服务器环境变量（例如 `/opt/campus-platform/backend/campus.env`），不要写入 Git。
+`CAMPUS_VOLC_ARK_MODEL` 必须填写方舟控制台中已开通且支持音频理解的模型或推理接入点 ID。当前默认使用 `doubao-seed-2-0-lite-260428`；`doubao-seed-2-1-turbo-260628` 只支持文本、图片等输入，不能接收 `input_audio`。`CAMPUS_VOLC_ARK_API_KEY` 只放在服务器环境变量（例如 `/opt/campus-platform/backend/campus.env`），不要写入 Git。
 
-网关默认走方舟 Chat Completions HTTP 流式接口，发送 ASR 转写文字和 `image_url` 图片内容块，不再向模型直接发送音频。如果仍需兼容旧的自建模型，可把 `CAMPUS_VOLC_ARK_MODEL_URL` 改成 `ws://` 或 `wss://` 地址，此时会沿用原有 WebSocket 模型协议。
+网关默认走方舟 Chat Completions HTTP 流式接口。设备上传 PCM16LE 后，网关先封装为 WAV，再去掉 Data URI 头，仅把纯 Base64 写入 `messages[].content[].input_audio.data`，并同时传入 `input_audio.format=wav`；图片使用 `image_url`。如果仍需兼容旧的自建模型，可把 `CAMPUS_VOLC_ARK_MODEL_URL` 改成 `ws://` 或 `wss://` 地址，此时会沿用原有 WebSocket 模型协议。
 
 当前默认资源为 `seed-tts-2.0`，音色为火山“如梦”（`zh_female_roumeinvyou_uranus_bigtts`）。预置的 `zh_...` 音色必须搭配 TTS 资源；`seed-icl-2.0` 只用于已复刻的音色 ID（通常为 `S_...`）。如需切换音色或资源，可分别覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE`、`CAMPUS_VOLC_TTS_RESOURCE_ID`。
 
-当前模型调用依赖 ASR 转写，生产环境必须保持：
+ASR 只用于后台问题文本日志，可按需关闭：
 
 ```bash
 CAMPUS_ESP32_ASR_ENABLED=true
@@ -353,7 +354,7 @@ GET /admin-api/campus/esp32/log/get?id=日志编号
 GET /admin-api/campus/esp32/log/image?id=图片编号
 ```
 
-用户提问取自本轮 ASR 转写全文；回答取自模型本轮返回的全文。`asrStatus` 区分 `PENDING`（转写中）、`SUCCESS`、`FAILED`、`DISABLED`，旧日志该字段为空。ASR 成功后才会提交模型；失败时本轮不会调用模型。
+用户提问取自本轮 ASR 转写全文；回答取自模型本轮返回的全文。`asrStatus` 区分 `PENDING`（转写中）、`SUCCESS`、`FAILED`、`DISABLED`，旧日志该字段为空。ASR 与音频理解模型并行执行；ASR 失败只影响后台问题文本，不影响本轮模型回答。
 
 图片异步保存到独立的私有数据库表，每轮最多 3 张 JPEG，单张最多 2MB。列表和详情仅返回图片数量、编号与大小，图片内容通过单独的鉴权接口读取，要求已登录且有 `campus:esp32-log:query` 权限。前端用携带登录身份的请求加载图片，关闭详情时释放临时预览地址，不生成公开图片链接。
 
@@ -367,7 +368,7 @@ GET /admin-api/campus/esp32/log/image?id=图片编号
 | --- | --- |
 | `captureMs` | 收到 `turn_start` 到收到 `turn_commit` |
 | `submitMs` | 网关组装数据并提交上游模型所用时间 |
-| `asrMs` | ASR 请求总耗时；完成转写后才提交模型 |
+| `asrMs` | 异步 ASR 请求总耗时，不阻塞模型回答 |
 | `modelFirstTokenMs` | 提交模型到收到第一个文本增量 |
 | `modelTotalMs` | 提交模型到收到 `text_done` |
 | `ttsFirstAudioMs` | 本轮开始到收到第一包 TTS 音频 |
@@ -389,4 +390,4 @@ GET /admin-api/campus/esp32/log/image?id=图片编号
 3. 按键提问后日志出现 `ESP32_TURN_SUBMITTED`。
 4. 模型有返回时出现 `ESP32_MODEL_DONE`。
 5. 第一段 TTS 下发时出现 `ESP32_FIRST_TTS_AUDIO`。
-6. ASR 成功后出现 `ESP32_ASR_COMPLETED`，随后模型和 TTS 阶段正常完成。
+6. ASR 日志异步出现 `ESP32_ASR_COMPLETED`，其失败不影响模型和 TTS 阶段。

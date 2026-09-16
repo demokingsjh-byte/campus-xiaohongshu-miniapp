@@ -372,12 +372,12 @@ campus:
     output-audio-chunk-bytes: 1920
     playback-pace-percent: 90
 
-    # 火山方舟多模态模型：ASR 转写后，将问题文字与 JPEG 图片转为 Chat Completions 请求。
+    # 火山方舟音频理解模型：WAV Base64 与 JPEG 图片通过 Chat Completions 直接提交。
     model-url: ${CAMPUS_VOLC_ARK_MODEL_URL:https://ark.cn-beijing.volces.com/api/v3/chat/completions}
-    model-name: ${CAMPUS_VOLC_ARK_MODEL:doubao-seed-2-1-turbo-260628}
+    model-name: ${CAMPUS_VOLC_ARK_MODEL:doubao-seed-2-0-lite-260428}
     model-token: ${CAMPUS_VOLC_ARK_API_KEY:}
 
-    # ASR 先将设备音频转为用户问题文字，再调用图文模型。
+    # ASR 仅异步补充用户问题日志，不阻塞模型回答。
     asr-enabled: ${CAMPUS_ESP32_ASR_ENABLED:true}
     asr-url: wss://openspeech.bytedance.com/api/v3/sauc/bigmodel
     asr-app-id: ${CAMPUS_VOLC_ASR_APP_ID:1828671130}
