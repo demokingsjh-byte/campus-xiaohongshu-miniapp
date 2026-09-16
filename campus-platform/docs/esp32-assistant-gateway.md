@@ -309,6 +309,8 @@ CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_roumeinvyou_uranus_bigtts
 
 `CAMPUS_VOLC_ARK_MODEL` 必须填写方舟控制台中已开通且支持音频理解的模型或推理接入点 ID。当前默认使用 `doubao-seed-2-0-lite-260428`；`doubao-seed-2-1-turbo-260628` 只支持文本、图片等输入，不能接收 `input_audio`。`CAMPUS_VOLC_ARK_API_KEY` 只放在服务器环境变量（例如 `/opt/campus-platform/backend/campus.env`），不要写入 Git。
 
+为兼容尚未更新的生产环境变量，代码检测到遗留的 `doubao-seed-2-1-turbo-260628` 时会自动迁移为 `doubao-seed-2-0-lite-260428`；仍建议同步更新服务器上的 `CAMPUS_VOLC_ARK_MODEL`，避免配置含义与实际运行值不一致。
+
 网关默认走方舟 Chat Completions HTTP 流式接口。设备上传 PCM16LE 后，网关先封装为 WAV，再去掉 Data URI 头，仅把纯 Base64 写入 `messages[].content[].input_audio.data`，并同时传入 `input_audio.format=wav`；图片使用 `image_url`。如果仍需兼容旧的自建模型，可把 `CAMPUS_VOLC_ARK_MODEL_URL` 改成 `ws://` 或 `wss://` 地址，此时会沿用原有 WebSocket 模型协议。
 
 当前默认资源为 `seed-tts-2.0`，音色为火山“如梦”（`zh_female_roumeinvyou_uranus_bigtts`）。预置的 `zh_...` 音色必须搭配 TTS 资源；`seed-icl-2.0` 只用于已复刻的音色 ID（通常为 `S_...`）。如需切换音色或资源，可分别覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE`、`CAMPUS_VOLC_TTS_RESOURCE_ID`。

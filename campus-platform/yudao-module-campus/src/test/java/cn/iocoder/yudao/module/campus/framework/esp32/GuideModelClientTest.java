@@ -29,6 +29,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GuideModelClientTest {
 
     @Test
+    void shouldMigrateLegacyModelWithoutAudioSupport() {
+        CampusEsp32AssistantProperties properties = new CampusEsp32AssistantProperties();
+        properties.setModelName("doubao-seed-2-1-turbo-260628");
+
+        assertEquals("doubao-seed-2-0-lite-260428", properties.getModelName());
+    }
+
+    @Test
     void shouldSendChatCompletionsRequestAndNormalizeStreamEvents() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = startSseServer(requestBody,
