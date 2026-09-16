@@ -374,7 +374,7 @@ campus:
 
     # 火山方舟多模态模型：网关将 ESP32 的 WAV 音频与 JPEG 图片转为 Chat Completions 请求。
     model-url: ${CAMPUS_VOLC_ARK_MODEL_URL:https://ark.cn-beijing.volces.com/api/v3/chat/completions}
-    model-name: ${CAMPUS_VOLC_ARK_MODEL:doubao-seed-2-0-mini-260428}
+    model-name: ep-20260916151713-6vxkb
     model-token: ${CAMPUS_VOLC_ARK_API_KEY:}
 
     # ASR 只异步生成问题文字日志，不参与模型请求闸门。
