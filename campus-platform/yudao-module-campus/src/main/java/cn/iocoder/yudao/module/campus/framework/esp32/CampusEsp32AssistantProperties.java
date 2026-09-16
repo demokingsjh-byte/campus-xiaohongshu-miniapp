@@ -17,9 +17,6 @@ import java.util.stream.Collectors;
 @ConfigurationProperties(prefix = "campus.esp32-assistant")
 public class CampusEsp32AssistantProperties {
 
-    private static final String AUDIO_MODEL = "doubao-seed-2-0-lite-260428";
-    private static final String LEGACY_MODEL_WITHOUT_AUDIO = "doubao-seed-2-1-turbo-260628";
-
     private boolean enabled = false;
     private String path = "/app-api/campus/esp32/assistant/ws";
     /** 兼容 AI_GUIDE 原有固件，迁移时可不立即升级固件路径。 */
@@ -31,9 +28,9 @@ public class CampusEsp32AssistantProperties {
     private int outputAudioChunkBytes = 1920;
     private int playbackPacePercent = 90;
 
-    /** 火山方舟 Chat Completions 地址；如需兼容旧自建模型，可改为 ws:// 地址。 */
-    private String modelUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
-    private String modelName = AUDIO_MODEL;
+    /** 火山方舟 Responses 地址；如需兼容旧自建模型，可改为 ws:// 地址。 */
+    private String modelUrl = "https://ark.cn-beijing.volces.com/api/v3/responses";
+    private String modelName = "doubao-seed-2-1-pro-260915";
     private String modelToken = "";
 
     private String asrUrl = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
@@ -48,13 +45,6 @@ public class CampusEsp32AssistantProperties {
     private String ttsResourceId = "seed-tts-2.0";
     /** 火山 TTS：如梦音色。可通过 CAMPUS_VOLC_TTS_VOICE_TYPE 覆盖。 */
     private String ttsVoiceType = "zh_female_roumeinvyou_uranus_bigtts";
-
-    /**
-     * 兼容线上遗留配置：旧 Turbo 模型不支持 input_audio，绑定到该值时自动迁移到音频模型。
-     */
-    public void setModelName(String modelName) {
-        this.modelName = LEGACY_MODEL_WITHOUT_AUDIO.equals(modelName) ? AUDIO_MODEL : modelName;
-    }
 
     public List<String> getDeviceTokenList() {
         if (deviceTokens == null || deviceTokens.trim().isEmpty()) {
@@ -72,7 +62,9 @@ public class CampusEsp32AssistantProperties {
                 && hasText(modelUrl)
                 && hasText(modelName)
                 && hasText(modelToken)
-                && (!asrEnabled || (hasText(asrAppId) && hasText(asrAccessToken)))
+                && asrEnabled
+                && hasText(asrAppId)
+                && hasText(asrAccessToken)
                 && hasText(ttsAppId)
                 && hasText(ttsAccessToken)
                 && hasText(ttsVoiceType);

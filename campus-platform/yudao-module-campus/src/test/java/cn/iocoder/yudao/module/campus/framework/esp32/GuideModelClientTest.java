@@ -29,20 +29,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GuideModelClientTest {
 
     @Test
-    void shouldMigrateLegacyModelWithoutAudioSupport() {
-        CampusEsp32AssistantProperties properties = new CampusEsp32AssistantProperties();
-        properties.setModelName("doubao-seed-2-1-turbo-260628");
-
-        assertEquals("doubao-seed-2-0-lite-260428", properties.getModelName());
-    }
-
-    @Test
-    void shouldSendChatCompletionsRequestAndNormalizeStreamEvents() throws Exception {
+    void shouldSendResponsesImageAndAsrTextWithoutAudio() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = startSseServer(requestBody,
-                "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n"
-                        + "data: {\"choices\":[{\"delta\":{\"content\":\"，校园\"}}]}\n\n"
-                        + "data: [DONE]\n\n");
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"你好\"}\n\n"
+                        + "data: {\"type\":\"response.output_text.delta\",\"delta\":\"，校园\"}\n\n"
+                        + "data: {\"type\":\"response.completed\"}\n\n");
 
         GuideModelClient client = createClient(server);
         List<JsonNode> events = new ArrayList<>();
@@ -52,8 +44,6 @@ class GuideModelClientTest {
             chat.put("type", "chat");
             chat.put("request_id", "req-1");
             chat.put("question", "这里是哪里？");
-            chat.put("audio", "data:audio/wav;base64,QUJD");
-            chat.put("audio_format", "wav");
             chat.put("images", Collections.singletonList("https://example.com/camera.jpg"));
             assertTrue(session.send(chat));
 
@@ -66,17 +56,14 @@ class GuideModelClientTest {
         JsonNode body = JsonUtils.getObjectMapper().readTree(requestBody.get());
         assertEquals("ep-test", body.path("model").asText());
         assertTrue(body.path("stream").asBoolean());
-        assertEquals(512, body.path("max_tokens").asInt());
-        JsonNode content = body.path("messages").get(1).path("content");
-        assertEquals(3, content.size());
-        assertEquals("input_audio", content.get(0).path("type").asText());
-        assertEquals("QUJD", content.get(0).path("input_audio").path("data").asText());
-        assertEquals("wav", content.get(0).path("input_audio").path("format").asText());
-        assertTrue(content.get(0).path("input_audio").path("audio_url").isMissingNode());
-        assertEquals("image_url", content.get(1).path("type").asText());
-        assertEquals("https://example.com/camera.jpg", content.get(1).path("image_url").path("url").asText());
-        assertEquals("text", content.get(2).path("type").asText());
-        assertTrue(content.get(2).path("text").asText().contains("这里是哪里？"));
+        assertEquals(512, body.path("max_output_tokens").asInt());
+        JsonNode content = body.path("input").get(0).path("content");
+        assertEquals(2, content.size());
+        assertEquals("input_image", content.get(0).path("type").asText());
+        assertEquals("https://example.com/camera.jpg", content.get(0).path("image_url").asText());
+        assertEquals("input_text", content.get(1).path("type").asText());
+        assertTrue(content.get(1).path("text").asText().contains("这里是哪里？"));
+        assertTrue(requestBody.get().indexOf("input_audio") < 0);
 
         assertEquals("text_delta", events.get(1).path("type").asText());
         assertEquals("你好", events.get(1).path("text").asText());

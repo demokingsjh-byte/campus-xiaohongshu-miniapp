@@ -20,7 +20,6 @@ import org.springframework.stereotype.Component;
 import javax.annotation.PreDestroy;
 import javax.annotation.Resource;
 import java.io.IOException;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -225,26 +224,14 @@ public class GuideModelClient {
             ObjectNode body = JsonUtils.getObjectMapper().createObjectNode();
             body.put("model", properties.getModelName());
             body.put("stream", true);
-            body.put("max_tokens", 512);
-
-            ArrayNode messages = body.putArray("messages");
-            ObjectNode system = messages.addObject();
-            system.put("role", "system");
-            system.put("content", "你是校园智能导览助手。请结合用户问题和图片内容回答，使用简洁、准确的中文。"
+            body.put("max_output_tokens", 512);
+            body.put("instructions", "你是校园智能导览助手。请结合用户问题和图片内容回答，使用简洁、准确的中文。"
                     + "如果图片无法确认，不要编造具体信息。");
 
-            ObjectNode user = messages.addObject();
+            ArrayNode input = body.putArray("input");
+            ObjectNode user = input.addObject();
             user.put("role", "user");
             ArrayNode content = user.putArray("content");
-
-            String audio = stringValue(event.get("audio"));
-            if (!audio.isEmpty()) {
-                ObjectNode audioPart = content.addObject();
-                audioPart.put("type", "input_audio");
-                ObjectNode inputAudio = audioPart.putObject("input_audio");
-                inputAudio.put("data", stripAudioDataUri(audio));
-                inputAudio.put("format", audioFormat(event, audio));
-            }
 
             Object images = event.get("images");
             if (images instanceof Iterable<?>) {
@@ -254,16 +241,16 @@ public class GuideModelClient {
                         continue;
                     }
                     ObjectNode imagePart = content.addObject();
-                    imagePart.put("type", "image_url");
-                    imagePart.putObject("image_url").put("url", imageUrl);
+                    imagePart.put("type", "input_image");
+                    imagePart.put("image_url", imageUrl);
                 }
             }
 
             ObjectNode prompt = content.addObject();
-            prompt.put("type", "text");
+            prompt.put("type", "input_text");
             String question = stringValue(event.get("question")).trim();
             prompt.put("text", question.isEmpty()
-                    ? "请理解用户语音并直接回答；如有图片，优先说明图片中能够确认的内容。"
+                    ? "用户语音未能识别。请仅说明图片中能够确认的内容。"
                     : "用户问题：" + question + "\n请直接回答，并优先说明图片中能够确认的内容。");
             return body;
         }
@@ -518,32 +505,6 @@ public class GuideModelClient {
 
     private static String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
-    }
-
-    private static String stripAudioDataUri(String audio) {
-        if (!audio.startsWith("data:")) {
-            return audio;
-        }
-        int comma = audio.indexOf(',');
-        return comma < 0 ? audio : audio.substring(comma + 1);
-    }
-
-    private static String audioFormat(Map<String, Object> event, String audio) {
-        String configured = stringValue(event.get("audio_format"));
-        if (!configured.isEmpty()) {
-            return configured.toLowerCase(Locale.ROOT);
-        }
-        String lower = audio.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("data:audio/mpeg") || lower.startsWith("data:audio/mp3")) {
-            return "mp3";
-        }
-        if (lower.startsWith("data:audio/aac")) {
-            return "aac";
-        }
-        if (lower.startsWith("data:audio/x-m4a") || lower.startsWith("data:audio/mp4")) {
-            return "m4a";
-        }
-        return "wav";
     }
 
     private static long longValue(Object value) {
