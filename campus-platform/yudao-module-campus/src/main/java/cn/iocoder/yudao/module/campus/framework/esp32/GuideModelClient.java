@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 多模态导览模型客户端。
  *
- * <p>默认使用火山方舟 Responses 流式接口；model-url 仍可配置为
+ * <p>默认使用火山方舟 Chat Completions 流式接口；model-url 仍可配置为
  * ws:// 地址以兼容原有自建模型协议。</p>
  */
 @Component
@@ -224,21 +224,17 @@ public class GuideModelClient {
             ObjectNode body = JsonUtils.getObjectMapper().createObjectNode();
             body.put("model", properties.getModelName());
             body.put("stream", true);
-            body.put("max_output_tokens", 512);
-            body.put("instructions", "你是校园智能导览助手。请结合用户语音问题和图片内容回答，使用简洁、准确的中文。"
+            body.put("max_tokens", 512);
+
+            ArrayNode messages = body.putArray("messages");
+            ObjectNode system = messages.addObject();
+            system.put("role", "system");
+            system.put("content", "你是校园智能导览助手。请结合用户问题和图片内容回答，使用简洁、准确的中文。"
                     + "如果图片无法确认，不要编造具体信息。");
 
-            ArrayNode input = body.putArray("input");
-            ObjectNode user = input.addObject();
+            ObjectNode user = messages.addObject();
             user.put("role", "user");
             ArrayNode content = user.putArray("content");
-
-            String audio = stringValue(event.get("audio"));
-            if (!audio.isEmpty()) {
-                ObjectNode audioPart = content.addObject();
-                audioPart.put("type", "input_audio");
-                audioPart.put("audio_url", ensureAudioDataUri(audio));
-            }
 
             Object images = event.get("images");
             if (images instanceof Iterable<?>) {
@@ -248,14 +244,17 @@ public class GuideModelClient {
                         continue;
                     }
                     ObjectNode imagePart = content.addObject();
-                    imagePart.put("type", "input_image");
-                    imagePart.put("image_url", imageUrl);
+                    imagePart.put("type", "image_url");
+                    imagePart.putObject("image_url").put("url", imageUrl);
                 }
             }
 
             ObjectNode prompt = content.addObject();
-            prompt.put("type", "input_text");
-            prompt.put("text", "请回答用户的问题，并优先说明图片中能够确认的内容。");
+            prompt.put("type", "text");
+            String question = stringValue(event.get("question")).trim();
+            prompt.put("text", question.isEmpty()
+                    ? "用户语音未能识别。请仅说明图片中能够确认的内容。"
+                    : "用户问题：" + question + "\n请直接回答，并优先说明图片中能够确认的内容。");
             return body;
         }
 
@@ -299,8 +298,7 @@ public class GuideModelClient {
                     return;
                 }
                 String eventType = chunk.path("type").asText();
-                if ("response.output_text.delta".equals(eventType)
-                        || "response.reasoning_summary_text.delta".equals(eventType)) {
+                if ("response.output_text.delta".equals(eventType)) {
                     state.emitDelta(chunk.path("delta").asText(""));
                     return;
                 }

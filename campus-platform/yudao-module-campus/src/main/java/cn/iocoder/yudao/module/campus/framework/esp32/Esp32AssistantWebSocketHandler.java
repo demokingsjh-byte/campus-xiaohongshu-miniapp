@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * ESP32-S3 视听说闭环：设备媒体接入、模型转发、异步 ASR 记录和 TTS PCM 回传。
+ * ESP32-S3 视听说闭环：设备媒体接入、ASR 转写、模型转发和 TTS PCM 回传。
  */
 @Slf4j
 @Component
@@ -263,8 +263,49 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         long captureMs = elapsedMillis(turn.startedAt);
         byte[] wav = Esp32ProtocolUtils.pcm16LeToWav(
                 turn.pcm, Esp32ProtocolUtils.INPUT_SAMPLE_RATE);
+
+        // 图片体积较大，异步落库，不能阻塞 ASR、模型和设备播放。
+        mediaExecutor.execute(() -> logService.saveImages(turn.logId, turn.images));
+
+        // 当前 Turbo 图文模型不接受设备音频，必须先转写，再提交“文字 + 图片”。
+        if (properties.isAsrEnabled()) {
+            mediaExecutor.execute(() -> transcribeAndSubmit(context, turn, wav, captureMs));
+        } else {
+            logService.markAsrDisabled(turn.logId);
+            failBeforeModel(context, turn, "ASR_DISABLED", "当前模型需要先开启语音转写");
+        }
+    }
+
+    private void transcribeAndSubmit(DeviceContext context, TurnData turn, byte[] wav, long captureMs) {
+        long startedAt = System.nanoTime();
+        String transcript;
+        try {
+            transcript = asrClient.transcribe(wav);
+            transcript = transcript == null ? "" : transcript.trim();
+            if (transcript.isEmpty()) {
+                throw new IllegalStateException("火山 ASR 未返回转写文字");
+            }
+            long asrMs = elapsedMillis(startedAt);
+            logService.markAsr(turn.logId, asrMs, true, transcript);
+            log.info("[ESP32_ASR_COMPLETED] deviceId={} requestId={} elapsedMs={} transcript={}",
+                    context.deviceId, turn.requestId, asrMs, abbreviate(transcript, 160));
+        } catch (Exception exception) {
+            long asrMs = elapsedMillis(startedAt);
+            logService.markAsr(turn.logId, asrMs, false, null);
+            log.warn("[ESP32_ASR_FAILED] deviceId={} requestId={} elapsedMs={}",
+                    context.deviceId, turn.requestId, asrMs, exception);
+            failBeforeModel(context, turn, "ASR_FAILED", "没有听清，请再说一次");
+            return;
+        }
+
+        synchronized (context.lock) {
+            if (!turn.requestId.equals(context.activeRequestId)
+                    || context.interruptedRequests.contains(turn.requestId)) {
+                return;
+            }
+        }
         Map<String, Object> chat = event("chat", "request_id", turn.requestId);
-        chat.put("audio", "data:audio/wav;base64," + Base64.getEncoder().encodeToString(wav));
+        chat.put("question", transcript);
         List<String> images = new ArrayList<>();
         for (byte[] image : turn.images) {
             images.add("data:image/jpeg;base64," + Base64.getEncoder().encodeToString(image));
@@ -292,32 +333,20 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         logService.markSubmitted(turn.logId, turn.pcm.length, turn.images.size(), captureMs, submitMs);
         log.info("[ESP32_TURN_SUBMITTED] deviceId={} requestId={} audioBytes={} imageCount={} submitMs={}",
                 context.deviceId, turn.requestId, turn.pcm.length, turn.images.size(),
-                captureMs);
-
-        // 图片体积较大，异步落库，不能让数据库写入阻塞模型首 token 和设备播放。
-        mediaExecutor.execute(() -> logService.saveImages(turn.logId, turn.images));
-
-        // 模型原生支持音频输入，ASR 仅异步补充文字日志，失败不能阻断模型回答。
-        if (properties.isAsrEnabled()) {
-            mediaExecutor.execute(() -> transcribeInBackground(context, turn.requestId, turn.logId, wav));
-        } else {
-            logService.markAsrDisabled(turn.logId);
-        }
+                submitMs);
     }
 
-    private void transcribeInBackground(DeviceContext context, String requestId, Long logId, byte[] wav) {
-        long startedAt = System.nanoTime();
-        try {
-            String transcript = asrClient.transcribe(wav);
-            transcript = transcript == null ? "" : transcript.trim();
-            logService.markAsr(logId, elapsedMillis(startedAt), true, transcript);
-            log.info("[ESP32_ASR_COMPLETED] deviceId={} requestId={} elapsedMs={} transcript={}",
-                    context.deviceId, requestId, elapsedMillis(startedAt),
-                    abbreviate(transcript, 160));
-        } catch (Exception exception) {
-            logService.markAsr(logId, elapsedMillis(startedAt), false, null);
-            log.warn("[ESP32_ASR_FAILED] deviceId={} requestId={} elapsedMs={}",
-                    context.deviceId, requestId, elapsedMillis(startedAt), exception);
+    private void failBeforeModel(DeviceContext context, TurnData turn, String code, String message) {
+        synchronized (context.lock) {
+            if (!turn.requestId.equals(context.activeRequestId)) {
+                return;
+            }
+            logService.markFailed(turn.logId, code, message, elapsedMillis(turn.startedAt));
+            sendErrorLocked(context, code, message, true, turn.requestId);
+            sendJsonLocked(context, event("turn_done", "request_id", turn.requestId));
+            context.activeRequestId = "";
+            context.activeLogId = null;
+            setStateLocked(context, DeviceState.LISTENING, turn.requestId, "可以提问了");
         }
     }
 

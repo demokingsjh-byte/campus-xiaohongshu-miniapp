@@ -372,12 +372,12 @@ campus:
     output-audio-chunk-bytes: 1920
     playback-pace-percent: 90
 
-    # 火山方舟多模态模型：网关将 ESP32 的 WAV 音频与 JPEG 图片转为 Responses 请求。
-    model-url: ${CAMPUS_VOLC_ARK_MODEL_URL:https://ark.cn-beijing.volces.com/api/v3/responses}
-    model-name: ep-20260916151713-6vxkb
+    # 火山方舟多模态模型：ASR 转写后，将问题文字与 JPEG 图片转为 Chat Completions 请求。
+    model-url: ${CAMPUS_VOLC_ARK_MODEL_URL:https://ark.cn-beijing.volces.com/api/v3/chat/completions}
+    model-name: ${CAMPUS_VOLC_ARK_MODEL:doubao-seed-2-1-turbo-260628}
     model-token: ${CAMPUS_VOLC_ARK_API_KEY:}
 
-    # ASR 只异步生成问题文字日志，不参与模型请求闸门。
+    # ASR 先将设备音频转为用户问题文字，再调用图文模型。
     asr-enabled: ${CAMPUS_ESP32_ASR_ENABLED:true}
     asr-url: wss://openspeech.bytedance.com/api/v3/sauc/bigmodel
     asr-app-id: ${CAMPUS_VOLC_ASR_APP_ID:1828671130}

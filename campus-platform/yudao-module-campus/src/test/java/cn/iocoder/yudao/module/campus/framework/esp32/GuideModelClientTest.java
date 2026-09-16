@@ -25,12 +25,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GuideModelClientTest {
 
     @Test
-    void shouldSendResponsesRequestAndNormalizeStreamEvents() throws Exception {
+    void shouldSendChatCompletionsRequestAndNormalizeStreamEvents() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = startSseServer(requestBody,
-                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"你好\"}\n\n"
-                        + "data: {\"type\":\"response.output_text.delta\",\"delta\":\"，校园\"}\n\n"
-                        + "data: {\"type\":\"response.completed\"}\n\n");
+                "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n"
+                        + "data: {\"choices\":[{\"delta\":{\"content\":\"，校园\"}}]}\n\n"
+                        + "data: [DONE]\n\n");
 
         GuideModelClient client = createClient(server);
         List<JsonNode> events = new ArrayList<>();
@@ -39,7 +39,7 @@ class GuideModelClientTest {
             assertTrue(session.send(Map.of(
                     "type", "chat",
                     "request_id", "req-1",
-                    "audio", "UklGRg==",
+                    "question", "这里是哪里？",
                     "images", List.of("https://example.com/camera.jpg"))));
 
             assertTrue(done.await(5, TimeUnit.SECONDS));
@@ -51,13 +51,13 @@ class GuideModelClientTest {
         JsonNode body = JsonUtils.getObjectMapper().readTree(requestBody.get());
         assertEquals("ep-test", body.path("model").asText());
         assertTrue(body.path("stream").asBoolean());
-        assertEquals(512, body.path("max_output_tokens").asInt());
-        JsonNode content = body.path("input").get(0).path("content");
-        assertEquals("input_audio", content.get(0).path("type").asText());
-        assertEquals("data:audio/wav;base64,UklGRg==", content.get(0).path("audio_url").asText());
-        assertEquals("input_image", content.get(1).path("type").asText());
-        assertEquals("https://example.com/camera.jpg", content.get(1).path("image_url").asText());
-        assertEquals("input_text", content.get(2).path("type").asText());
+        assertEquals(512, body.path("max_tokens").asInt());
+        JsonNode content = body.path("messages").get(1).path("content");
+        assertEquals(2, content.size());
+        assertEquals("image_url", content.get(0).path("type").asText());
+        assertEquals("https://example.com/camera.jpg", content.get(0).path("image_url").path("url").asText());
+        assertEquals("text", content.get(1).path("type").asText());
+        assertTrue(content.get(1).path("text").asText().contains("这里是哪里？"));
 
         assertEquals("text_delta", events.get(1).path("type").asText());
         assertEquals("你好", events.get(1).path("text").asText());
