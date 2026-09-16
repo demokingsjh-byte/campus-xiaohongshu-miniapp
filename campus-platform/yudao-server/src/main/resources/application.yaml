@@ -372,8 +372,8 @@ campus:
     output-audio-chunk-bytes: 1920
     playback-pace-percent: 90
 
-    # 火山方舟多模态模型：网关将 ESP32 的 WAV 音频与 JPEG 图片转为 Chat Completions 请求。
-    model-url: ${CAMPUS_VOLC_ARK_MODEL_URL:https://ark.cn-beijing.volces.com/api/v3/chat/completions}
+    # 火山方舟多模态模型：网关将 ESP32 的 WAV 音频与 JPEG 图片转为 Responses 请求。
+    model-url: ${CAMPUS_VOLC_ARK_MODEL_URL:https://ark.cn-beijing.volces.com/api/v3/responses}
     model-name: ep-20260916151713-6vxkb
     model-token: ${CAMPUS_VOLC_ARK_API_KEY:}
 

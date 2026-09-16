@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 多模态导览模型客户端。
  *
- * <p>默认使用火山方舟 Chat Completions 流式接口；model-url 仍可配置为
+ * <p>默认使用火山方舟 Responses 流式接口；model-url 仍可配置为
  * ws:// 地址以兼容原有自建模型协议。</p>
  */
 @Component
@@ -224,15 +224,12 @@ public class GuideModelClient {
             ObjectNode body = JsonUtils.getObjectMapper().createObjectNode();
             body.put("model", properties.getModelName());
             body.put("stream", true);
-            body.put("max_tokens", 512);
-
-            ArrayNode messages = body.putArray("messages");
-            ObjectNode system = messages.addObject();
-            system.put("role", "system");
-            system.put("content", "你是校园智能导览助手。请结合用户语音问题和图片内容回答，使用简洁、准确的中文。"
+            body.put("max_output_tokens", 512);
+            body.put("instructions", "你是校园智能导览助手。请结合用户语音问题和图片内容回答，使用简洁、准确的中文。"
                     + "如果图片无法确认，不要编造具体信息。");
 
-            ObjectNode user = messages.addObject();
+            ArrayNode input = body.putArray("input");
+            ObjectNode user = input.addObject();
             user.put("role", "user");
             ArrayNode content = user.putArray("content");
 
@@ -240,9 +237,7 @@ public class GuideModelClient {
             if (!audio.isEmpty()) {
                 ObjectNode audioPart = content.addObject();
                 audioPart.put("type", "input_audio");
-                ObjectNode inputAudio = audioPart.putObject("input_audio");
-                inputAudio.put("data", stripDataUri(audio));
-                inputAudio.put("format", "wav");
+                audioPart.put("audio_url", ensureAudioDataUri(audio));
             }
 
             Object images = event.get("images");
@@ -253,13 +248,13 @@ public class GuideModelClient {
                         continue;
                     }
                     ObjectNode imagePart = content.addObject();
-                    imagePart.put("type", "image_url");
-                    imagePart.putObject("image_url").put("url", imageUrl);
+                    imagePart.put("type", "input_image");
+                    imagePart.put("image_url", imageUrl);
                 }
             }
 
             ObjectNode prompt = content.addObject();
-            prompt.put("type", "text");
+            prompt.put("type", "input_text");
             prompt.put("text", "请回答用户的问题，并优先说明图片中能够确认的内容。");
             return body;
         }
@@ -299,11 +294,33 @@ public class GuideModelClient {
             }
             try {
                 JsonNode chunk = JsonUtils.getObjectMapper().readTree(value);
-                if (chunk.has("error")) {
-                    state.emitError("ARK_MODEL_ERROR",
-                            abbreviate(chunk.path("error").path("message").asText("模型返回错误"), 500));
+                if (chunk.hasNonNull("error")) {
+                    state.emitError("ARK_MODEL_ERROR", abbreviate(errorMessage(chunk.path("error")), 500));
                     return;
                 }
+                String eventType = chunk.path("type").asText();
+                if ("response.output_text.delta".equals(eventType)
+                        || "response.reasoning_summary_text.delta".equals(eventType)) {
+                    state.emitDelta(chunk.path("delta").asText(""));
+                    return;
+                }
+                if ("response.output_text.done".equals(eventType)) {
+                    String text = chunk.path("text").asText("");
+                    if (!text.isEmpty() && state.isEmpty()) {
+                        state.emitDelta(text);
+                    }
+                    return;
+                }
+                if ("response.completed".equals(eventType)) {
+                    state.emitDone();
+                    return;
+                }
+                if ("response.failed".equals(eventType) || "response.incomplete".equals(eventType)
+                        || "error".equals(eventType)) {
+                    state.emitError("ARK_MODEL_ERROR", abbreviate(errorMessage(chunk), 500));
+                    return;
+                }
+
                 JsonNode choices = chunk.path("choices");
                 if (!choices.isArray() || choices.size() == 0) {
                     return;
@@ -316,6 +333,31 @@ public class GuideModelClient {
             } catch (Exception exception) {
                 state.emitError("ARK_INVALID_STREAM_EVENT", "火山方舟返回了无效流式数据");
             }
+        }
+
+        private String errorMessage(JsonNode node) {
+            if (node == null || node.isMissingNode() || node.isNull()) {
+                return "模型返回错误";
+            }
+            String message = node.path("message").asText("");
+            if (!message.isEmpty()) {
+                return message;
+            }
+            JsonNode error = node.path("error");
+            if (!error.isMissingNode() && !error.isNull()) {
+                message = error.path("message").asText("");
+                if (!message.isEmpty()) {
+                    return message;
+                }
+            }
+            JsonNode incomplete = node.path("incomplete_details");
+            if (!incomplete.isMissingNode() && !incomplete.isNull()) {
+                String reason = incomplete.path("reason").asText("");
+                if (!reason.isEmpty()) {
+                    return "模型返回不完整：" + reason;
+                }
+            }
+            return node.isTextual() ? node.asText() : "模型返回错误";
         }
 
         private String extractText(JsonNode content) {
@@ -433,6 +475,10 @@ public class GuideModelClient {
                 eventListener.onEvent(event);
             }
 
+            private boolean isEmpty() {
+                return text.length() == 0;
+            }
+
             private void emitError(String code, String message) {
                 if (!completed.compareAndSet(false, true)) {
                     return;
@@ -474,9 +520,8 @@ public class GuideModelClient {
         }
     }
 
-    private static String stripDataUri(String value) {
-        int comma = value.indexOf(',');
-        return comma >= 0 ? value.substring(comma + 1) : value;
+    private static String ensureAudioDataUri(String value) {
+        return value.startsWith("data:") ? value : "data:audio/wav;base64," + value;
     }
 
     private static long elapsedMillis(long startedAt) {

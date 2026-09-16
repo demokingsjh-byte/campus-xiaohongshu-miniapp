@@ -295,8 +295,8 @@ yudao-server/src/main/resources/application.yaml
 CAMPUS_ESP32_ASSISTANT_ENABLED=true
 CAMPUS_ESP32_DEVICE_TOKENS=<随机设备token，多个用逗号分隔>
 CAMPUS_VOLC_ARK_API_KEY=<火山方舟 API Key>
-CAMPUS_VOLC_ARK_MODEL=doubao-seed-2-0-mini-260428
-CAMPUS_VOLC_ARK_MODEL_URL=https://ark.cn-beijing.volces.com/api/v3/chat/completions
+CAMPUS_VOLC_ARK_MODEL=ep-20260916151713-6vxkb
+CAMPUS_VOLC_ARK_MODEL_URL=https://ark.cn-beijing.volces.com/api/v3/responses
 CAMPUS_VOLC_ASR_APP_ID=<火山AppId>
 CAMPUS_VOLC_ASR_ACCESS_TOKEN=<火山AccessToken>
 CAMPUS_VOLC_TTS_APP_ID=<火山AppId>
@@ -305,9 +305,9 @@ CAMPUS_VOLC_TTS_RESOURCE_ID=seed-tts-2.0
 CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_roumeinvyou_uranus_bigtts
 ```
 
-`CAMPUS_VOLC_ARK_MODEL` 应填写方舟控制台中已开通的模型或推理接入点 ID。默认示例为 `doubao-seed-2-0-mini-260428`；需要更强推理能力时可以改成已开通的 Seed Pro 接入点。`CAMPUS_VOLC_ARK_API_KEY` 只放在服务器环境变量（例如 `/opt/campus-platform/backend/campus.env`），不要写入 Git。
+`CAMPUS_VOLC_ARK_MODEL` 应填写方舟控制台中已开通的模型或推理接入点 ID。默认示例为 `ep-20260916151713-6vxkb`；需要更强推理能力时可以在控制台调整这个接入点或替换为已开通的 Seed Pro 接入点。`CAMPUS_VOLC_ARK_API_KEY` 只放在服务器环境变量（例如 `/opt/campus-platform/backend/campus.env`），不要写入 Git。
 
-网关默认走方舟 HTTP 流式接口。如果仍需兼容旧的自建模型，可把 `CAMPUS_VOLC_ARK_MODEL_URL` 改成 `ws://` 或 `wss://` 地址，此时会沿用原有 WebSocket 模型协议；HTTP 地址则按方舟 Chat Completions 协议发送 `input_audio`、`image_url` 和 `text` 内容块。
+网关默认走方舟 HTTP 流式接口。如果仍需兼容旧的自建模型，可把 `CAMPUS_VOLC_ARK_MODEL_URL` 改成 `ws://` 或 `wss://` 地址，此时会沿用原有 WebSocket 模型协议；HTTP 地址则按方舟 Responses 协议发送 `input_audio`、`input_image` 和 `input_text` 内容块。
 
 当前默认资源为 `seed-tts-2.0`，音色为火山“如梦”（`zh_female_roumeinvyou_uranus_bigtts`）。预置的 `zh_...` 音色必须搭配 TTS 资源；`seed-icl-2.0` 只用于已复刻的音色 ID（通常为 `S_...`）。如需切换音色或资源，可分别覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE`、`CAMPUS_VOLC_TTS_RESOURCE_ID`。
 
