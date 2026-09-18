@@ -370,7 +370,10 @@ campus:
     max-connections-per-ip: 20
     cooldown-millis: 650
     output-audio-chunk-bytes: 1920
-    playback-pace-percent: 90
+    # 音频下发速率上限（相对实时的百分比）：必须 >100 才能在设备侧建立播放缓冲。
+    playback-pace-percent: ${CAMPUS_ESP32_AUDIO_PACE_PERCENT:300}
+    # 目标播放缓冲领先量（毫秒）：先把缓冲填到该值再维持，抵御 Wi-Fi 抖动带来的播报断续。
+    output-audio-lead-millis: ${CAMPUS_ESP32_AUDIO_LEAD_MILLIS:1200}
 
     # 多模态模型：ASR 转写后，将问题文字与 JPEG 图片提交给阿里 MaaS 网关的 qwen3-vl-flash。
     # 默认走 OpenAI 兼容的 /chat/completions；如需切回火山方舟 Responses，设置

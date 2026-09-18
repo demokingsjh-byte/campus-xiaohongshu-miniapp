@@ -40,6 +40,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 @RequiredArgsConstructor
 public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
 
+    /** 音频下发等待的最大单次睡眠，避免长时间占用会话锁。 */
+    private static final long MAX_PACING_SLEEP_MILLIS = 40L;
+
     private final CampusEsp32AssistantProperties properties;
     private final DoubaoAsrClient asrClient;
     private final DoubaoTtsClient ttsClient;
@@ -437,6 +440,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         context.ttsFirstAudio = true;
         context.ttsHasText = false;
         context.ttsFirstAudioAt = 0L;
+        context.audioStartedAt = 0L;
+        context.audioLastSendAt = 0L;
+        context.audioSentMillis = 0L;
         context.pendingTtsText.setLength(0);
         Map<String, Object> start = event("audio_start", "request_id", requestId);
         start.put("format", "pcm_s16le");
@@ -665,31 +671,76 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
+    /**
+     * 按「播放缓冲领先量」下发音频，而不是简单按实时速率下发。
+     *
+     * <p>设备端播放缓冲 ≈ 已发送音频时长 − 已流逝时间。旧的固定 90% 实时速率下，这个领先量
+     * 每块只增长约 4ms：前十几秒缓冲几乎为空，任何 Wi-Fi 抖动或唤醒延迟都会直接变成播报断续。
+     * 现在先以最快 {@code playback-pace-percent} 的速率把缓冲填到
+     * {@code output-audio-lead-millis}，之后维持该领先量，兼顾流畅与设备内存。</p>
+     */
     private void sendPacedAudioLocked(DeviceContext context, byte[] audio) {
         if (!context.session.isOpen()) {
             return;
         }
+        int configuredChunk = Math.max(2, properties.getOutputAudioChunkBytes());
+        int chunkBytes = configuredChunk - configuredChunk % 2;
+        long leadTargetMillis = Math.max(0L, properties.getOutputAudioLeadMillis());
+        long speedPercent = Math.max(100L, properties.getPlaybackPacePercent());
+        long now = System.nanoTime();
+        if (context.audioStartedAt == 0L) {
+            context.audioStartedAt = now;
+            context.audioLastSendAt = now;
+            context.audioSentMillis = 0L;
+        }
         try {
-            int configuredChunk = Math.max(2, properties.getOutputAudioChunkBytes());
-            int chunkBytes = configuredChunk - configuredChunk % 2;
             for (int offset = 0; offset < audio.length; offset += chunkBytes) {
                 int size = Math.min(chunkBytes, audio.length - offset);
                 size -= size % 2;
                 if (size <= 0) {
                     continue;
                 }
+                long chunkMillis = Math.max(1L, Math.round(size * 1000.0
+                        / (Esp32ProtocolUtils.OUTPUT_SAMPLE_RATE * 2)));
+                long minIntervalNanos = chunkMillis * 100_000L / speedPercent;
+                waitForSendWindow(context, minIntervalNanos, leadTargetMillis);
+                if (!context.session.isOpen()) {
+                    return;
+                }
                 context.session.sendMessage(new BinaryMessage(
                         ByteBuffer.wrap(audio, offset, size), true));
-                long pcmMillis = Math.max(1L, Math.round(size * 1000.0
-                        / (Esp32ProtocolUtils.OUTPUT_SAMPLE_RATE * 2)
-                        * Math.max(1, properties.getPlaybackPacePercent()) / 100.0));
-                Thread.sleep(pcmMillis);
+                context.audioSentMillis += chunkMillis;
+                context.audioLastSendAt = System.nanoTime();
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         } catch (IOException exception) {
             log.warn("[ESP32_SEND_AUDIO_FAILED] deviceId={} sessionId={}",
                     context.deviceId, context.session.getId(), exception);
+        }
+    }
+
+    /** 同时满足「发送速率上限」与「缓冲领先量上限」两个条件的等待。 */
+    private void waitForSendWindow(DeviceContext context, long minIntervalNanos, long leadTargetMillis)
+            throws InterruptedException {
+        while (true) {
+            long current = System.nanoTime();
+            long sinceLastSend = current - context.audioLastSendAt;
+            long leadMillis = context.audioSentMillis
+                    - TimeUnit.NANOSECONDS.toMillis(current - context.audioStartedAt);
+            if (sinceLastSend >= minIntervalNanos && leadMillis < leadTargetMillis) {
+                return;
+            }
+            long waitMillis;
+            if (leadMillis >= leadTargetMillis) {
+                waitMillis = leadMillis - leadTargetMillis;
+            } else {
+                waitMillis = TimeUnit.NANOSECONDS.toMillis(minIntervalNanos - sinceLastSend) + 1L;
+            }
+            Thread.sleep(Math.min(Math.max(1L, waitMillis), MAX_PACING_SLEEP_MILLIS));
+            if (!context.session.isOpen()) {
+                return;
+            }
         }
     }
 
@@ -803,6 +854,10 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private boolean ttsHasText;
         private long turnStartedAt;
         private long ttsFirstAudioAt;
+        /** 音频下发节奏控制：本轮流式音频的起始时间与已下发音频时长。 */
+        private long audioStartedAt;
+        private long audioLastSendAt;
+        private long audioSentMillis;
         private Long activeLogId;
 
         private DeviceContext(WebSocketSession session, String deviceId, String clientIp) {

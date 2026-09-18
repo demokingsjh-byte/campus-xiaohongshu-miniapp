@@ -31,7 +31,16 @@ public class CampusEsp32AssistantProperties {
     private int maxConnectionsPerIp = 20;
     private int cooldownMillis = 650;
     private int outputAudioChunkBytes = 1920;
-    private int playbackPacePercent = 90;
+    /**
+     * 音频下发速率上限（相对实时的百分比）。≥100 才能在设备侧建立播放缓冲；
+     * 低于 100 会让缓冲长期接近为空，网络抖动直接表现为播报断续。
+     */
+    private int playbackPacePercent = 300;
+    /**
+     * 目标播放缓冲领先量（毫秒）。网关先按速率上限把缓冲填到该值，之后维持该领先量，
+     * 设备才有余量吸收 Wi-Fi 唤醒延迟与网络抖动。
+     */
+    private int outputAudioLeadMillis = 1200;
 
     /** 火山方舟 Responses 地址；如需兼容旧自建模型，可改为 ws:// 地址。 */
     private String modelUrl = RESPONSES_API;

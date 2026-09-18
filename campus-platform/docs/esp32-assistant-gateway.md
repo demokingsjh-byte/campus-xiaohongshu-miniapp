@@ -405,7 +405,28 @@ python3 scripts/llm-endpoint-smoke.py \
 
 如需把 ASR + TTS 两步也省掉（模型直接吃音频、吐音频），要改走 Omni 链路：百炼 `qwen3-omni-flash`（HTTP，`modalities=["text","audio"]` 且必须 `stream=true`）或 `qwen3-omni-flash-realtime`（WebSocket 全双工）。这属于链路改造，需要替换 `DoubaoAsrClient` 与 `DoubaoTtsClient` 两段；若改用 MaaS 网关，可用同 Key 的 `qwen3-asr-flash-realtime` 与 `qwen3-tts-flash-realtime` 一并替换火山语音链路。
 
-`output-audio-chunk-bytes: 1920` 表示每次最多发送约 40ms 的 24kHz PCM；`playback-pace-percent: 90` 表示按实际播放时长的 90% 节流，通常兼顾连续播放和设备缓冲安全。
+`output-audio-chunk-bytes: 1920` 表示每个音频帧最多约 40ms 的 24kHz PCM。
+
+音频下发节奏由两个参数控制：
+
+- `playback-pace-percent: 300`：下发速率上限（相对实时的百分比）。**必须大于 100**，否则设备侧播放缓冲永远接近为空，任何 Wi-Fi 抖动都会变成播报断续。
+- `output-audio-lead-millis: 1200`：目标播放缓冲领先量。网关先以速率上限把缓冲填到该值，之后维持这一领先量，既不饿到设备也不撑爆设备内存。
+
+诊断方法：逐帧统计音频到达间隔与传输效率。
+
+```bash
+python3 audio-pacing-probe.py --url wss://<host>/app-api/campus/esp32/assistant/ws \
+  --token <设备 Token> --pcm question-16k.pcm --jpeg campus.jpg
+```
+
+`传输效率` 需明显大于 100%（健康值 150%~300%），`大于 80ms 的间隔` 应为 0 次。实测旧配置（速率 90%）下效率仅 111%，即缓冲以每帧约 4ms 的速度累积，前十几秒几乎为空，这正是设备端「一卡一卡」的根源。
+
+设备侧若仍有断续，按以下顺序排查固件：
+
+1. 关闭 Wi-Fi 省电：`esp_wifi_set_ps(WIFI_PS_NONE)`，这是最常见原因（省电唤醒会带来 100~300ms 停顿）。
+2. 收到 `audio_start` 后先缓存约 1 秒再启动 I2S 播放，不要在首帧就开播。
+3. 加大 I2S DMA 缓冲（如 `dma_buf_count=8`、`dma_buf_len=512`），并把播放任务固定到单独核心、提高优先级。
+4. 统计 I2S DMA underrun 次数：持续增长说明缓冲不足；为 0 则问题在解码或网络接收线程。
 
 也可以直接把实际值写入部署环境的 YAML；不要把正式凭证提交到公开仓库。
 
