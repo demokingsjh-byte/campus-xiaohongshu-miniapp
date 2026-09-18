@@ -415,7 +415,7 @@ python3 scripts/llm-endpoint-smoke.py \
 诊断方法：逐帧统计音频到达间隔与传输效率。
 
 ```bash
-python3 audio-pacing-probe.py --url wss://<host>/app-api/campus/esp32/assistant/ws \
+python3 scripts/audio-pacing-probe.py --url wss://<host>/app-api/campus/esp32/assistant/ws \
   --token <设备 Token> --pcm question-16k.pcm --jpeg campus.jpg
 ```
 
