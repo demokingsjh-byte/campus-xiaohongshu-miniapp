@@ -150,6 +150,7 @@ def main():
     parser.add_argument("--jpeg", action="append", default=[], help="JPEG path; repeat up to 3 times")
     parser.add_argument("--seconds", type=float, default=1.0, help="Silence length when --pcm is omitted")
     parser.add_argument("--output", default="esp32-smoke-output.wav")
+    parser.add_argument("--show-text", action="store_true", help="打印模型回答全文，便于核对识图结果")
     parser.add_argument("--timeout", type=float, default=45.0)
     args = parser.parse_args()
     if not 0.25 <= args.seconds <= 30:
@@ -199,16 +200,23 @@ def main():
                 print("EVENT", event_type, event.get("state", event.get("code", "")))
                 if event_type == "text_delta":
                     text_parts.append(event.get("text", event.get("delta", "")))
+                    if args.show_text:
+                        sys.stdout.write(event.get("text", event.get("delta", "")))
+                        sys.stdout.flush()
                 elif event_type == "text_done" and not text_parts:
                     text_parts.append(event.get("text", ""))
                 elif event_type == "error":
                     raise RuntimeError(f"{event.get('code')}: {event.get('msg')}")
                 elif event_type == "turn_done":
                     done = True
+                    if args.show_text:
+                        print()
         if not audio:
             raise RuntimeError("No TTS audio was returned")
         save_wav(args.output, audio)
         print(f"RESULT text_chars={len(''.join(text_parts))} audio_bytes={len(audio)} output={args.output}")
+        if args.show_text:
+            print(f"ANSWER {' '.join(''.join(text_parts).split())}")
     finally:
         try:
             send_frame(sock, 0x8, struct.pack("!H", 1000))
