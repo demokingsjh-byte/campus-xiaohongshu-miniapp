@@ -2,7 +2,7 @@
 
 ## 1. 目标与边界
 
-本服务位于 `yudao-module-campus`，将设备音频封装为 WAV 后，通过火山方舟 Chat Completions 调用支持音频理解的 `doubao-seed-2-0-lite-260428`，同时理解音频与图片，最后复用火山 TTS 给 XIAO ESP32-S3 Sense 提供“听、看、理解、说”的闭环。火山 ASR 仅异步补充后台问题文本日志，不阻塞模型回答。
+本服务位于 `yudao-module-campus`，先通过火山 ASR 将设备音频转成文字，再通过火山方舟 Responses API 调用 `doubao-seed-2-1-pro-260915` 理解文字与图片，最后复用火山 TTS 给 XIAO ESP32-S3 Sense 提供“听、看、理解、说”的闭环。
 
 它是校园平台内的一条独立设备链路，不修改原 AI_GUIDE H5 视频通话接口。设备只有提交一轮语音后才会请求模型，摄像头画面变化不会单独触发回答。
 
@@ -18,8 +18,9 @@ ESP32-S3                      campus-platform                     外部服务
    ├── 0x01 + PCM 音频帧 ──────────>│                                │
    ├── 0x02 + JPEG（0~3 张）────────>│                                │
    ├── turn_commit ────────────────>│                                │
-   │                                ├── WAV + JPEG ────────────────> 火山方舟音频理解模型
-   │                                ├── WAV（异步）────────────────> 火山 ASR
+   │                                ├── WAV ───────────────────────> 火山 ASR
+   │                                │<── 用户问题文字 ────────────── 火山 ASR
+   │                                ├── 问题文字 + JPEG ───────────> 火山方舟 Pro 模型
    │                                │<── text_delta / text_done ─── 多模态模型
    │                                ├── 分句文字流 ────────────────> 火山 TTS
    │<── audio_start ────────────────┤                                │
@@ -31,11 +32,11 @@ ESP32-S3                      campus-platform                     外部服务
 
 关键设计：
 
-- `turn_commit` 后将 WAV 的纯 Base64 数据放入 Chat API 的 `input_audio.data`，格式使用 `input_audio.format=wav`；JPEG 继续使用 `image_url` 内容块。
-- 火山方舟音频理解还支持 MP3、AAC、M4A；本项目固定使用 WAV，因为 ESP32 上送的是 16 kHz、单声道 PCM16LE，网关可无损补 WAV 头。
+- `turn_commit` 后先将 16 kHz、单声道 PCM16LE 无损封装为 WAV 并提交火山 ASR，再把转写文字和 JPEG 图片组成 Responses 请求。
+- 火山 Chat API 的直接音频格式是 `input_audio: {data: <纯 Base64>, format: "wav"}`，还支持 MP3、AAC、M4A；但官方音频理解模型列表只包含 Seed 2.0 Lite/Mini，不包含当前的 Seed 2.1 Pro。
 - 方舟接口使用流式响应，网关将每个文本增量转换为设备协议的 `text_delta`，因此仍可按句启动 TTS。
-- `doubao-seed-2-1-turbo-260628` 不支持音频输入，因此网关默认使用官方音频理解模型 `doubao-seed-2-0-lite-260428`。
-- ASR 与模型并行，仅用于保存用户问题文本；ASR 失败不会阻断回答。
+- 网关默认使用 `doubao-seed-2-1-pro-260915` 的 Responses API；该模型接收 ASR 文字与图片，不接收 `input_audio`。
+- ASR 是模型调用的前置步骤；转写失败时本轮返回 `ASR_FAILED`，提示设备重新提问。
 - TTS 按完整短句流式合成，避免逐字合成造成“一段一段”的播音。
 - 返回音频按 PCM 播放速度节流，避免数据灌入过快撑满 ESP32 播放缓冲。
 - AI 播放期间采用半双工，不自动采集下一轮；设备发送 `interrupt` 可手动打断。
@@ -297,8 +298,8 @@ yudao-server/src/main/resources/application.yaml
 CAMPUS_ESP32_ASSISTANT_ENABLED=true
 CAMPUS_ESP32_DEVICE_TOKENS=<随机设备token，多个用逗号分隔>
 CAMPUS_VOLC_ARK_API_KEY=<火山方舟 API Key>
-CAMPUS_VOLC_ARK_MODEL=doubao-seed-2-0-lite-260428
-CAMPUS_VOLC_ARK_MODEL_URL=https://ark.cn-beijing.volces.com/api/v3/chat/completions
+CAMPUS_VOLC_ARK_MODEL=doubao-seed-2-1-pro-260915
+CAMPUS_VOLC_ARK_MODEL_URL=https://ark.cn-beijing.volces.com/api/v3/responses
 CAMPUS_VOLC_ASR_APP_ID=<火山AppId>
 CAMPUS_VOLC_ASR_ACCESS_TOKEN=<火山AccessToken>
 CAMPUS_VOLC_TTS_APP_ID=<火山AppId>
@@ -307,23 +308,137 @@ CAMPUS_VOLC_TTS_RESOURCE_ID=seed-tts-2.0
 CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_roumeinvyou_uranus_bigtts
 ```
 
-`CAMPUS_VOLC_ARK_MODEL` 必须填写方舟控制台中已开通且支持音频理解的模型或推理接入点 ID。当前默认使用 `doubao-seed-2-0-lite-260428`；`doubao-seed-2-1-turbo-260628` 只支持文本、图片等输入，不能接收 `input_audio`。`CAMPUS_VOLC_ARK_API_KEY` 只放在服务器环境变量（例如 `/opt/campus-platform/backend/campus.env`），不要写入 Git。
+`CAMPUS_VOLC_ARK_MODEL` 应填写方舟控制台中已开通的模型或推理接入点 ID。当前使用 `doubao-seed-2-1-pro-260915`，输入为 ASR 文字和 JPEG 图片。`CAMPUS_VOLC_ARK_API_KEY` 只放在服务器环境变量（例如 `/opt/campus-platform/backend/campus.env`），不要写入 Git。
 
-为兼容尚未更新的生产环境变量，代码检测到遗留的 `doubao-seed-2-1-turbo-260628` 时会自动迁移为 `doubao-seed-2-0-lite-260428`；仍建议同步更新服务器上的 `CAMPUS_VOLC_ARK_MODEL`，避免配置含义与实际运行值不一致。
+为兼容尚未更新的生产环境变量，代码检测到官方 Chat Completions 地址或遗留的 `doubao-seed-2-1-turbo-260628` 时，会分别迁移到 Responses 地址和 `doubao-seed-2-1-pro-260915`；仍建议同步更新服务器环境变量。
 
-网关默认走方舟 Chat Completions HTTP 流式接口。设备上传 PCM16LE 后，网关先封装为 WAV，再去掉 Data URI 头，仅把纯 Base64 写入 `messages[].content[].input_audio.data`，并同时传入 `input_audio.format=wav`；图片使用 `image_url`。如果仍需兼容旧的自建模型，可把 `CAMPUS_VOLC_ARK_MODEL_URL` 改成 `ws://` 或 `wss://` 地址，此时会沿用原有 WebSocket 模型协议。
+网关默认走方舟 Responses HTTP 流式接口，发送 ASR 转写文字和 `input_image` 图片内容块，不向模型直接发送音频。如果仍需兼容旧的自建模型，可把 `CAMPUS_VOLC_ARK_MODEL_URL` 改成 `ws://` 或 `wss://` 地址，此时会沿用原有 WebSocket 模型协议。
 
 当前默认资源为 `seed-tts-2.0`，音色为火山“如梦”（`zh_female_roumeinvyou_uranus_bigtts`）。预置的 `zh_...` 音色必须搭配 TTS 资源；`seed-icl-2.0` 只用于已复刻的音色 ID（通常为 `S_...`）。如需切换音色或资源，可分别覆盖 `CAMPUS_VOLC_TTS_VOICE_TYPE`、`CAMPUS_VOLC_TTS_RESOURCE_ID`。
 
-ASR 只用于后台问题文本日志，可按需关闭：
+当前模型调用依赖 ASR 转写，生产环境必须保持：
 
 ```bash
 CAMPUS_ESP32_ASR_ENABLED=true
 ```
 
+### 7.1 切换多模态模型
+
+模型配置在 `yudao-server/src/main/resources/application.yaml` 中有默认值，当前默认直接可用：
+
+```yaml
+campus:
+  esp32-assistant:
+    enabled: ${CAMPUS_ESP32_ASSISTANT_ENABLED:true}
+    model-protocol: ${CAMPUS_LLM_PROTOCOL:chat}
+    model-url: ${CAMPUS_LLM_MODEL_URL:https://<workspace>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions}
+    model-name: ${CAMPUS_LLM_MODEL:qwen3-vl-flash}
+    model-token: ${CAMPUS_LLM_API_KEY:<API Key>}
+    model-max-tokens: ${CAMPUS_LLM_MAX_TOKENS:800}
+```
+
+如需覆盖，用环境变量即可（见下表；`CAMPUS_LLM_*` 优先于旧的 `CAMPUS_VOLC_ARK_*`）：
+
+```bash
+CAMPUS_LLM_PROTOCOL=chat          # auto | responses | chat
+CAMPUS_LLM_MODEL_URL=<模型地址>
+CAMPUS_LLM_MODEL=<模型名>
+CAMPUS_LLM_API_KEY=<模型密钥>
+CAMPUS_LLM_MAX_TOKENS=800
+```
+
+- `model-protocol: auto` 按地址推断：地址包含 `/chat/completions` 走 OpenAI 兼容 Chat 报文，其余走方舟 Responses 报文；当前默认显式配置为 `chat`。
+- Responses 报文：`instructions` + `input[].content[]`，图片块为 `input_image`，上限字段为 `max_output_tokens`。
+- Chat 报文：`messages[]`（system + user），图片为 `{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,..."}}`，上限字段为 `max_tokens`。设备上传的 JPEG 已经封装为 data URL，可直接内嵌。
+- 流式响应两种协议都能解析：Responses 的 `response.output_text.delta` 与 Chat 的 `choices[0].delta.content`，`[DONE]` 均表示结束。
+- `enabled` 默认已改为 `true`，凭证齐全时网关直接可用；需要临时下线设备链路时设 `CAMPUS_ESP32_ASSISTANT_ENABLED=false`。
+- 模型密钥以默认值形式随代码提交，属于有意为之；若 Key 外泄，去控制台轮换后同步修改 `application.yaml` 默认值。
+- 切到第三方 Chat 接口（例如阿里云 PAI-EAS 部署的 GLM、Qwen-VL、vLLM）：
+
+```bash
+CAMPUS_LLM_PROTOCOL=chat
+CAMPUS_LLM_MODEL_URL=http://<eas-host>/api/predict/<service>/v1/chat/completions
+CAMPUS_LLM_MODEL=GLM-5.3-flash
+CAMPUS_LLM_API_KEY=<EAS 服务调用 Token>
+```
+
+切换后用 `GET /app-api/campus/esp32/assistant/health` 确认 `modelProtocol` / `modelProvider`，再跑 6.2 的冒烟脚本即可。如果第三方接口返回非流式 JSON，或使用了非 OpenAI 字段（例如 `reasoning_content`、自定义鉴权头），需要按本文档补充适配。
+
+第三方接口可先用独立脚本验证通不通（纯标准库，覆盖非流式文本、流式文本、流式图文三类请求）：
+
+```bash
+python3 scripts/llm-endpoint-smoke.py \
+  --url "http://<eas-host>/api/predict/<service>/v1/chat/completions" \
+  --model "GLM-5.3-flash" \
+  --api-key "<服务调用 Token>" \
+  --image ./camera.jpg     # 可选；缺省用内置占位 JPEG，只验证报文格式
+```
+
+### 7.2 已验证兼容的模型候选
+
+以下都是 OpenAI 兼容 `chat/completions` + `image_url`（支持 data URL）+ `stream`，只需填 `CAMPUS_LLM_*` 即可切换，无需改代码：
+
+| 提供方 | model-url | 模型名 | 说明 |
+| --- | --- | --- | --- |
+| 阿里百炼 | `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` | `qwen3-vl-flash` | 首推：VL 家族最快最便宜，适合导览短问短答 |
+| 阿里 MaaS 专属网关 | `https://<ws-xxxx>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions` | 同上 | 一个 Key 覆盖 255 个模型（千问 / GLM / Kimi / DeepSeek / Omni / ASR / TTS），便于收敛供应商 |
+| 阿里百炼 | 同上 | `qwen3-vl-plus` | 细节识别更准，但单轮图文约 4s，设备交互偏慢 |
+| 阿里百炼 | 同上 | `qwen-vl-ocr` | 实测最快（图文 1.1s），展板文字场景首选 |
+| 阿里百炼 | 同上 | `qwen-vl-max-latest` | 老一代 VL，兼容性最稳 |
+| 智谱开放平台 | `https://open.bigmodel.cn/api/paas/v4/chat/completions` | `glm-4.6v` / `glm-4.5v` | 中文 OCR 强，后者极便宜 |
+| 火山方舟 | `https://ark.cn-beijing.volces.com/api/v3/responses` | `doubao-seed-*`（填推理接入点 ID） | 走 Responses 协议，`model-protocol` 保持 `auto` / `responses` |
+| 自建（PAI-EAS / vLLM） | `http://<host>/v1/chat/completions` | `Qwen3-VL-32B-Instruct` 等 | 数据不出内网，Qwen3-VL 8B 级单卡可跑 |
+
+图片体积注意：JPEG 转 base64 会膨胀约 33%，单轮 3 张 2MB 图片的请求体接近 8MB，切换供应商前要确认其单请求 body 上限。
+
+#### 静态照片实测对比（2048x1365 / 496KB，北京地域，2026-09-18）
+
+| 模型 | 流式文本首包 | 流式图文（含 128 分片） | 备注 |
+| --- | --- | --- | --- |
+| `qwen-vl-ocr` | 334ms | **1125ms**（63 分片） | 最快，描述具体，适合"看展板/看标牌" |
+| `qwen3-vl-flash` | 502ms | **1437ms** | 速度与泛化最佳平衡，默认选择 |
+| `qwen3-vl-plus` | 902ms | 4329ms | 精度更高但延迟超出设备交互舒适区 |
+
+选择建议：默认 `qwen3-vl-flash`；确认识别校园标牌 / 展板文字为主的场景可换 `qwen-vl-ocr`；仅在准确率优先、能接受 4s 延迟时用 `qwen3-vl-plus`。
+
+同为 MaaS 网关，`/apps/anthropic` 是 Anthropic Messages 协议（`/v1/messages` + `x-api-key` 头），本项目网关不适用，仅供 Claude Code 类客户端使用。
+
+如需把 ASR + TTS 两步也省掉（模型直接吃音频、吐音频），要改走 Omni 链路：百炼 `qwen3-omni-flash`（HTTP，`modalities=["text","audio"]` 且必须 `stream=true`）或 `qwen3-omni-flash-realtime`（WebSocket 全双工）。这属于链路改造，需要替换 `DoubaoAsrClient` 与 `DoubaoTtsClient` 两段；若改用 MaaS 网关，可用同 Key 的 `qwen3-asr-flash-realtime` 与 `qwen3-tts-flash-realtime` 一并替换火山语音链路。
+
 `output-audio-chunk-bytes: 1920` 表示每次最多发送约 40ms 的 24kHz PCM；`playback-pace-percent: 90` 表示按实际播放时长的 90% 节流，通常兼顾连续播放和设备缓冲安全。
 
 也可以直接把实际值写入部署环境的 YAML；不要把正式凭证提交到公开仓库。
+
+### 7.3 本机联调启动
+
+模型配置已在 `application.yaml` 默认值里，本机启动不需要额外设置模型环境变量。前提是 MySQL 与 Redis 已在本机运行：
+
+```powershell
+cd C:\campus-xiaohongshu-miniapp
+& "C:\Program Files\Java\jdk1.8.0_172\bin\java.exe" -jar campus-platform\yudao-server\target\yudao-server.jar
+```
+
+仓库根目录的 `.env.local.ps1`（已被 `.gitignore` 忽略）用于存放本机专属设置，需要点源加载：
+
+```powershell
+. .\.env.local.ps1                 # 只含 JAVA_HOME 与数据库连接
+```
+
+如果本机数据库密码不是默认的 `123456`，需在 `.env.local.ps1` 中取消注释并填写 `CAMPUS_DB_PASSWORD`，否则启动会报 `Access denied for user 'root'@'localhost'`。
+
+改动 Java 代码后必须重新打包，否则 `target/yudao-server.jar` 仍是旧逻辑：
+
+```powershell
+cd C:\campus-xiaohongshu-miniapp\campus-platform
+.\mvnw.cmd -o -pl yudao-server -am package -DskipTests
+```
+
+启动成功后验证：
+
+```powershell
+(Invoke-RestMethod http://localhost:48080/app-api/campus/esp32/assistant/health).data |
+  Select-Object enabled, configured, model, modelProtocol, modelProvider
+```
 
 ## 8. Nginx 配置
 
@@ -356,7 +471,7 @@ GET /admin-api/campus/esp32/log/get?id=日志编号
 GET /admin-api/campus/esp32/log/image?id=图片编号
 ```
 
-用户提问取自本轮 ASR 转写全文；回答取自模型本轮返回的全文。`asrStatus` 区分 `PENDING`（转写中）、`SUCCESS`、`FAILED`、`DISABLED`，旧日志该字段为空。ASR 与音频理解模型并行执行；ASR 失败只影响后台问题文本，不影响本轮模型回答。
+用户提问取自本轮 ASR 转写全文；回答取自模型本轮返回的全文。`asrStatus` 区分 `PENDING`（转写中）、`SUCCESS`、`FAILED`、`DISABLED`，旧日志该字段为空。ASR 成功后才会提交模型；失败时本轮不会调用模型。
 
 图片异步保存到独立的私有数据库表，每轮最多 3 张 JPEG，单张最多 2MB。列表和详情仅返回图片数量、编号与大小，图片内容通过单独的鉴权接口读取，要求已登录且有 `campus:esp32-log:query` 权限。前端用携带登录身份的请求加载图片，关闭详情时释放临时预览地址，不生成公开图片链接。
 
@@ -370,7 +485,7 @@ GET /admin-api/campus/esp32/log/image?id=图片编号
 | --- | --- |
 | `captureMs` | 收到 `turn_start` 到收到 `turn_commit` |
 | `submitMs` | 网关组装数据并提交上游模型所用时间 |
-| `asrMs` | 异步 ASR 请求总耗时，不阻塞模型回答 |
+| `asrMs` | ASR 请求总耗时；完成转写后才提交模型 |
 | `modelFirstTokenMs` | 提交模型到收到第一个文本增量 |
 | `modelTotalMs` | 提交模型到收到 `text_done` |
 | `ttsFirstAudioMs` | 本轮开始到收到第一包 TTS 音频 |
@@ -392,4 +507,4 @@ GET /admin-api/campus/esp32/log/image?id=图片编号
 3. 按键提问后日志出现 `ESP32_TURN_SUBMITTED`。
 4. 模型有返回时出现 `ESP32_MODEL_DONE`。
 5. 第一段 TTS 下发时出现 `ESP32_FIRST_TTS_AUDIO`。
-6. ASR 日志异步出现 `ESP32_ASR_COMPLETED`，其失败不影响模型和 TTS 阶段。
+6. ASR 成功后出现 `ESP32_ASR_COMPLETED`，随后模型和 TTS 阶段正常完成。

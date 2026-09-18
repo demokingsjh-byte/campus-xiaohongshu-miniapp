@@ -29,6 +29,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GuideModelClientTest {
 
     @Test
+    void shouldMigrateLegacyChatAndTurboConfiguration() {
+        CampusEsp32AssistantProperties properties = new CampusEsp32AssistantProperties();
+        properties.setModelUrl("https://ark.cn-beijing.volces.com/api/v3/chat/completions");
+        properties.setModelName("doubao-seed-2-1-turbo-260628");
+
+        assertEquals("https://ark.cn-beijing.volces.com/api/v3/responses", properties.getModelUrl());
+        assertEquals("doubao-seed-2-1-pro-260915", properties.getModelName());
+    }
+
+    @Test
     void shouldSendResponsesImageAndAsrTextWithoutAudio() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = startSseServer(requestBody,
@@ -73,6 +83,66 @@ class GuideModelClientTest {
     }
 
     @Test
+    void shouldSwitchToChatProtocolForThirdPartyEndpoint() throws Exception {
+        CampusEsp32AssistantProperties properties = new CampusEsp32AssistantProperties();
+        properties.setModelUrl("http://127.0.0.1:8000/api/predict/glm/v1/chat/completions");
+        properties.setModelProtocol("auto");
+        assertEquals("chat", properties.getResolvedModelProtocol());
+
+        properties.setModelUrl("https://ark.cn-beijing.volces.com/api/v3/responses");
+        assertEquals("responses", properties.getResolvedModelProtocol());
+
+        properties.setModelProtocol("chat");
+        assertEquals("chat", properties.getResolvedModelProtocol());
+    }
+
+    @Test
+    void shouldSendChatCompletionsPayloadWithDataUrlImage() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = startSseServer("/v1/chat/completions", requestBody,
+                "data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}\n\n"
+                        + "data: {\"choices\":[{\"delta\":{\"content\":\"，同学\"}}]}\n\n"
+                        + "data: [DONE]\n\n");
+
+        GuideModelClient client = createClient(server, "http://127.0.0.1:"
+                + server.getAddress().getPort() + "/v1/chat/completions");
+        List<JsonNode> events = new ArrayList<>();
+        CountDownLatch done = new CountDownLatch(1);
+        try (GuideModelClient.ModelSession session = client.connect(listener(events, done))) {
+            assertEquals("chat", events.get(0).path("protocol").asText());
+            Map<String, Object> chat = new LinkedHashMap<>();
+            chat.put("type", "chat");
+            chat.put("request_id", "req-chat");
+            chat.put("question", "这是哪里？");
+            chat.put("images", Collections.singletonList("data:image/jpeg;base64,AAAA"));
+            assertTrue(session.send(chat));
+
+            assertTrue(done.await(5, TimeUnit.SECONDS));
+        } finally {
+            client.destroy();
+            server.stop(0);
+        }
+
+        JsonNode body = JsonUtils.getObjectMapper().readTree(requestBody.get());
+        assertEquals("GLM-5.3-flash", body.path("model").asText());
+        assertTrue(body.path("stream").asBoolean());
+        assertEquals(512, body.path("max_tokens").asInt());
+        assertEquals("system", body.path("messages").get(0).path("role").asText());
+        JsonNode userContent = body.path("messages").get(1).path("content");
+        assertEquals("image_url", userContent.get(0).path("type").asText());
+        assertEquals("data:image/jpeg;base64,AAAA",
+                userContent.get(0).path("image_url").path("url").asText());
+        assertEquals("text", userContent.get(1).path("type").asText());
+        assertTrue(userContent.get(1).path("text").asText().contains("这是哪里？"));
+        assertTrue(requestBody.get().indexOf("instructions") < 0);
+        assertTrue(requestBody.get().indexOf("input_image") < 0);
+
+        JsonNode doneEvent = events.get(events.size() - 1);
+        assertEquals("text_done", doneEvent.path("type").asText());
+        assertEquals("你好，同学", doneEvent.path("text").asText());
+    }
+
+    @Test
     void shouldNotEmitDoneAfterResponsesFailure() throws Exception {
         HttpServer server = startSseServer(new AtomicReference<>(),
                 "data: {\"type\":\"response.failed\",\"error\":{\"message\":\"bad request\"}}\n\n");
@@ -98,8 +168,13 @@ class GuideModelClientTest {
     }
 
     private static HttpServer startSseServer(AtomicReference<String> requestBody, String sseBody) throws IOException {
+        return startSseServer("/responses", requestBody, sseBody);
+    }
+
+    private static HttpServer startSseServer(String path, AtomicReference<String> requestBody, String sseBody)
+            throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/responses", exchange -> respond(exchange, requestBody, sseBody));
+        server.createContext(path, exchange -> respond(exchange, requestBody, sseBody));
         server.start();
         return server;
     }
@@ -125,9 +200,18 @@ class GuideModelClientTest {
     }
 
     private static GuideModelClient createClient(HttpServer server) throws Exception {
+        return createClient(server, "http://127.0.0.1:" + server.getAddress().getPort() + "/responses", "ep-test");
+    }
+
+    private static GuideModelClient createClient(HttpServer server, String modelUrl) throws Exception {
+        return createClient(server, modelUrl, "GLM-5.3-flash");
+    }
+
+    private static GuideModelClient createClient(HttpServer server, String modelUrl, String modelName)
+            throws Exception {
         CampusEsp32AssistantProperties properties = new CampusEsp32AssistantProperties();
-        properties.setModelUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/responses");
-        properties.setModelName("ep-test");
+        properties.setModelUrl(modelUrl);
+        properties.setModelName(modelName);
         properties.setModelToken("test-token");
 
         GuideModelClient client = new GuideModelClient();

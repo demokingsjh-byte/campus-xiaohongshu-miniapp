@@ -27,7 +27,11 @@ unpackage/
 # Local env
 /.env
 /.env.local
+/.env.local.ps1
 application-local.yml
+
+# Local agent workspace (logs / memory may contain local credentials)
+/.workbuddy/
 
 # Production database backups: only encrypted snapshots may be committed
 /backups/production/*.sql

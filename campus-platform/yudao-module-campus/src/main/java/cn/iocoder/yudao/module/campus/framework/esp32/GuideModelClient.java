@@ -20,6 +20,8 @@ import org.springframework.stereotype.Component;
 import javax.annotation.PreDestroy;
 import javax.annotation.Resource;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -27,14 +29,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * 多模态导览模型客户端。
  *
- * <p>默认使用火山方舟 Chat Completions 流式接口；model-url 仍可配置为
- * ws:// 地址以兼容原有自建模型协议。</p>
+ * <p>默认使用火山方舟 Responses 流式接口；model-url 也可指向任意 OpenAI 兼容的
+ * {@code /chat/completions} 流式接口（例如 PAI-EAS 部署的 GLM、Qwen-VL、vLLM），
+ * 此时自动切换为 Chat 报文格式。model-url 仍可配置为 ws:// 地址以兼容原有自建模型协议。</p>
  */
 @Component
 public class GuideModelClient {
 
     private static final MediaType JSON_MEDIA_TYPE =
             MediaType.parse("application/json; charset=utf-8");
+
+    private static final String SYSTEM_PROMPT =
+            "你是校园智能导览助手。请结合用户问题和图片内容回答，使用简洁、准确的中文。"
+                    + "如果图片无法确认，不要编造具体信息。";
+
+    private static final String IMAGE_ONLY_PROMPT = "用户语音未能识别。请仅说明图片中能够确认的内容。";
 
     @Resource
     private CampusEsp32AssistantProperties properties;
@@ -53,7 +62,8 @@ public class GuideModelClient {
             ObjectNode connected = JsonUtils.getObjectMapper().createObjectNode();
             connected.put("type", "connected");
             connected.put("model", properties.getModelName());
-            connected.put("provider", "volcengine-ark");
+            connected.put("provider", properties.getModelProvider());
+            connected.put("protocol", properties.getResolvedModelProtocol());
             eventListener.onConnected(connected);
             return session;
         }
@@ -221,38 +231,84 @@ public class GuideModelClient {
         }
 
         private ObjectNode buildArkRequest(Map<String, Object> event) {
+            return properties.isChatProtocol() ? buildChatRequest(event) : buildResponsesRequest(event);
+        }
+
+        /** 火山方舟 Responses：instructions + input[].content[]（input_image / input_text）。 */
+        private ObjectNode buildResponsesRequest(Map<String, Object> event) {
             ObjectNode body = JsonUtils.getObjectMapper().createObjectNode();
             body.put("model", properties.getModelName());
             body.put("stream", true);
-            body.put("max_output_tokens", 512);
-            body.put("instructions", "你是校园智能导览助手。请结合用户问题和图片内容回答，使用简洁、准确的中文。"
-                    + "如果图片无法确认，不要编造具体信息。");
+            body.put("max_output_tokens", properties.getModelMaxTokens());
+            body.put("instructions", SYSTEM_PROMPT);
 
             ArrayNode input = body.putArray("input");
             ObjectNode user = input.addObject();
             user.put("role", "user");
             ArrayNode content = user.putArray("content");
 
-            Object images = event.get("images");
-            if (images instanceof Iterable<?>) {
-                for (Object image : (Iterable<?>) images) {
-                    String imageUrl = stringValue(image);
-                    if (imageUrl.isEmpty()) {
-                        continue;
-                    }
-                    ObjectNode imagePart = content.addObject();
-                    imagePart.put("type", "input_image");
-                    imagePart.put("image_url", imageUrl);
-                }
+            for (String imageUrl : collectImages(event)) {
+                ObjectNode imagePart = content.addObject();
+                imagePart.put("type", "input_image");
+                imagePart.put("image_url", imageUrl);
             }
 
             ObjectNode prompt = content.addObject();
             prompt.put("type", "input_text");
-            String question = stringValue(event.get("question")).trim();
-            prompt.put("text", question.isEmpty()
-                    ? "用户语音未能识别。请仅说明图片中能够确认的内容。"
-                    : "用户问题：" + question + "\n请直接回答，并优先说明图片中能够确认的内容。");
+            prompt.put("text", buildQuestionText(event));
             return body;
+        }
+
+        /**
+         * OpenAI 兼容 /chat/completions：system + user.messages[]，
+         * 图片使用 {@code image_url:{url}}，data URL 直接内嵌。
+         */
+        private ObjectNode buildChatRequest(Map<String, Object> event) {
+            ObjectNode body = JsonUtils.getObjectMapper().createObjectNode();
+            body.put("model", properties.getModelName());
+            body.put("stream", true);
+            body.put("max_tokens", properties.getModelMaxTokens());
+
+            ArrayNode messages = body.putArray("messages");
+            ObjectNode system = messages.addObject();
+            system.put("role", "system");
+            system.put("content", SYSTEM_PROMPT);
+
+            ObjectNode user = messages.addObject();
+            user.put("role", "user");
+            ArrayNode content = user.putArray("content");
+
+            for (String imageUrl : collectImages(event)) {
+                ObjectNode imagePart = content.addObject();
+                imagePart.put("type", "image_url");
+                imagePart.putObject("image_url").put("url", imageUrl);
+            }
+
+            ObjectNode prompt = content.addObject();
+            prompt.put("type", "text");
+            prompt.put("text", buildQuestionText(event));
+            return body;
+        }
+
+        private List<String> collectImages(Map<String, Object> event) {
+            List<String> images = new ArrayList<>();
+            Object raw = event.get("images");
+            if (raw instanceof Iterable<?>) {
+                for (Object image : (Iterable<?>) raw) {
+                    String imageUrl = stringValue(image);
+                    if (!imageUrl.isEmpty()) {
+                        images.add(imageUrl);
+                    }
+                }
+            }
+            return images;
+        }
+
+        private String buildQuestionText(Map<String, Object> event) {
+            String question = stringValue(event.get("question")).trim();
+            return question.isEmpty()
+                    ? IMAGE_ONLY_PROMPT
+                    : "用户问题：" + question + "\n请直接回答，并优先说明图片中能够确认的内容。";
         }
 
         private void consumeSse(BufferedSource source, ArkStreamState state) throws IOException {
