@@ -62,6 +62,7 @@ def main():
         smoke.send_json(sock, {"type": "turn_commit", "request_id": request_id})
 
         started = time.perf_counter()
+        stages = {}
         while True:
             opcode, payload = smoke.receive_frame(sock)
             if opcode is None:
@@ -73,6 +74,7 @@ def main():
                 now = time.perf_counter()
                 if not marks:
                     first_frame_at = now
+                    stages.setdefault("first_audio", (now - started) * 1000)
                 marks.append(now)
                 sizes.append(len(payload))
                 audio_bytes += len(payload)
@@ -82,8 +84,16 @@ def main():
             if opcode == 0x1:
                 event = json.loads(payload.decode("utf-8"))
                 event_type = event.get("type")
-                if event_type == "text_delta":
+                if event_type == "state":
+                    stages.setdefault("state_" + str(event.get("state")),
+                                      (time.perf_counter() - started) * 1000)
+                elif event_type == "text_delta":
+                    stages.setdefault("first_text", (time.perf_counter() - started) * 1000)
                     text_parts.append(event.get("text", ""))
+                elif event_type == "audio_start":
+                    stages.setdefault("tts_start", (time.perf_counter() - started) * 1000)
+                elif event_type == "audio_done":
+                    stages.setdefault("audio_done", (time.perf_counter() - started) * 1000)
                 elif event_type == "error":
                     print("网关返回错误:", event.get("code"), event.get("msg"))
                 elif event_type == "turn_done":
@@ -116,6 +126,13 @@ def main():
                 reached[target] = (marks[index] - marks[0]) * 1000
 
     print("回答: %s" % "".join(text_parts).strip()[:80])
+    chain = []
+    for key, label in (("state_thinking", "提交模型"), ("first_text", "模型首字"),
+                       ("tts_start", "TTS 开始"), ("first_audio", "首帧音频"),
+                       ("audio_done", "音频完成")):
+        if key in stages:
+            chain.append("%s=%.0fms" % (label, stages[key]))
+    print("延迟链路: %s" % " → ".join(chain))
     print("帧数=%d 音频=%.0fms(%d 字节) 首帧延迟=%.0fms" %
           (len(marks), audio_ms, audio_bytes, (first_frame_at - started) * 1000))
     print("帧间隔: 最小=%.1f 中位=%.1f 平均=%.1f 最大=%.1f ms" %
