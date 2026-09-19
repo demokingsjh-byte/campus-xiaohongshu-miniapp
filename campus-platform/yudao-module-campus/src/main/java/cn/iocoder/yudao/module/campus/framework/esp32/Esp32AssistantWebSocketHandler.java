@@ -267,6 +267,10 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         byte[] wav = Esp32ProtocolUtils.pcm16LeToWav(
                 turn.pcm, Esp32ProtocolUtils.INPUT_SAMPLE_RATE);
 
+        // 提前建好 TTS 连接：ASR 与模型阶段要花 2~3 秒，足够把连接与建会话的握手跑完，
+        // 这样首个文字分片一到就能直接开始合成，省掉首帧音频前的握手往返。
+        prewarmTts(context, turn.requestId);
+
         // 图片体积较大，异步落库，不能阻塞 ASR、模型和设备播放。
         mediaExecutor.execute(() -> logService.saveImages(turn.logId, turn.images));
 
@@ -346,6 +350,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 return;
             }
             logService.markFailed(turn.logId, code, message, elapsedMillis(turn.startedAt));
+            closeTtsLocked(context);
             sendErrorLocked(context, code, message, true, turn.requestId);
             sendJsonLocked(context, event("turn_done", "request_id", turn.requestId));
             context.activeRequestId = "";
@@ -434,25 +439,51 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
+    /**
+     * 预热 TTS 连接：只建立连接与会话，不发送任何文字，也不会给设备发 audio_start。
+     *
+     * <p>火山双向流式 TTS 需要 START_CONNECTION、START_SESSION 两轮往返才会就绪。
+     * 把这段握手挪到 ASR/模型阶段并行完成，首帧音频前的等待可明显缩短。</p>
+     */
+    private void prewarmTts(DeviceContext context, String requestId) {
+        synchronized (context.lock) {
+            if (context.tts != null && requestId.equals(context.ttsRequestId)) {
+                return;
+            }
+            closeTtsLocked(context);
+            context.ttsRequestId = requestId;
+            context.ttsFirstAudio = true;
+            context.ttsHasText = false;
+            context.ttsFirstAudioAt = 0L;
+            context.pendingTtsText.setLength(0);
+            resetAudioPacing(context);
+            context.tts = ttsClient.start(
+                    audio -> onTtsAudio(context, requestId, audio),
+                    () -> onTtsCompleted(context, requestId),
+                    throwable -> onTtsFailed(context, requestId, throwable));
+        }
+    }
+
     private void startTtsLocked(DeviceContext context, String requestId) {
-        closeTtsLocked(context);
-        context.ttsRequestId = requestId;
+        // 已预热过同一轮次的连接就直接复用，只有缺失时才现建。
+        if (context.tts == null || !requestId.equals(context.ttsRequestId)) {
+            closeTtsLocked(context);
+            context.ttsRequestId = requestId;
+            context.tts = ttsClient.start(
+                    audio -> onTtsAudio(context, requestId, audio),
+                    () -> onTtsCompleted(context, requestId),
+                    throwable -> onTtsFailed(context, requestId, throwable));
+        }
         context.ttsFirstAudio = true;
         context.ttsHasText = false;
         context.ttsFirstAudioAt = 0L;
-        context.audioStartedAt = 0L;
-        context.audioLastSendAt = 0L;
-        context.audioSentMillis = 0L;
         context.pendingTtsText.setLength(0);
+        resetAudioPacing(context);
         Map<String, Object> start = event("audio_start", "request_id", requestId);
         start.put("format", "pcm_s16le");
         start.put("sample_rate", Esp32ProtocolUtils.OUTPUT_SAMPLE_RATE);
         start.put("channels", 1);
         sendJsonLocked(context, start);
-        context.tts = ttsClient.start(
-                audio -> onTtsAudio(context, requestId, audio),
-                () -> onTtsCompleted(context, requestId),
-                throwable -> onTtsFailed(context, requestId, throwable));
     }
 
     private void flushTtsTextLocked(DeviceContext context, boolean force) {
@@ -460,7 +491,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
         char last = context.pendingTtsText.charAt(context.pendingTtsText.length() - 1);
-        if (!force && context.pendingTtsText.length() < 24
+        // 首个分片放宽阈值，让 TTS 尽早开始合成；后续恢复较长阈值，避免切得太碎影响韵律。
+        int threshold = context.ttsHasText ? 24 : 6;
+        if (!force && context.pendingTtsText.length() < threshold
                 && "，。！？；,.!?;".indexOf(last) < 0) {
             return;
         }
@@ -522,12 +555,21 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     private void onTtsFailed(DeviceContext context, String requestId, Throwable throwable) {
-        log.warn("[ESP32_TTS_FAILED] deviceId={} requestId={}",
-                context.deviceId, requestId, throwable);
         synchronized (context.lock) {
+            // 预热连接在还没开始播报时失败，不要直接判定整轮失败：
+            // 清理掉它即可，首个文字分片到达时会重新建连。
+            if (!context.ttsHasText) {
+                log.warn("[ESP32_TTS_PREWARM_FAILED] deviceId={} requestId={}",
+                        context.deviceId, requestId, throwable);
+                context.tts = null;
+                context.ttsRequestId = "";
+                return;
+            }
             if (!requestId.equals(context.activeRequestId)) {
                 return;
             }
+            log.warn("[ESP32_TTS_FAILED] deviceId={} requestId={}",
+                    context.deviceId, requestId, throwable);
             logService.markFailed(context.activeLogId, "TTS_FAILED", "语音合成暂时不可用",
                     elapsedMillis(context.turnStartedAt));
             sendErrorLocked(context, "TTS_FAILED", "语音合成暂时不可用", true, requestId);
@@ -669,6 +711,13 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             log.warn("[ESP32_SEND_TEXT_FAILED] deviceId={} sessionId={}",
                     context.deviceId, context.session.getId(), exception);
         }
+    }
+
+    /** 重置本轮音频下发节奏状态（领先量从下一次发送重新计时）。 */
+    private void resetAudioPacing(DeviceContext context) {
+        context.audioStartedAt = 0L;
+        context.audioLastSendAt = 0L;
+        context.audioSentMillis = 0L;
     }
 
     /**
