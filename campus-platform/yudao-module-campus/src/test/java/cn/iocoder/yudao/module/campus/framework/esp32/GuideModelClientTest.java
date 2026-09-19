@@ -173,9 +173,12 @@ class GuideModelClientTest {
         assertEquals("text", userContent.get(0).path("type").asText());
         String prompt = userContent.get(0).path("text").asText();
         assertTrue(prompt.contains("这是什么楼？"));
-        assertTrue(prompt.contains("没有上传图片"));
-        // 系统提示词必须限制回答长度，避免语音播报过长
-        assertTrue(body.path("messages").get(0).path("content").asText().contains("80 字"));
+        assertTrue(prompt.contains("没有画面"));
+        // 系统提示词必须限制回答长度、保持通用人设，不能绑定具体行业场景
+        String systemPrompt = body.path("messages").get(0).path("content").asText();
+        assertTrue(systemPrompt.contains("80 字"));
+        assertTrue(systemPrompt.contains("陪伴"));
+        assertTrue(systemPrompt.indexOf("校园") < 0);
     }
 
     @Test

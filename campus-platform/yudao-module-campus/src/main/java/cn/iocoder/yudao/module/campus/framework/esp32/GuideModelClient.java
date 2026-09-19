@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 多模态导览模型客户端。
+ * 多模态模型客户端。
  *
  * <p>默认使用火山方舟 Responses 流式接口；model-url 也可指向任意 OpenAI 兼容的
  * {@code /chat/completions} 流式接口（例如 PAI-EAS 部署的 GLM、Qwen-VL、vLLM），
@@ -40,23 +40,27 @@ public class GuideModelClient {
             MediaType.parse("application/json; charset=utf-8");
 
     /**
-     * 系统提示词。设备是语音播报场景：回答越长，用户等待和播报时间越长，
-     * TTS 成本也越高，因此这里硬性限制长度，并要求没有图片时不得描述画面。
+     * 系统提示词：通用视觉陪伴人设，不绑定具体行业场景。
+     *
+     * <p>设备是语音播报场景，回答越长用户等待和播报时间越长、TTS 成本越高，
+     * 因此硬性限制长度；并要求看不清就说看不清、没有画面时不描述环境，
+     * 避免模型凭空编造内容。</p>
      */
     private static final String SYSTEM_PROMPT =
-            "你是校园智能导览助手，回答会被语音播报。"
-                    + "请结合用户问题和图片内容，用简洁、准确的中文回答，"
-                    + "控制在 2~3 句话、80 字以内，只讲重点，不要罗列无关细节。"
-                    + "如果图片无法确认，不要编造具体信息；"
-                    + "如果本轮没有图片，不要描述画面内容，改为提示用户对准目标后再提问。";
+            "你是一个陪伴型视觉助手：通过镜头看用户身边的东西，陪用户聊天、解答疑问。\n"
+                    + "语气亲切自然、口语化，像身边的朋友，不要说客套话和书面语。\n"
+                    + "回答会被语音播报，控制在 2~3 句话、80 字以内，只讲重点。\n"
+                    + "描述画面时只说你确实看到的内容，看不清就说看不清，不要编造；\n"
+                    + "本轮没有画面时不要描述任何环境，提醒用户把镜头对准想看的东西。";
 
-    private static final String IMAGE_ONLY_PROMPT = "用户语音未能识别。请仅说明图片中能够确认的内容。";
+    private static final String IMAGE_ONLY_PROMPT =
+            "用户语音没能识别出来。请只说说画面里能确认的东西。";
 
     private static final String NO_IMAGE_PROMPT =
-            "用户语音未能识别，且本轮没有上传图片。请提示用户对准要询问的目标后重新提问。";
+            "用户语音没能识别出来，而且这轮没有画面。请提醒用户把镜头对准想看的东西再说一次。";
 
     private static final String NO_IMAGE_HINT =
-            "\n注意：本轮没有上传图片，请不要描述画面内容；若问题必须依赖画面，请提示用户对准目标后再提问。";
+            "\n注意：这轮没有画面，不要描述任何环境；需要看东西时，提醒用户把镜头对准目标。";
 
     @Resource
     private CampusEsp32AssistantProperties properties;
@@ -320,7 +324,7 @@ public class GuideModelClient {
         }
 
         /**
-         * 组装本轮提问。没有图片时必须显式告知模型，否则模型会凭空编造画面内容
+         * 组装本轮提问。没有画面时必须显式告知模型，否则模型会凭空编造画面内容
          * （实测未传图时它会描述出"图书馆、桌子、书本"等并不存在的内容）。
          */
         private String buildQuestionText(Map<String, Object> event, boolean hasImage) {
@@ -328,11 +332,11 @@ public class GuideModelClient {
             if (!hasImage) {
                 return question.isEmpty()
                         ? NO_IMAGE_PROMPT
-                        : "用户问题：" + question + NO_IMAGE_HINT;
+                        : "用户说：" + question + NO_IMAGE_HINT;
             }
             return question.isEmpty()
                     ? IMAGE_ONLY_PROMPT
-                    : "用户问题：" + question + "\n请直接回答，并优先说明图片中能够确认的内容。";
+                    : "用户说：" + question + "\n请直接回答；涉及画面时只说你确实看到的东西。";
         }
 
         private void consumeSse(BufferedSource source, ArkStreamState state) throws IOException {
