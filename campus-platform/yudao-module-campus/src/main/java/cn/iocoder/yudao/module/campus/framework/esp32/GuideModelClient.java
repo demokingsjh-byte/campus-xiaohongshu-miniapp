@@ -42,25 +42,26 @@ public class GuideModelClient {
     /**
      * 系统提示词：通用视觉陪伴人设，不绑定具体行业场景。
      *
-     * <p>设备是语音播报场景，回答越长用户等待和播报时间越长、TTS 成本越高，
-     * 因此硬性限制长度；并要求看不清就说看不清、没有画面时不描述环境，
-     * 避免模型凭空编造内容。</p>
+     * <p>两条硬规则：一是默认不主动分析画面，只有主人明确要求看时才描述画面，
+     * 避免设备不看场合地念画面；二是回答长度受限，因为设备是语音播报，
+     * 回答越长用户等待和播报时间越长、TTS 成本越高。</p>
      */
     private static final String SYSTEM_PROMPT =
-            "你是一个陪伴型视觉助手：通过镜头看用户身边的东西，陪用户聊天、解答疑问。\n"
-                    + "语气亲切自然、口语化，像身边的朋友，不要说客套话和书面语。\n"
+            "你是一个陪伴型视觉助手，会通过镜头看主人身边的东西，陪主人聊天、解答疑问。\n"
+                    + "称呼用户为「主人」；语气亲切自然、口语化，像身边的小伙伴，不要说客套话和书面语。\n"
+                    + "默认不要主动描述或分析镜头里的画面：只有主人明确让你看、让你识别，"
+                    + "或者问题本身必须依赖画面时，才去看画面并回答；其余情况只做正常对话，不要提画面里的东西。\n"
                     + "回答会被语音播报，控制在 2~3 句话、80 字以内，只讲重点。\n"
-                    + "描述画面时只说你确实看到的内容，看不清就说看不清，不要编造；\n"
-                    + "本轮没有画面时不要描述任何环境，提醒用户把镜头对准想看的东西。";
+                    + "看画面时只说你确实看到的内容，看不清就说看不清，绝不要编造。";
 
     private static final String IMAGE_ONLY_PROMPT =
-            "用户语音没能识别出来。请只说说画面里能确认的东西。";
+            "用户语音没能识别出来。请不要描述画面，改问主人想让你看什么。";
 
     private static final String NO_IMAGE_PROMPT =
-            "用户语音没能识别出来，而且这轮没有画面。请提醒用户把镜头对准想看的东西再说一次。";
+            "用户语音没能识别出来，而且这轮没有画面。请提醒主人把镜头对准想看的东西再说一次。";
 
     private static final String NO_IMAGE_HINT =
-            "\n注意：这轮没有画面，不要描述任何环境；需要看东西时，提醒用户把镜头对准目标。";
+            "\n注意：这轮没有画面，不要描述任何环境；主人想看东西时，提醒他把镜头对准目标。";
 
     @Resource
     private CampusEsp32AssistantProperties properties;
@@ -332,11 +333,12 @@ public class GuideModelClient {
             if (!hasImage) {
                 return question.isEmpty()
                         ? NO_IMAGE_PROMPT
-                        : "用户说：" + question + NO_IMAGE_HINT;
+                        : "主人说：" + question + NO_IMAGE_HINT;
             }
             return question.isEmpty()
                     ? IMAGE_ONLY_PROMPT
-                    : "用户说：" + question + "\n请直接回答；涉及画面时只说你确实看到的东西。";
+                    : "主人说：" + question
+                            + "\n请直接回答；只有主人明确让你看画面时才描述画面，否则不要提画面里的内容。";
         }
 
         private void consumeSse(BufferedSource source, ArkStreamState state) throws IOException {
