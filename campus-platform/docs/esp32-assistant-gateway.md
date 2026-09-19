@@ -334,7 +334,7 @@ campus:
     model-url: ${CAMPUS_LLM_MODEL_URL:https://<workspace>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions}
     model-name: ${CAMPUS_LLM_MODEL:qwen3-vl-flash}
     model-token: ${CAMPUS_LLM_API_KEY:<API Key>}
-    model-max-tokens: ${CAMPUS_LLM_MAX_TOKENS:800}
+    model-max-tokens: ${CAMPUS_LLM_MAX_TOKENS:200}
 ```
 
 如需覆盖，用环境变量即可（见下表；`CAMPUS_LLM_*` 优先于旧的 `CAMPUS_VOLC_ARK_*`）：
@@ -344,7 +344,7 @@ CAMPUS_LLM_PROTOCOL=chat          # auto | responses | chat
 CAMPUS_LLM_MODEL_URL=<模型地址>
 CAMPUS_LLM_MODEL=<模型名>
 CAMPUS_LLM_API_KEY=<模型密钥>
-CAMPUS_LLM_MAX_TOKENS=800
+CAMPUS_LLM_MAX_TOKENS=200
 ```
 
 - `model-protocol: auto` 按地址推断：地址包含 `/chat/completions` 走 OpenAI 兼容 Chat 报文，其余走方舟 Responses 报文；当前默认显式配置为 `chat`。
