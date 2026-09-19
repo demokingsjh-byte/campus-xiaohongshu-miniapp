@@ -14,6 +14,15 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
 import javax.annotation.PreDestroy;
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -315,7 +324,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         chat.put("question", transcript);
         List<String> images = new ArrayList<>();
         for (byte[] image : turn.images) {
-            images.add("data:image/jpeg;base64," + Base64.getEncoder().encodeToString(image));
+            byte[] payload = downscaleForModel(image);
+            images.add("data:image/jpeg;base64," + Base64.getEncoder().encodeToString(payload));
         }
         chat.put("images", images);
         chat.put("output_audio", false);
@@ -380,7 +390,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
             if ("text_delta".equals(type)) {
                 String delta = event.path("text").asText(event.path("delta").asText(""));
-                if (context.tts == null || !requestId.equals(context.ttsRequestId)) {
+                // 预热过的连接也要走一次，才能补发 audio_start 给设备并重置本轮播报状态。
+                if (context.tts == null || !requestId.equals(context.ttsRequestId)
+                        || !context.ttsAnnounced) {
                     startTtsLocked(context, requestId);
                 }
                 context.pendingTtsText.append(delta);
@@ -461,6 +473,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                     audio -> onTtsAudio(context, requestId, audio),
                     () -> onTtsCompleted(context, requestId),
                     throwable -> onTtsFailed(context, requestId, throwable));
+            context.ttsAnnounced = false;
         }
     }
 
@@ -479,6 +492,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         context.ttsFirstAudioAt = 0L;
         context.pendingTtsText.setLength(0);
         resetAudioPacing(context);
+        context.ttsAnnounced = true;
         Map<String, Object> start = event("audio_start", "request_id", requestId);
         start.put("format", "pcm_s16le");
         start.put("sample_rate", Esp32ProtocolUtils.OUTPUT_SAMPLE_RATE);
@@ -664,6 +678,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         context.ttsRequestId = "";
         context.pendingTtsText.setLength(0);
         context.ttsHasText = false;
+        context.ttsAnnounced = false;
     }
 
     private void setStateLocked(DeviceContext context, DeviceState state,
@@ -695,6 +710,62 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             error.put("request_id", requestId);
         }
         sendJsonLocked(context, error);
+    }
+
+    /**
+     * 提交给模型前把图片缩到长边上限。
+     *
+     * <p>视觉 token 数与像素正相关：缩小图片同时降低模型首 token 延迟和每轮成本。
+     * 落库保存的仍是设备原始 JPEG，只有模型入参会降采样。</p>
+     */
+    private byte[] downscaleForModel(byte[] jpeg) {
+        int maxEdge = properties.getModelImageMaxEdge();
+        if (maxEdge <= 0 || jpeg.length == 0) {
+            return jpeg;
+        }
+        try {
+            BufferedImage source = ImageIO.read(new ByteArrayInputStream(jpeg));
+            if (source == null) {
+                return jpeg;
+            }
+            int width = source.getWidth();
+            int height = source.getHeight();
+            int longest = Math.max(width, height);
+            if (longest <= maxEdge) {
+                return jpeg;
+            }
+            double scale = (double) maxEdge / longest;
+            int targetWidth = Math.max(1, (int) Math.round(width * scale));
+            int targetHeight = Math.max(1, (int) Math.round(height * scale));
+            BufferedImage scaled = new BufferedImage(
+                    targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
+            Graphics2D graphics = scaled.createGraphics();
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            graphics.setRenderingHint(RenderingHints.KEY_RENDERING,
+                    RenderingHints.VALUE_RENDER_QUALITY);
+            graphics.drawImage(source, 0, 0, targetWidth, targetHeight, null);
+            graphics.dispose();
+
+            ImageWriter writer = ImageIO.getImageWritersByFormatName("jpeg").next();
+            ImageWriteParam param = writer.getDefaultWriteParam();
+            param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality(0.85f);
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            try (ImageOutputStream stream = ImageIO.createImageOutputStream(output)) {
+                writer.setOutput(stream);
+                writer.write(null, new IIOImage(scaled, null, null), param);
+            } finally {
+                writer.dispose();
+            }
+            byte[] result = output.toByteArray();
+            log.info("[ESP32_IMAGE_DOWNSCALED] {}x{} -> {}x{} bytes={} -> {}",
+                    width, height, targetWidth, targetHeight, jpeg.length, result.length);
+            return result.length > 0 ? result : jpeg;
+        } catch (Exception exception) {
+            log.warn("[ESP32_IMAGE_DOWNSCALE_FAILED] bytes={}", jpeg.length, exception);
+            return jpeg;
+        }
     }
 
     private void sendJsonLocked(DeviceContext context, Map<String, Object> event) {
@@ -901,6 +972,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private String activeRequestId = "";
         private boolean ttsFirstAudio;
         private boolean ttsHasText;
+        /** 本轮的 audio_start 是否已经发给设备。 */
+        private boolean ttsAnnounced;
         private long turnStartedAt;
         private long ttsFirstAudioAt;
         /** 音频下发节奏控制：本轮流式音频的起始时间与已下发音频时长。 */
