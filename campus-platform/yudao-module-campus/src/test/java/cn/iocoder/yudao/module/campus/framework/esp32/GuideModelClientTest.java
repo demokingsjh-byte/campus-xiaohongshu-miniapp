@@ -66,7 +66,7 @@ class GuideModelClientTest {
         JsonNode body = JsonUtils.getObjectMapper().readTree(requestBody.get());
         assertEquals("ep-test", body.path("model").asText());
         assertTrue(body.path("stream").asBoolean());
-        assertEquals(512, body.path("max_output_tokens").asInt());
+        assertEquals(200, body.path("max_output_tokens").asInt());
         JsonNode content = body.path("input").get(0).path("content");
         assertEquals(2, content.size());
         assertEquals("input_image", content.get(0).path("type").asText());
@@ -126,7 +126,7 @@ class GuideModelClientTest {
         JsonNode body = JsonUtils.getObjectMapper().readTree(requestBody.get());
         assertEquals("GLM-5.3-flash", body.path("model").asText());
         assertTrue(body.path("stream").asBoolean());
-        assertEquals(512, body.path("max_tokens").asInt());
+        assertEquals(200, body.path("max_tokens").asInt());
         assertEquals("system", body.path("messages").get(0).path("role").asText());
         JsonNode userContent = body.path("messages").get(1).path("content");
         assertEquals("image_url", userContent.get(0).path("type").asText());
@@ -140,6 +140,42 @@ class GuideModelClientTest {
         JsonNode doneEvent = events.get(events.size() - 1);
         assertEquals("text_done", doneEvent.path("type").asText());
         assertEquals("你好，同学", doneEvent.path("text").asText());
+    }
+
+    @Test
+    void shouldTellModelWhenNoImageWasUploaded() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = startSseServer("/v1/chat/completions", requestBody,
+                "data: {\"choices\":[{\"delta\":{\"content\":\"请对准目标\"}}]}\n\n"
+                        + "data: [DONE]\n\n");
+
+        GuideModelClient client = createClient(server, "http://127.0.0.1:"
+                + server.getAddress().getPort() + "/v1/chat/completions");
+        List<JsonNode> events = new ArrayList<>();
+        CountDownLatch done = new CountDownLatch(1);
+        try (GuideModelClient.ModelSession session = client.connect(listener(events, done))) {
+            Map<String, Object> chat = new LinkedHashMap<>();
+            chat.put("type", "chat");
+            chat.put("request_id", "req-no-image");
+            chat.put("question", "这是什么楼？");
+            assertTrue(session.send(chat));
+
+            assertTrue(done.await(5, TimeUnit.SECONDS));
+        } finally {
+            client.destroy();
+            server.stop(0);
+        }
+
+        JsonNode body = JsonUtils.getObjectMapper().readTree(requestBody.get());
+        // 不能带任何图片块
+        JsonNode userContent = body.path("messages").get(1).path("content");
+        assertEquals(1, userContent.size());
+        assertEquals("text", userContent.get(0).path("type").asText());
+        String prompt = userContent.get(0).path("text").asText();
+        assertTrue(prompt.contains("这是什么楼？"));
+        assertTrue(prompt.contains("没有上传图片"));
+        // 系统提示词必须限制回答长度，避免语音播报过长
+        assertTrue(body.path("messages").get(0).path("content").asText().contains("80 字"));
     }
 
     @Test

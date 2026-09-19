@@ -51,8 +51,12 @@ public class CampusEsp32AssistantProperties {
      * chat（OpenAI 兼容 /chat/completions，例如 PAI-EAS 部署的 GLM、Qwen-VL、vLLM）。
      */
     private String modelProtocol = "auto";
-    /** 单轮回答的最大输出 token 数，Responses 走 max_output_tokens，Chat 走 max_tokens。 */
-    private int modelMaxTokens = 512;
+    /**
+     * 单轮回答的最大输出 token 数（Responses 走 max_output_tokens，Chat 走 max_tokens）。
+     * 设备是语音播报场景，回答越长用户等待和播报时间越长、TTS 成本越高，
+     * 因此默认收紧到 200，约合 80~150 个汉字。
+     */
+    private int modelMaxTokens = 200;
 
     private String asrUrl = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
     private boolean asrEnabled = true;

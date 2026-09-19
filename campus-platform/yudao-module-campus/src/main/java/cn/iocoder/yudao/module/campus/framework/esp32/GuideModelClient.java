@@ -39,11 +39,24 @@ public class GuideModelClient {
     private static final MediaType JSON_MEDIA_TYPE =
             MediaType.parse("application/json; charset=utf-8");
 
+    /**
+     * 系统提示词。设备是语音播报场景：回答越长，用户等待和播报时间越长，
+     * TTS 成本也越高，因此这里硬性限制长度，并要求没有图片时不得描述画面。
+     */
     private static final String SYSTEM_PROMPT =
-            "你是校园智能导览助手。请结合用户问题和图片内容回答，使用简洁、准确的中文。"
-                    + "如果图片无法确认，不要编造具体信息。";
+            "你是校园智能导览助手，回答会被语音播报。"
+                    + "请结合用户问题和图片内容，用简洁、准确的中文回答，"
+                    + "控制在 2~3 句话、80 字以内，只讲重点，不要罗列无关细节。"
+                    + "如果图片无法确认，不要编造具体信息；"
+                    + "如果本轮没有图片，不要描述画面内容，改为提示用户对准目标后再提问。";
 
     private static final String IMAGE_ONLY_PROMPT = "用户语音未能识别。请仅说明图片中能够确认的内容。";
+
+    private static final String NO_IMAGE_PROMPT =
+            "用户语音未能识别，且本轮没有上传图片。请提示用户对准要询问的目标后重新提问。";
+
+    private static final String NO_IMAGE_HINT =
+            "\n注意：本轮没有上传图片，请不要描述画面内容；若问题必须依赖画面，请提示用户对准目标后再提问。";
 
     @Resource
     private CampusEsp32AssistantProperties properties;
@@ -247,7 +260,8 @@ public class GuideModelClient {
             user.put("role", "user");
             ArrayNode content = user.putArray("content");
 
-            for (String imageUrl : collectImages(event)) {
+            List<String> images = collectImages(event);
+            for (String imageUrl : images) {
                 ObjectNode imagePart = content.addObject();
                 imagePart.put("type", "input_image");
                 imagePart.put("image_url", imageUrl);
@@ -255,7 +269,7 @@ public class GuideModelClient {
 
             ObjectNode prompt = content.addObject();
             prompt.put("type", "input_text");
-            prompt.put("text", buildQuestionText(event));
+            prompt.put("text", buildQuestionText(event, !images.isEmpty()));
             return body;
         }
 
@@ -278,7 +292,8 @@ public class GuideModelClient {
             user.put("role", "user");
             ArrayNode content = user.putArray("content");
 
-            for (String imageUrl : collectImages(event)) {
+            List<String> images = collectImages(event);
+            for (String imageUrl : images) {
                 ObjectNode imagePart = content.addObject();
                 imagePart.put("type", "image_url");
                 imagePart.putObject("image_url").put("url", imageUrl);
@@ -286,7 +301,7 @@ public class GuideModelClient {
 
             ObjectNode prompt = content.addObject();
             prompt.put("type", "text");
-            prompt.put("text", buildQuestionText(event));
+            prompt.put("text", buildQuestionText(event, !images.isEmpty()));
             return body;
         }
 
@@ -304,8 +319,17 @@ public class GuideModelClient {
             return images;
         }
 
-        private String buildQuestionText(Map<String, Object> event) {
+        /**
+         * 组装本轮提问。没有图片时必须显式告知模型，否则模型会凭空编造画面内容
+         * （实测未传图时它会描述出"图书馆、桌子、书本"等并不存在的内容）。
+         */
+        private String buildQuestionText(Map<String, Object> event, boolean hasImage) {
             String question = stringValue(event.get("question")).trim();
+            if (!hasImage) {
+                return question.isEmpty()
+                        ? NO_IMAGE_PROMPT
+                        : "用户问题：" + question + NO_IMAGE_HINT;
+            }
             return question.isEmpty()
                     ? IMAGE_ONLY_PROMPT
                     : "用户问题：" + question + "\n请直接回答，并优先说明图片中能够确认的内容。";

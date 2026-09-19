@@ -383,7 +383,8 @@ campus:
     model-url: ${CAMPUS_LLM_MODEL_URL:https://ws-h4b3rjk7w0en5w9e.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions}
     model-name: ${CAMPUS_LLM_MODEL:qwen3-vl-flash}
     model-token: ${CAMPUS_LLM_API_KEY:sk-a48f07cc203942f49b88e5dd5949ffde}
-    model-max-tokens: ${CAMPUS_LLM_MAX_TOKENS:800}
+    # 单轮回答上限：语音播报场景，收紧到 200 token（约 80~150 汉字），避免用户长时间等待。
+    model-max-tokens: ${CAMPUS_LLM_MAX_TOKENS:200}
 
     # ASR 先将设备音频转为用户问题文字，再调用图文模型。
     asr-enabled: ${CAMPUS_ESP32_ASR_ENABLED:true}
