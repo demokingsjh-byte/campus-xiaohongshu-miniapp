@@ -190,6 +190,11 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                     : requestId.trim().substring(0, Math.min(100, requestId.trim().length()));
             Long logId = logService.startTurn(context.session.getId(), context.deviceId, context.clientIp, id);
             context.turn = new TurnBuffer(id, logId);
+            // 采集一开始就建立流式 ASR：音频边说边转写，commit 后只需等待最终结果。
+            closeAsrLocked(context);
+            if (properties.isAsrEnabled()) {
+                context.asrStream = asrClient.startStream();
+            }
             setStateLocked(context, DeviceState.CAPTURING, id, "正在聆听");
             sendJsonLocked(context, event("turn_ready", "request_id", id));
         }
@@ -212,6 +217,11 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
         context.turn.pcm.write(payload, 0, payload.length);
+        // 实时喂给流式 ASR；会话不存在或已失败时静默跳过，commit 时走批处理兜底。
+        DoubaoAsrClient.AsrStream stream = context.asrStream;
+        if (stream != null) {
+            stream.appendAudio(payload);
+        }
     }
 
     private void appendImage(DeviceContext context, byte[] payload) {
@@ -248,7 +258,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
 
     private void commitTurn(DeviceContext context) {
         TurnData turn;
+        DoubaoAsrClient.AsrStream asrStream;
         synchronized (context.lock) {
+            asrStream = null;
             if (context.turn == null || context.state != DeviceState.CAPTURING) {
                 sendErrorLocked(context, "NO_ACTIVE_TURN", "请先发送 turn_start", false, null);
                 return;
@@ -257,6 +269,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             context.turn = null;
             if (turn.pcm.length < Esp32ProtocolUtils.MIN_AUDIO_BYTES) {
                 logService.markIgnored(turn.logId, turn.pcm.length, turn.images.size(), "audio_too_short");
+                closeAsrLocked(context);
                 Map<String, Object> ignored = event("turn_ignored", "request_id", turn.requestId);
                 ignored.put("reason", "audio_too_short");
                 sendJsonLocked(context, ignored);
@@ -271,6 +284,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             context.activeLogId = turn.logId;
             context.turnStartedAt = turn.startedAt;
             setStateLocked(context, DeviceState.THINKING, turn.requestId, "正在理解");
+            // 摘走本轮的流式 ASR 会话；后续音频帧不再进入（已在采集阶段喂完）。
+            asrStream = context.asrStream;
+            context.asrStream = null;
         }
         long captureMs = elapsedMillis(turn.startedAt);
         byte[] wav = Esp32ProtocolUtils.pcm16LeToWav(
@@ -285,18 +301,59 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
 
         // 当前 Turbo 图文模型不接受设备音频，必须先转写，再提交“文字 + 图片”。
         if (properties.isAsrEnabled()) {
-            mediaExecutor.execute(() -> transcribeAndSubmit(context, turn, wav, captureMs));
+            final DoubaoAsrClient.AsrStream stream = asrStream;
+            mediaExecutor.execute(() -> transcribeAndSubmit(context, turn, wav, captureMs, stream));
         } else {
             logService.markAsrDisabled(turn.logId);
             failBeforeModel(context, turn, "ASR_DISABLED", "当前模型需要先开启语音转写");
         }
     }
 
-    private void transcribeAndSubmit(DeviceContext context, TurnData turn, byte[] wav, long captureMs) {
+    /**
+     * 优先走流式会话收尾（音频已在采集阶段实时喂给火山），失败则回退到整段批处理。
+     */
+    private String transcribe(DeviceContext context, TurnData turn, byte[] wav,
+                              DoubaoAsrClient.AsrStream asrStream, long startedAt) throws Exception {
+        if (asrStream != null && asrStream.isUsable()) {
+            try {
+                String text = asrStream.finish();
+                log.info("[ESP32_ASR_STREAMED] deviceId={} requestId={} elapsedMs={} text={}",
+                        context.deviceId, turn.requestId, elapsedMillis(startedAt),
+                        abbreviate(text, 160));
+                return text;
+            } catch (Exception exception) {
+                log.warn("[ESP32_ASR_STREAM_FAILED] deviceId={} requestId={} elapsedMs={} 回退批处理",
+                        context.deviceId, turn.requestId, elapsedMillis(startedAt), exception);
+            } finally {
+                closeQuietly(asrStream);
+            }
+        }
+        return asrClient.transcribe(wav);
+    }
+
+    private void closeQuietly(DoubaoAsrClient.AsrStream stream) {
+        if (stream != null) {
+            try {
+                stream.close();
+            } catch (Exception ignored) {
+                // 会话清理失败不影响主流程。
+            }
+        }
+    }
+
+    /** 关闭并摘走当前设备持有的流式 ASR 会话（须持有 context.lock）。 */
+    private void closeAsrLocked(DeviceContext context) {
+        DoubaoAsrClient.AsrStream stream = context.asrStream;
+        context.asrStream = null;
+        closeQuietly(stream);
+    }
+
+    private void transcribeAndSubmit(DeviceContext context, TurnData turn, byte[] wav, long captureMs,
+                                     DoubaoAsrClient.AsrStream asrStream) {
         long startedAt = System.nanoTime();
         String transcript;
         try {
-            transcript = asrClient.transcribe(wav);
+            transcript = transcribe(context, turn, wav, asrStream, startedAt);
             transcript = transcript == null ? "" : transcript.trim();
             if (transcript.isEmpty()) {
                 throw new IllegalStateException("火山 ASR 未返回转写文字");
@@ -361,6 +418,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
             logService.markFailed(turn.logId, code, message, elapsedMillis(turn.startedAt));
             closeTtsLocked(context);
+            closeAsrLocked(context);
             sendErrorLocked(context, code, message, true, turn.requestId);
             sendJsonLocked(context, event("turn_done", "request_id", turn.requestId));
             context.activeRequestId = "";
@@ -607,6 +665,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             String requestId = context.turn.requestId;
             logService.markIgnored(context.turn.logId, context.turn.pcm.size(), context.turn.images.size(),
                     "capture_cancelled");
+            closeAsrLocked(context);
             context.turn = null;
             setStateLocked(context, DeviceState.LISTENING, requestId,
                     "已取消，请重新提问");
@@ -624,6 +683,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 }
             }
             closeTtsLocked(context);
+            closeAsrLocked(context);
             logService.markInterrupted(context.activeLogId, context.turnStartedAt > 0
                     ? elapsedMillis(context.turnStartedAt) : null);
             context.activeRequestId = "";
@@ -916,6 +976,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                     : context.turn == null ? 0L : context.turn.startedAt;
             logService.markDisconnected(logId, startedAt > 0 ? elapsedMillis(startedAt) : null);
             closeTtsLocked(context);
+            closeAsrLocked(context);
             if (context.modelSession != null) {
                 context.modelSession.close();
             }
@@ -974,6 +1035,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private boolean ttsHasText;
         /** 本轮的 audio_start 是否已经发给设备。 */
         private boolean ttsAnnounced;
+        private DoubaoAsrClient.AsrStream asrStream;
         private long turnStartedAt;
         private long ttsFirstAudioAt;
         /** 音频下发节奏控制：本轮流式音频的起始时间与已下发音频时长。 */

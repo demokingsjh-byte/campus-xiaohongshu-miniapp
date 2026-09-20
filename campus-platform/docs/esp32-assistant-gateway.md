@@ -32,13 +32,16 @@ ESP32-S3                      campus-platform                     外部服务
 
 关键设计：
 
-- `turn_commit` 后先将 16 kHz、单声道 PCM16LE 无损封装为 WAV 并提交火山 ASR，再把转写文字和 JPEG 图片组成 Responses 请求。
+- ASR 采用流式会话：`turn_start` 时即建立与火山的连接，音频帧边采集边转写（PCM 直传，不封 WAV 头）；`turn_commit` 后只需发送最后一个分片并等待最终结果，首字延迟比旧的「commit 后整段批处理」明显更短。
+- 流式会话任一环节失败都会自动回退到旧的批处理路径（`turn_commit` 后整段 WAV 转写），行为退化为旧版本，不影响可用性。
+- 转写文字和 JPEG 图片组成模型请求；提交前图片会缩放到 `model-image-max-edge`（默认 1024px）以降低视觉 token 与首 token 延迟，落库日志仍保存设备原始 JPEG。
 - 火山 Chat API 的直接音频格式是 `input_audio: {data: <纯 Base64>, format: "wav"}`，还支持 MP3、AAC、M4A；但官方音频理解模型列表只包含 Seed 2.0 Lite/Mini，不包含当前的 Seed 2.1 Pro。
 - 方舟接口使用流式响应，网关将每个文本增量转换为设备协议的 `text_delta`，因此仍可按句启动 TTS。
 - 网关默认使用 `doubao-seed-2-1-pro-260915` 的 Responses API；该模型接收 ASR 文字与图片，不接收 `input_audio`。
 - ASR 是模型调用的前置步骤；转写失败时本轮返回 `ASR_FAILED`，提示设备重新提问。
 - TTS 按完整短句流式合成，避免逐字合成造成“一段一段”的播音。
-- 返回音频按 PCM 播放速度节流，避免数据灌入过快撑满 ESP32 播放缓冲。
+- 返回音频按「缓冲领先量」下发：先以 `playback-pace-percent`（默认 300）填满 `output-audio-lead-millis`（默认 1200ms）的设备缓冲，之后维持该领先量，兼顾流畅与设备内存。
+- `cooldown-millis`（默认 1250）必须覆盖设备侧约 1.2 秒的缓冲尾音，避免设备边放音边收音。
 - AI 播放期间采用半双工，不自动采集下一轮；设备发送 `interrupt` 可手动打断。
 - 一轮最多携带 3 张 JPEG，单张最大 2MB，总计最大 6MB。
 

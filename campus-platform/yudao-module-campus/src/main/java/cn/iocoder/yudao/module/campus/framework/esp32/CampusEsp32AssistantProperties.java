@@ -29,7 +29,11 @@ public class CampusEsp32AssistantProperties {
     private String deviceTokens = "";
     private int maxAudioSeconds = 30;
     private int maxConnectionsPerIp = 20;
-    private int cooldownMillis = 650;
+    /**
+     * 播报结束到恢复聆听的冷却时长。音频按领先量下发，设备侧还有约 1.2 秒缓冲未播完，
+     * 冷却必须覆盖这段尾音，否则设备可能在自己的播报声里打开麦克风（自激）。
+     */
+    private int cooldownMillis = 1250;
     private int outputAudioChunkBytes = 1920;
     /**
      * 音频下发速率上限（相对实时的百分比）。≥100 才能在设备侧建立播放缓冲；
@@ -57,6 +61,11 @@ public class CampusEsp32AssistantProperties {
      * 因此默认收紧到 200，约合 80~150 个汉字。
      */
     private int modelMaxTokens = 200;
+    /**
+     * 提交给模型的图片长边上限（像素）。超过则服务端等比缩小后再编码，
+     * 用于降低模型首 token 延迟与视觉 token 成本；设为 0 或负数表示不缩放。
+     */
+    private int modelImageMaxEdge = 1024;
 
     private String asrUrl = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
     private boolean asrEnabled = true;

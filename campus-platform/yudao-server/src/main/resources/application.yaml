@@ -368,7 +368,8 @@ campus:
     device-tokens: ${CAMPUS_ESP32_DEVICE_TOKENS:esp32_1KwVNp4Uv9C1_i5iE89eiFgySb32wxCQYsitrABMRO4}
     max-audio-seconds: 30
     max-connections-per-ip: 20
-    cooldown-millis: 650
+    # 冷却须覆盖设备侧约 1.2 秒的缓冲尾音，避免边放音边收音。
+    cooldown-millis: ${CAMPUS_ESP32_COOLDOWN_MILLIS:1250}
     output-audio-chunk-bytes: 1920
     # 音频下发速率上限（相对实时的百分比）：必须 >100 才能在设备侧建立播放缓冲。
     playback-pace-percent: ${CAMPUS_ESP32_AUDIO_PACE_PERCENT:300}
@@ -385,6 +386,8 @@ campus:
     model-token: ${CAMPUS_LLM_API_KEY:sk-a48f07cc203942f49b88e5dd5949ffde}
     # 单轮回答上限：语音播报场景，收紧到 200 token（约 80~150 汉字），避免用户长时间等待。
     model-max-tokens: ${CAMPUS_LLM_MAX_TOKENS:200}
+    # 提交给模型的图片长边上限：缩小视觉 token 数以降低首 token 延迟与成本；0 表示不缩放。
+    model-image-max-edge: ${CAMPUS_LLM_IMAGE_MAX_EDGE:1024}
 
     # ASR 先将设备音频转为用户问题文字，再调用图文模型。
     asr-enabled: ${CAMPUS_ESP32_ASR_ENABLED:true}

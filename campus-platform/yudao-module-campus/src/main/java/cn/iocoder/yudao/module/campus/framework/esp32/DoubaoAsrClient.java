@@ -19,8 +19,10 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
@@ -54,36 +56,12 @@ public class DoubaoAsrClient {
         String requestId = UUID.randomUUID().toString();
         CountDownLatch opened = new CountDownLatch(1);
         BlockingQueue<Incoming> incoming = new LinkedBlockingQueue<>();
-        Request request = new Request.Builder()
-                .url(properties.getAsrUrl())
-                .header("X-Api-App-Key", properties.getAsrAppId())
-                .header("X-Api-Access-Key", properties.getAsrAccessToken())
-                .header("X-Api-Resource-Id", properties.getAsrResourceId())
-                .header("X-Api-Request-Id", requestId)
-                .build();
-        WebSocket webSocket = httpClient.newWebSocket(request, new WebSocketListener() {
-            @Override
-            public void onOpen(WebSocket webSocket, Response response) {
-                opened.countDown();
-            }
-
-            @Override
-            public void onMessage(WebSocket webSocket, ByteString bytes) {
-                incoming.offer(new Incoming(bytes.toByteArray(), null));
-            }
-
-            @Override
-            public void onFailure(WebSocket webSocket, Throwable throwable, Response response) {
-                incoming.offer(new Incoming(null, throwable));
-                opened.countDown();
-            }
-        });
-
+        WebSocket webSocket = openSession(requestId, incoming, opened);
         try {
             if (!opened.await(8, TimeUnit.SECONDS)) {
                 throw new IllegalStateException("连接火山 ASR 超时");
             }
-            Map<String, Object> config = buildAsrConfig(requestId);
+            Map<String, Object> config = buildAsrConfig(requestId, "wav");
             webSocket.send(ByteString.of(frame(0x01, 0x00, 0x01, 0x01,
                     gzip(JsonUtils.toJsonByte(config)))));
             receive(incoming, 8);
@@ -117,11 +95,196 @@ public class DoubaoAsrClient {
         }
     }
 
-    private static Map<String, Object> buildAsrConfig(String requestId) {
+    /**
+     * 打开一条流式 ASR 会话：在采集阶段就把音频实时喂给火山，
+     * 设备说完时服务端基本已转写完毕，commit 后只需等待最终结果。
+     *
+     * <p>任一环节出错都不要抛出到调用方——调用方会在 commit 时
+     * 回退到 {@link #transcribe(byte[])} 批处理路径，行为退回旧版本。</p>
+     */
+    public AsrStream startStream() {
+        try {
+            return new AsrStream();
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private WebSocket openSession(String requestId, BlockingQueue<Incoming> incoming,
+                                  CountDownLatch opened) {
+        Request request = new Request.Builder()
+                .url(properties.getAsrUrl())
+                .header("X-Api-App-Key", properties.getAsrAppId())
+                .header("X-Api-Access-Key", properties.getAsrAccessToken())
+                .header("X-Api-Resource-Id", properties.getAsrResourceId())
+                .header("X-Api-Request-Id", requestId)
+                .build();
+        return httpClient.newWebSocket(request, new WebSocketListener() {
+            @Override
+            public void onOpen(WebSocket webSocket, Response response) {
+                opened.countDown();
+            }
+
+            @Override
+            public void onMessage(WebSocket webSocket, ByteString bytes) {
+                incoming.offer(new Incoming(bytes.toByteArray(), null));
+            }
+
+            @Override
+            public void onFailure(WebSocket webSocket, Throwable throwable, Response response) {
+                incoming.offer(new Incoming(null, throwable));
+                opened.countDown();
+            }
+        });
+    }
+
+    /**
+     * 流式转写会话。音频帧随到随发；最后一个分片会扣留到 {@link #finish()}，
+     * 以「真实音频 + last 标记」结束，与批处理协议完全一致。
+     */
+    public class AsrStream implements AutoCloseable {
+
+        private final String requestId = UUID.randomUUID().toString();
+        private final BlockingQueue<Incoming> incoming = new LinkedBlockingQueue<>();
+        private final List<byte[]> pendingAudio = new ArrayList<>();
+        private final WebSocket webSocket;
+        /** 最近收到但尚未下发的分片：finish 时以 last 标记发出。 */
+        private byte[] tail;
+        private boolean ready;
+        private boolean failed;
+        private boolean finished;
+
+        private AsrStream() throws Exception {
+            CountDownLatch opened = new CountDownLatch(1);
+            this.webSocket = openSession(requestId, incoming, opened);
+            // 握手与配置下发放在后台线程，不阻塞设备的音频接收线程。
+            Thread opener = new Thread(() -> {
+                try {
+                    if (!opened.await(8, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("连接火山 ASR 超时");
+                    }
+                    Map<String, Object> config = buildAsrConfig(requestId, "pcm");
+                    webSocket.send(ByteString.of(frame(0x01, 0x00, 0x01, 0x01,
+                            gzip(JsonUtils.toJsonByte(config)))));
+                    // 等待配置确认，之后开始下发音频。
+                    receive(incoming, 8);
+                    flushReady();
+                } catch (Exception exception) {
+                    markFailed();
+                }
+            }, "esp32-asr-open-" + requestId);
+            opener.setDaemon(true);
+            opener.start();
+        }
+
+        /** 会话是否还可继续使用。 */
+        public synchronized boolean isUsable() {
+            return !failed && !finished;
+        }
+
+        /** 设备音频帧随到随发；未就绪时先缓存。 */
+        public synchronized void appendAudio(byte[] pcm) {
+            if (pcm == null || pcm.length == 0 || failed || finished) {
+                return;
+            }
+            if (!ready) {
+                pendingAudio.add(pcm);
+                return;
+            }
+            try {
+                sendTail(pcm);
+            } catch (IOException exception) {
+                // 发送失败即放弃本会话，commit 时回退到批处理转写。
+                failed = true;
+            }
+        }
+
+        /** 发出扣留的最后一个分片并等待最终识别结果。 */
+        public String finish() throws Exception {
+            byte[] last;
+            synchronized (this) {
+                if (failed) {
+                    throw new IllegalStateException("流式 ASR 会话已失败");
+                }
+                if (finished) {
+                    throw new IllegalStateException("流式 ASR 会话已结束");
+                }
+                last = tail != null ? tail : new byte[2];
+                tail = null;
+                finished = true;
+            }
+            webSocket.send(ByteString.of(frame(0x02, 0x02, 0x00, 0x01, gzip(last))));
+            String text = "";
+            while (true) {
+                AsrResponse response = decode(receive(incoming, 8));
+                String candidate = extractText(response.payload);
+                if (!candidate.isEmpty()) {
+                    text = candidate;
+                }
+                if (response.finished) {
+                    break;
+                }
+            }
+            webSocket.close(1000, "done");
+            if (text.trim().isEmpty()) {
+                throw new IllegalStateException("火山 ASR 未返回转写文字");
+            }
+            return text.trim();
+        }
+
+        private synchronized void sendTail(byte[] pcm) throws IOException {
+            if (tail != null && tail.length > 0) {
+                webSocket.send(ByteString.of(
+                        frame(0x02, 0x00, 0x00, 0x01, gzip(tail))));
+            }
+            // 分片对齐到服务端建议大小，避免过碎。
+            int offset = 0;
+            while (pcm.length - offset > AUDIO_CHUNK_BYTES) {
+                byte[] chunk = Arrays.copyOfRange(pcm, offset, offset + AUDIO_CHUNK_BYTES);
+                webSocket.send(ByteString.of(
+                        frame(0x02, 0x00, 0x00, 0x01, gzip(chunk))));
+                offset += AUDIO_CHUNK_BYTES;
+            }
+            tail = Arrays.copyOfRange(pcm, offset, pcm.length);
+        }
+
+        private synchronized void flushReady() {
+            ready = true;
+            try {
+                for (byte[] pcm : pendingAudio) {
+                    sendTail(pcm);
+                }
+            } catch (IOException exception) {
+                // 发送失败即放弃本会话，commit 时回退到批处理转写。
+                failed = true;
+            }
+            pendingAudio.clear();
+        }
+
+        private void markFailed() {
+            synchronized (this) {
+                failed = true;
+            }
+        }
+
+        @Override
+        public void close() {
+            synchronized (this) {
+                finished = true;
+            }
+            try {
+                webSocket.close(1000, "done");
+            } catch (Exception ignored) {
+                // 连接已经不在了。
+            }
+        }
+    }
+
+    private static Map<String, Object> buildAsrConfig(String requestId, String format) {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("user", singleton("uid", requestId));
         Map<String, Object> audio = new LinkedHashMap<>();
-        audio.put("format", "wav");
+        audio.put("format", format);
         audio.put("codec", "raw");
         audio.put("rate", Esp32ProtocolUtils.INPUT_SAMPLE_RATE);
         audio.put("bits", 16);
