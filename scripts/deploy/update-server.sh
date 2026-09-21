@@ -84,6 +84,27 @@ if [ "$healthy" != "true" ]; then
   exit 1
 fi
 
+# Prune old releases so /opt/campus-platform/releases never fills the disk again.
+# Each deploy writes ~350MB (jar + admin tarball + rollback copies); without pruning
+# this directory grew to 24.9GB and took the whole server down on 2026-09-20.
+# Keep a few entries because one deploy may create both <ts>/ and <ts>-database/
+# sibling directories; 6 entries covers roughly the last 3 deploys.
+KEEP_RELEASES="${KEEP_RELEASES:-6}"
+if [ -d "$APP_HOME/releases" ]; then
+  CURRENT_STEP="pruning old releases"
+  cd "$APP_HOME/releases"
+  old_entries="$(ls -1t | tail -n +$((KEEP_RELEASES + 1)))"
+  if [ -n "$old_entries" ]; then
+    echo "[$APP_NAME] pruning old releases (keeping newest $KEEP_RELEASES entries)"
+    echo "$old_entries" | while IFS= read -r old_entry; do
+      [ -n "$old_entry" ] || continue
+      echo "[$APP_NAME] removing $old_entry"
+      rm -rf -- "./$old_entry"
+    done
+  fi
+  cd - >/dev/null
+fi
+
 $SUDO systemctl status "$BACKEND_SERVICE" --no-pager -l
 
 if [ "$NGINX_RELOAD" = "true" ]; then

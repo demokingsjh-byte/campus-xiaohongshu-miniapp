@@ -15,9 +15,6 @@ public final class Esp32ProtocolUtils {
     public static final int INPUT_SAMPLE_RATE = 16000;
     public static final int OUTPUT_SAMPLE_RATE = 24000;
     public static final int MIN_AUDIO_BYTES = INPUT_SAMPLE_RATE * 2 / 4;
-    public static final int MAX_IMAGE_COUNT = 3;
-    public static final int MAX_IMAGE_BYTES = 2 * 1024 * 1024;
-    public static final int MAX_TOTAL_IMAGE_BYTES = 6 * 1024 * 1024;
 
     private Esp32ProtocolUtils() {
     }

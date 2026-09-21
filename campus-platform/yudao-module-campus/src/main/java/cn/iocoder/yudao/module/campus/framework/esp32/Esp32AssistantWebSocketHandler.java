@@ -38,6 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -168,7 +169,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             Map<String, Object> image = new LinkedHashMap<>();
             image.put("binary_prefix", 2);
             image.put("format", "jpeg");
-            image.put("max_count", Esp32ProtocolUtils.MAX_IMAGE_COUNT);
+            image.put("max_count", properties.getMaxImageCount());
             connected.put("input_image", image);
             connected.put("output_audio", mediaDescription(null, "pcm_s16le",
                     Esp32ProtocolUtils.OUTPUT_SAMPLE_RATE));
@@ -197,6 +198,12 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
             setStateLocked(context, DeviceState.CAPTURING, id, "正在聆听");
             sendJsonLocked(context, event("turn_ready", "request_id", id));
+            // 启动静音自动提交兜底：到点后若检测到持续静音就主动 commitTurn。
+            if (properties.getSilenceCommitMillis() > 0) {
+                context.turn.silenceCheckFuture = scheduler.schedule(
+                        () -> runSilenceCheck(context),
+                        properties.getSilenceCommitMillis(), TimeUnit.MILLISECONDS);
+            }
         }
     }
 
@@ -217,10 +224,84 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
         context.turn.pcm.write(payload, 0, payload.length);
+        // 服务端静音自动提交：兜底设备固件 VAD 失灵导致的多轮采集拖延。
+        // 每收到一帧就做能量检测，发现语音就刷新最近说话时间，并重新挂一个延迟任务，
+        // 任务到期时若仍处于静音且本轮音频够长，就主动 commitTurn。
+        detectSilenceAndReschedule(context, payload);
         // 实时喂给流式 ASR；会话不存在或已失败时静默跳过，commit 时走批处理兜底。
         DoubaoAsrClient.AsrStream stream = context.asrStream;
         if (stream != null) {
             stream.appendAudio(payload);
+        }
+    }
+
+    private void detectSilenceAndReschedule(DeviceContext context, byte[] payload) {
+        TurnBuffer turn = context.turn;
+        if (turn == null) {
+            return;
+        }
+        int threshold = properties.getSilenceEnergyThreshold();
+        long commitMillis = properties.getSilenceCommitMillis();
+        boolean hasSpeech = false;
+        if (threshold > 0 && payload.length >= 2) {
+            int max = 0;
+            for (int i = 0; i + 1 < payload.length; i += 2) {
+                int lo = payload[i] & 0xff;
+                int hi = payload[i + 1];
+                int sample = (hi << 8) | lo;
+                int abs = sample < 0 ? -sample : sample;
+                if (abs > max) {
+                    max = abs;
+                    if (max >= threshold) {
+                        hasSpeech = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (hasSpeech) {
+            turn.lastSpeechAtNanos = System.nanoTime();
+        }
+        if (commitMillis <= 0) {
+            return;
+        }
+        if (turn.silenceCheckFuture != null) {
+            turn.silenceCheckFuture.cancel(false);
+        }
+        turn.silenceCheckFuture = scheduler.schedule(() -> runSilenceCheck(context),
+                commitMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private void runSilenceCheck(DeviceContext context) {
+        synchronized (context.lock) {
+            TurnBuffer turn = context.turn;
+            if (turn == null || turn.silenceCommitted
+                    || context.state != DeviceState.CAPTURING) {
+                return;
+            }
+            long commitMillis = properties.getSilenceCommitMillis();
+            if (commitMillis <= 0) {
+                return;
+            }
+            long silenceMs = TimeUnit.NANOSECONDS.toMillis(
+                    System.nanoTime() - turn.lastSpeechAtNanos);
+            if (silenceMs < commitMillis) {
+                return;
+            }
+            if (turn.pcm.size() < Esp32ProtocolUtils.MIN_AUDIO_BYTES) {
+                // 还没攒到最小音频量（用户可能只是按了按钮没说话），不主动 commit，
+                // 让原本的设备端 turn_commit 或最大时长限制来收尾。
+                return;
+            }
+            turn.silenceCommitted = true;
+            log.info("[ESP32_SILENCE_AUTO_COMMIT] deviceId={} requestId={} silenceMs={} audioBytes={}",
+                    context.deviceId, turn.requestId, silenceMs, turn.pcm.size());
+            // 通知设备：这是网关主动提交的，固件可据此统计兜底触发率。
+            Map<String, Object> committed = event("silence_committed", "request_id", turn.requestId);
+            committed.put("reason", "silence");
+            committed.put("silence_ms", silenceMs);
+            sendJsonLocked(context, committed);
+            commitTurn(context);
         }
     }
 
@@ -231,13 +312,15 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                     turn.requestId);
             return;
         }
-        if (payload.length > Esp32ProtocolUtils.MAX_IMAGE_BYTES) {
-            sendErrorLocked(context, "IMAGE_TOO_LARGE", "单张图片不能超过 2MB", false,
+        if (payload.length > properties.getMaxImageBytes()) {
+            sendErrorLocked(context, "IMAGE_TOO_LARGE",
+                    "单张图片不能超过 " + (properties.getMaxImageBytes() / 1024 / 1024) + "MB", false,
                     turn.requestId);
             return;
         }
-        if (turn.images.size() >= Esp32ProtocolUtils.MAX_IMAGE_COUNT) {
-            sendErrorLocked(context, "TOO_MANY_IMAGES", "单轮最多提交 3 张图片", false,
+        if (turn.images.size() >= properties.getMaxImageCount()) {
+            sendErrorLocked(context, "TOO_MANY_IMAGES",
+                    "单轮最多提交 " + properties.getMaxImageCount() + " 张图片", false,
                     turn.requestId);
             return;
         }
@@ -245,8 +328,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         for (byte[] image : turn.images) {
             totalBytes += image.length;
         }
-        if (totalBytes > Esp32ProtocolUtils.MAX_TOTAL_IMAGE_BYTES) {
-            sendErrorLocked(context, "IMAGES_TOO_LARGE", "单轮图片合计不能超过 6MB", false,
+        if (totalBytes > properties.getMaxTotalImageBytes()) {
+            sendErrorLocked(context, "IMAGES_TOO_LARGE",
+                    "单轮图片合计不能超过 " + (properties.getMaxTotalImageBytes() / 1024 / 1024) + "MB", false,
                     turn.requestId);
             return;
         }
@@ -1057,6 +1141,12 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private final long startedAt = System.nanoTime();
         private final ByteArrayOutputStream pcm = new ByteArrayOutputStream();
         private final List<byte[]> images = new ArrayList<>();
+        /** 本轮最后一次检测到语音（能量 ≥ 阈值）的时间，用于服务端静音自动提交。 */
+        private long lastSpeechAtNanos = startedAt;
+        /** 是否已经因为持续静音触发过自动提交，防止反复 commitTurn。 */
+        private boolean silenceCommitted;
+        /** 静音检查的延迟任务，收到新音频或结束采集时会重新挂或取消。 */
+        private ScheduledFuture<?> silenceCheckFuture;
 
         private TurnBuffer(String requestId, Long logId) {
             this.requestId = requestId;

@@ -46,6 +46,29 @@ public class CampusEsp32AssistantProperties {
      */
     private int outputAudioLeadMillis = 1200;
 
+    /**
+     * 单轮可接收的图片张数上限。设备端 ESP32 摄像头适合拍场景的若干帧，
+     * 默认 5 张可在多角度对比 / 序列描述场景下使用，单张按 {@link #maxImageBytes} 限。
+     */
+    private int maxImageCount = 5;
+    /** 单张图片体积上限（字节）。 */
+    private int maxImageBytes = 2 * 1024 * 1024;
+    /** 单轮所有图片体积合计上限（字节）。 */
+    private int maxTotalImageBytes = 8 * 1024 * 1024;
+
+    /**
+     * 服务端静音自动提交阈值（毫秒）。连续静音达到该时长且本轮已超过
+     * {@link Esp32ProtocolUtils#MIN_AUDIO_BYTES} 时，网关会主动调用 commitTurn，
+     * 用来兜底设备固件 VAD「说完」判定失效导致的多轮采集拖延。
+     * 设为 0 表示关闭此能力。
+     */
+    private int silenceCommitMillis = 1500;
+    /**
+     * 服务端 VAD 能量阈值（int16 最大绝对值）。阈值越大越不敏感，
+     * 适合噪音偏大的环境；阈值越小越容易把轻微声音判定为说话。
+     */
+    private int silenceEnergyThreshold = 200;
+
     /** 火山方舟 Responses 地址；如需兼容旧自建模型，可改为 ws:// 地址。 */
     private String modelUrl = RESPONSES_API;
     private String modelName = PRO_MODEL;

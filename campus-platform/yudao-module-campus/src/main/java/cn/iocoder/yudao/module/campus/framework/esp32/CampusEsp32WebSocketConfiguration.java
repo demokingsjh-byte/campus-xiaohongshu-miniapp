@@ -42,7 +42,7 @@ public class CampusEsp32WebSocketConfiguration implements WebSocketConfigurer {
     public ServletServerContainerFactoryBean esp32WebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
         container.setMaxTextMessageBufferSize(64 * 1024);
-        container.setMaxBinaryMessageBufferSize(Esp32ProtocolUtils.MAX_IMAGE_BYTES + 1);
+        container.setMaxBinaryMessageBufferSize(properties.getMaxImageBytes() + 1);
         container.setMaxSessionIdleTimeout(15 * 60 * 1000L);
         return container;
     }

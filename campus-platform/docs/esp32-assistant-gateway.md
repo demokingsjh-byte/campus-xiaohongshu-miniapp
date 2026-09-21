@@ -16,7 +16,7 @@ ESP32-S3                      campus-platform                     外部服务
    │                                │                                │
    ├── turn_start ─────────────────>│                                │
    ├── 0x01 + PCM 音频帧 ──────────>│                                │
-   ├── 0x02 + JPEG（0~3 张）────────>│                                │
+   ├── 0x02 + JPEG（0~5 张，可配置）────────>│                                │
    ├── turn_commit ────────────────>│                                │
    │                                ├── WAV ───────────────────────> 火山 ASR
    │                                │<── 用户问题文字 ────────────── 火山 ASR
@@ -43,7 +43,8 @@ ESP32-S3                      campus-platform                     外部服务
 - 返回音频按「缓冲领先量」下发：先以 `playback-pace-percent`（默认 300）填满 `output-audio-lead-millis`（默认 1200ms）的设备缓冲，之后维持该领先量，兼顾流畅与设备内存。
 - `cooldown-millis`（默认 1250）必须覆盖设备侧约 1.2 秒的缓冲尾音，避免设备边放音边收音。
 - AI 播放期间采用半双工，不自动采集下一轮；设备发送 `interrupt` 可手动打断。
-- 一轮最多携带 3 张 JPEG，单张最大 2MB，总计最大 6MB。
+- 一轮最多携带 5 张 JPEG，单张最大 2MB，总计最大 8MB（可通过 `campus.esp32-assistant.max-image-*` 调整）。
+- 服务端静音自动提交：网关在每帧 PCM 上做能量检测，连续静音达到 `silence-commit-millis`（默认 1500ms）且本轮音频已超过最小长度时，会主动 `commitTurn`，用来兜底设备固件 VAD「说完」判定失效导致的多轮采集拖延。设为 0 关闭；触发时记录 `[ESP32_SILENCE_AUTO_COMMIT]` 日志。
 
 ## 3. 服务接口
 
@@ -155,7 +156,7 @@ DISCONNECTED --连接成功--> LISTENING --按键/唤醒--> CAPTURING
 - `0x01`：后续数据为 PCM16LE、16000Hz、单声道。
 - `0x02`：后续数据为一张完整 JPEG。
 
-建议顺序：`turn_start` → 连续音频帧 → 0~3 张 JPEG → `turn_commit`。只有 `turn_commit` 会触发模型回答。
+建议顺序：`turn_start` → 连续音频帧 → 0~5 张 JPEG（可配置） → `turn_commit`。只有 `turn_commit` 会触发模型回答。
 
 音频要求与建议：
 
@@ -163,7 +164,7 @@ DISCONNECTED --连接成功--> LISTENING --按键/唤醒--> CAPTURING
 - 每个 WebSocket 二进制消息前加一个字节 `0x01`，后面建议放 20ms（640 字节）或 40ms（1280 字节）音频。
 - 有效音频至少 8000 字节（250ms），默认最多 960000 字节（30 秒）。
 - JPEG 必须在同一条 WebSocket 二进制消息中完整发送，前面加一个字节 `0x02`；不允许拆成多条协议消息。
-- 图片单张最大 2MB，每轮最多 3 张、合计最大 6MB。没有图片时只发音频即可。
+- 图片单张最大 2MB，每轮最多 5 张、合计最大 8MB（可通过 `campus.esp32-assistant.max-image-*` 调整）。没有图片时只发音频即可。
 
 ### 4.5 服务返回
 
@@ -204,7 +205,7 @@ state(capturing) → turn_ready → state(thinking)
 | `NO_ACTIVE_TURN` | 未开始一轮就提交 | 等待 `listening`，重新发送 `turn_start` |
 | `INVALID_AUDIO` / `AUDIO_TOO_LARGE` | PCM 长度或时长不合法 | 丢弃本轮并重新采集 |
 | `INVALID_IMAGE` / `IMAGE_TOO_LARGE` | JPEG 不完整或过大 | 本轮不发该图片，可继续提交音频 |
-| `TOO_MANY_IMAGES` / `IMAGES_TOO_LARGE` | 图片数量或总大小超限 | 最多保留 3 张并压缩 |
+| `TOO_MANY_IMAGES` / `IMAGES_TOO_LARGE` | 图片数量或总大小超限 | 最多保留 `max-image-count` 张，超过后本轮忽略后续图片 |
 | `MODEL_UNAVAILABLE` / `GATEWAY_ERROR` | 模型链路不可用 | `retryable=true` 时退避后重试/重连 |
 | `TTS_FAILED` | 语音合成失败 | 显示文本，等待 `turn_done` 后进入下一轮 |
 
@@ -497,7 +498,7 @@ GET /admin-api/campus/esp32/log/image?id=图片编号
 
 用户提问取自本轮 ASR 转写全文；回答取自模型本轮返回的全文。`asrStatus` 区分 `PENDING`（转写中）、`SUCCESS`、`FAILED`、`DISABLED`，旧日志该字段为空。ASR 成功后才会提交模型；失败时本轮不会调用模型。
 
-图片异步保存到独立的私有数据库表，每轮最多 3 张 JPEG，单张最多 2MB。列表和详情仅返回图片数量、编号与大小，图片内容通过单独的鉴权接口读取，要求已登录且有 `campus:esp32-log:query` 权限。前端用携带登录身份的请求加载图片，关闭详情时释放临时预览地址，不生成公开图片链接。
+图片异步保存到独立的私有数据库表，每轮最多 5 张 JPEG（可通过 `campus.esp32-assistant.max-image-count` 调整），单张最多 2MB。列表和详情仅返回图片数量、编号与大小，图片内容通过单独的鉴权接口读取，要求已登录且有 `campus:esp32-log:query` 权限。前端用携带登录身份的请求加载图片，关闭详情时释放临时预览地址，不生成公开图片链接。
 
 列表新增 `questionText`、`answerText`（最多 160 字的摘要）、`asrStatus`、`contentRecorded`、`storedImageCount`。详情返回完整问答和 `images: [{id, imageIndex, sizeBytes, mimeType}]`；`contentRecorded=false` 表示该轮未启用内容保存，`storedImageCount` 表示实际已保存图片数，不等同于设备上报数量。图片接口返回原始 `image/jpeg`，设置禁止缓存。
 

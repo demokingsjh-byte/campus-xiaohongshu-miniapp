@@ -376,6 +376,16 @@ campus:
     # 目标播放缓冲领先量（毫秒）：先把缓冲填到该值再维持，抵御 Wi-Fi 抖动带来的播报断续。
     output-audio-lead-millis: ${CAMPUS_ESP32_AUDIO_LEAD_MILLIS:1200}
 
+    # 图片上传上限：单轮最多 5 张，单张 ≤2MB，合计 ≤8MB。ESP32 摄像头适合一次给 AI 多角度对比。
+    max-image-count: ${CAMPUS_ESP32_MAX_IMAGE_COUNT:5}
+    max-image-bytes: ${CAMPUS_ESP32_MAX_IMAGE_BYTES:2097152}
+    max-total-image-bytes: ${CAMPUS_ESP32_MAX_TOTAL_IMAGE_BYTES:8388608}
+
+    # 服务端静音自动提交：连续静音达到阈值且本轮音频足够时，网关主动 commitTurn，
+    # 用来兜底设备固件 VAD「说完」判定失效导致的多轮采集拖延。设为 0 关闭。
+    silence-commit-millis: ${CAMPUS_ESP32_SILENCE_COMMIT_MILLIS:1500}
+    silence-energy-threshold: ${CAMPUS_ESP32_SILENCE_ENERGY_THRESHOLD:200}
+
     # 多模态模型：ASR 转写后，将问题文字与 JPEG 图片提交给阿里 MaaS 网关的 qwen3-vl-flash。
     # 默认走 OpenAI 兼容的 /chat/completions；如需切回火山方舟 Responses，设置
     # CAMPUS_LLM_PROTOCOL=responses 与 CAMPUS_LLM_MODEL_URL=<方舟 responses 地址>。
