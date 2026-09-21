@@ -20,7 +20,7 @@ import java.lang.annotation.*;
 @Target({ElementType.METHOD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 @Inherited
-public @interface TenantIgnore {
+public @interface TenantIgnore  {
 
     /**
      * 是否开启忽略租户，默认为 true 开启
