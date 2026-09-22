@@ -46,7 +46,7 @@
 
     <ContentWrap>
       <div class="table-title">
-        <div><h2>请求明细</h2><p>点击详情查看完整对话与原图；耗时均为毫秒。</p></div>
+        <div><h2>请求明细</h2><p>点击详情查看完整对话与原图；“提交→首音频”不含录音采集，耗时均为毫秒。</p></div>
         <el-tag effect="plain">对话内容与链路耗时</el-tag>
       </div>
       <el-table v-loading="loading" :data="list" row-key="id" stripe>
@@ -72,11 +72,12 @@
           </template>
         </el-table-column>
         <el-table-column label="采集" width="90" align="right"><template #default="{ row }">{{ formatMs(row.captureMs) }}</template></el-table-column>
+        <el-table-column label="提交→首音频" width="130" align="right"><template #default="{ row }">{{ formatMs(row.commitToFirstAudioMs) }}</template></el-table-column>
         <el-table-column label="提交模型" width="105" align="right"><template #default="{ row }">{{ formatMs(row.submitMs) }}</template></el-table-column>
         <el-table-column label="ASR" width="90" align="right"><template #default="{ row }">{{ formatMs(row.asrMs) }}</template></el-table-column>
         <el-table-column label="模型首 token" width="120" align="right"><template #default="{ row }">{{ formatMs(row.modelFirstTokenMs) }}</template></el-table-column>
         <el-table-column label="模型总耗时" width="110" align="right"><template #default="{ row }">{{ formatMs(row.modelTotalMs) }}</template></el-table-column>
-        <el-table-column label="TTS 首包" width="100" align="right"><template #default="{ row }">{{ formatMs(row.ttsFirstAudioMs) }}</template></el-table-column>
+        <el-table-column label="开始→首音频" width="120" align="right"><template #default="{ row }">{{ formatMs(row.ttsFirstAudioMs) }}</template></el-table-column>
         <el-table-column label="TTS 输出" width="100" align="right"><template #default="{ row }">{{ formatMs(row.ttsAudioMs) }}</template></el-table-column>
         <el-table-column label="总耗时" width="105" align="right">
           <template #default="{ row }"><strong class="total-ms">{{ formatMs(row.totalMs) }}</strong></template>
@@ -239,6 +240,7 @@ const metrics = computed(() => [
   { label: '已完成', value: Number(summary.value.completedCount || 0), icon: 'ep:circle-check', color: '#10b981' },
   { label: '失败 / 中断', value: Number(summary.value.failedCount || 0), icon: 'ep:warning', color: '#ef4444' },
   { label: '平均总耗时', value: formatMs(summary.value.averageTotalMs), icon: 'ep:timer', color: '#8b5cf6' },
+  { label: '平均提交→首音频', value: formatMs(summary.value.averageCommitToFirstAudioMs), icon: 'ep:video-play', color: '#0f766e' },
   { label: '平均模型耗时', value: formatMs(summary.value.averageModelMs), icon: 'ep:cpu', color: '#f59e0b' }
 ])
 
@@ -246,11 +248,12 @@ const detailStages = computed(() => {
   if (!detail.value) return []
   return [
     { label: '音频采集', value: detail.value.captureMs, note: 'turn_start → turn_commit' },
+    { label: '提交→首音频', value: detail.value.commitToFirstAudioMs, note: '网关收到 turn_commit → 收到 TTS 首包；不含设备端静音判定与扬声器播放缓冲' },
     { label: '提交模型', value: detail.value.submitMs, note: '网关发送 → 上游接收' },
     { label: 'ASR 转写', value: detail.value.asrMs, note: '异步记录，不阻塞回答' },
     { label: '模型首 token', value: detail.value.modelFirstTokenMs, note: '上游模型统计' },
     { label: '模型完成', value: detail.value.modelTotalMs, note: '上游模型统计' },
-    { label: 'TTS 首包', value: detail.value.ttsFirstAudioMs, note: '本轮开始 → 首个音频包' },
+    { label: '开始→首音频', value: detail.value.ttsFirstAudioMs, note: 'turn_start → 网关收到 TTS 首包，包含采集时间' },
     { label: 'TTS 输出', value: detail.value.ttsAudioMs, note: '首包 → 音频发送完成' },
     { label: '本轮总耗时', value: detail.value.totalMs, note: 'turn_start → turn_done' }
   ]
@@ -446,7 +449,7 @@ onMounted(() => void refreshAll())
 .log-hero span { font-size: 10px; letter-spacing: .18em; opacity: .7; }
 .log-hero h1 { margin: 5px 0; font-size: 28px; }
 .log-hero p { margin: 0; opacity: .8; }
-.metric-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 16px; }
+.metric-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 16px; }
 .metric-grid article { display: flex; gap: 14px; align-items: center; padding: 18px; background: #fff; border-radius: 16px; box-shadow: 0 8px 24px rgb(39 52 48 / 6%); }
 .metric-grid small, .metric-grid strong { display: block; }
 .metric-grid small { color: #83908d; }

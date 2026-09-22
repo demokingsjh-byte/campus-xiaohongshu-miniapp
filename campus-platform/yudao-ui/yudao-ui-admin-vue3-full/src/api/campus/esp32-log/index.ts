@@ -35,6 +35,7 @@ export interface CampusEsp32Log {
   answerText?: string | null
   asrStatus?: CampusEsp32AsrStatus | null
   captureMs?: number
+  commitToFirstAudioMs?: number
   submitMs?: number
   asrMs?: number
   modelFirstTokenMs?: number
@@ -68,6 +69,7 @@ export interface CampusEsp32LogSummary {
   failedCount: number
   averageTotalMs?: number
   averageFirstAudioMs?: number
+  averageCommitToFirstAudioMs?: number
   averageModelMs?: number
   lastTime?: string | number
 }

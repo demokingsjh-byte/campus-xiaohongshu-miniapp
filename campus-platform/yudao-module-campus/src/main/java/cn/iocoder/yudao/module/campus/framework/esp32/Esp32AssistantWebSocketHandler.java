@@ -225,8 +225,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }
         context.turn.pcm.write(payload, 0, payload.length);
         // 服务端静音自动提交：兜底设备固件 VAD 失灵导致的多轮采集拖延。
-        // 每收到一帧就做能量检测，发现语音就刷新最近说话时间，并重新挂一个延迟任务，
-        // 任务到期时若仍处于静音且本轮音频够长，就主动 commitTurn。
+        // 每收到一帧就做能量检测；只有检测到语音才重置静音计时。
+        // 静音帧仍持续上行时，反复重置任务会让兜底永远无法触发。
         detectSilenceAndReschedule(context, payload);
         // 实时喂给流式 ASR；会话不存在或已失败时静默跳过，commit 时走批处理兜底。
         DoubaoAsrClient.AsrStream stream = context.asrStream;
@@ -265,11 +265,21 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         if (commitMillis <= 0) {
             return;
         }
-        if (turn.silenceCheckFuture != null) {
+        if (!shouldScheduleSilenceCheck(hasSpeech, turn.silenceCheckFuture)) {
+            return;
+        }
+        if (hasSpeech && turn.silenceCheckFuture != null) {
             turn.silenceCheckFuture.cancel(false);
         }
+        // 首次检查时音频可能尚不足最短长度；后续静音帧可补触发检查。
+        long silenceMs = TimeUnit.NANOSECONDS.toMillis(
+                System.nanoTime() - turn.lastSpeechAtNanos);
         turn.silenceCheckFuture = scheduler.schedule(() -> runSilenceCheck(context),
-                commitMillis, TimeUnit.MILLISECONDS);
+                Math.max(0L, commitMillis - silenceMs), TimeUnit.MILLISECONDS);
+    }
+
+    static boolean shouldScheduleSilenceCheck(boolean hasSpeech, ScheduledFuture<?> current) {
+        return hasSpeech || current == null || current.isDone();
     }
 
     private void runSilenceCheck(DeviceContext context) {

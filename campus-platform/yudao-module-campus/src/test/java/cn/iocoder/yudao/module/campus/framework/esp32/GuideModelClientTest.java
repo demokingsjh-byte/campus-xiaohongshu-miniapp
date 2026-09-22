@@ -177,7 +177,7 @@ class GuideModelClientTest {
         // 系统提示词必须限制回答长度、保持通用人设，并遵守两条产品规则：
         // 称呼用户为「主人」、默认不主动分析画面
         String systemPrompt = body.path("messages").get(0).path("content").asText();
-        assertTrue(systemPrompt.contains("80 字"));
+        assertTrue(systemPrompt.contains("50 字"));
         assertTrue(systemPrompt.contains("陪伴"));
         assertTrue(systemPrompt.contains("主人"));
         assertTrue(systemPrompt.contains("默认不要主动描述"));

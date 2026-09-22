@@ -250,6 +250,9 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                 + " SUM(CASE WHEN status IN ('FAILED', 'DISCONNECTED', 'INTERRUPTED') THEN 1 ELSE 0 END) AS failedCount,"
                 + " ROUND(AVG(total_ms), 0) AS averageTotalMs,"
                 + " ROUND(AVG(tts_first_audio_ms), 0) AS averageFirstAudioMs,"
+                + " ROUND(AVG(CASE WHEN capture_ms IS NOT NULL AND tts_first_audio_ms IS NOT NULL"
+                + " THEN GREATEST(tts_first_audio_ms - capture_ms, 0) ELSE NULL END), 0)"
+                + " AS averageCommitToFirstAudioMs,"
                 + " ROUND(AVG(model_total_ms), 0) AS averageModelMs, MAX(create_time) AS lastTime"
                 + " FROM " + TABLE + where, params), fallback);
     }
@@ -296,6 +299,9 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                 + " asr_status AS asrStatus, " + questionExpression + " AS questionText,"
                 + " " + answerExpression + " AS answerText,"
                 + " capture_ms AS captureMs, submit_ms AS submitMs, asr_ms AS asrMs,"
+                + " CASE WHEN capture_ms IS NOT NULL AND tts_first_audio_ms IS NOT NULL"
+                + " THEN GREATEST(tts_first_audio_ms - capture_ms, 0) ELSE NULL END"
+                + " AS commitToFirstAudioMs,"
                 + " model_first_token_ms AS modelFirstTokenMs, model_total_ms AS modelTotalMs,"
                 + " tts_first_audio_ms AS ttsFirstAudioMs, tts_audio_ms AS ttsAudioMs, total_ms AS totalMs,"
                 + " error_code AS errorCode, error_message AS errorMessage, create_time AS createTime,"
