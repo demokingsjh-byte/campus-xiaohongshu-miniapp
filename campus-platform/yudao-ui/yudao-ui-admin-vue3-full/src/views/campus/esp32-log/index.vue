@@ -126,7 +126,7 @@
           </div>
           <p v-if="detail.questionText" class="conversation-text">{{ detail.questionText }}</p>
           <p v-else class="empty-copy">{{ questionPlaceholder(detail) }}</p>
-          <small v-if="detail.asrStatus === 'PENDING'" class="content-note">转写异步完成，点击“刷新详情”可查看最新结果。</small>
+          <small v-if="detail.asrStatus === 'PENDING' && detail.status !== 'IGNORED'" class="content-note">转写异步完成，点击“刷新详情”可查看最新结果。</small>
         </section>
         <section class="conversation-section">
           <div class="section-heading"><h3>用户图片</h3><small>{{ detail.storedImageCount || 0 }} 张已留存 / {{ detail.imageCount || 0 }} 张上传</small></div>
@@ -382,6 +382,11 @@ onBeforeUnmount(() => {
 
 const questionPlaceholder = (row: CampusEsp32Log) => {
   if (row.contentRecorded === false) return '历史记录未留存提问'
+  if (row.status === 'IGNORED' && row.errorCode === 'wake_no_speech') return '唤醒成功，但未听到后续问题'
+  if (row.status === 'IGNORED' && row.errorCode === 'no_speech_timeout') return '未检测到有效语音，已取消采集'
+  if (row.status === 'IGNORED' && row.errorCode === 'capture_cancelled') return '设备主动取消了本轮采集'
+  if (row.status === 'IGNORED' && row.errorCode === 'audio_too_short') return '音频太短，未提交模型'
+  if (row.status === 'IGNORED') return '本轮已忽略，未提交模型'
   if (row.asrStatus === 'PENDING') return '正在转写语音…'
   if (row.asrStatus === 'FAILED') return '语音转写失败'
   if (row.asrStatus === 'DISABLED') return '未启用语音转写'
@@ -414,6 +419,7 @@ const asrText = (status: CampusEsp32Log['asrStatus']) => {
   if (status === 'FAILED') return '转写失败'
   if (status === 'PENDING') return '转写中'
   if (status === 'DISABLED') return '未启用'
+  if (status === 'SKIPPED') return '未转写'
   return '未开始'
 }
 

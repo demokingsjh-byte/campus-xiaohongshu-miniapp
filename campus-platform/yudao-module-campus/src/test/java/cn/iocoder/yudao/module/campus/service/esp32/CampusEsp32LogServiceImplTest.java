@@ -20,6 +20,18 @@ import static org.mockito.Mockito.when;
 class CampusEsp32LogServiceImplTest {
 
     @Test
+    void ignoredTurnMustNotRemainAsrPending() {
+        NamedParameterJdbcTemplate jdbc = mock(NamedParameterJdbcTemplate.class);
+        CampusEsp32LogServiceImpl service = new CampusEsp32LogServiceImpl(jdbc);
+
+        service.markIgnored(7L, 16000, 0, "wake_no_speech");
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(jdbc).update(sql.capture(), any(MapSqlParameterSource.class));
+        assertTrue(sql.getValue().contains("asr_status = 'SKIPPED'"));
+    }
+
+    @Test
     void shouldExposeCommitToFirstAudioForCurrentAndHistoricalRows() {
         NamedParameterJdbcTemplate jdbc = mock(NamedParameterJdbcTemplate.class);
         when(jdbc.queryForObject(anyString(), any(MapSqlParameterSource.class), eq(Long.class)))

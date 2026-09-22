@@ -119,7 +119,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         } else if ("turn_commit".equals(type)) {
             commitTurn(context);
         } else if ("turn_cancel".equals(type)) {
-            cancelCapture(context);
+            cancelCapture(context, event.path("reason").asText());
         } else if ("interrupt".equals(type)) {
             interrupt(context, event.path("request_id").asText());
         } else if ("ping".equals(type)) {
@@ -748,7 +748,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    private void cancelCapture(DeviceContext context) {
+    private void cancelCapture(DeviceContext context, String reason) {
         synchronized (context.lock) {
             if (context.turn == null || context.state != DeviceState.CAPTURING) {
                 Map<String, Object> busy = event("busy", "state", context.state.value);
@@ -757,13 +757,19 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 return;
             }
             String requestId = context.turn.requestId;
+            String logReason = normalizeCancelReason(reason);
             logService.markIgnored(context.turn.logId, context.turn.pcm.size(), context.turn.images.size(),
-                    "capture_cancelled");
+                    logReason);
             closeAsrLocked(context);
             context.turn = null;
             setStateLocked(context, DeviceState.LISTENING, requestId,
                     "已取消，请重新提问");
         }
+    }
+
+    static String normalizeCancelReason(String reason) {
+        return "wake_no_speech".equals(reason) || "no_speech_timeout".equals(reason)
+                ? reason : "capture_cancelled";
     }
 
     private void interrupt(DeviceContext context, String requestedId) {

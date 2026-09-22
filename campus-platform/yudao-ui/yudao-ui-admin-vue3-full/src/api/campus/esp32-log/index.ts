@@ -11,7 +11,7 @@ export type CampusEsp32LogStatus =
   | 'FAILED'
   | 'DISCONNECTED'
 
-export type CampusEsp32AsrStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'DISABLED'
+export type CampusEsp32AsrStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'DISABLED' | 'SKIPPED'
 
 export interface CampusEsp32LogImage {
   id: number

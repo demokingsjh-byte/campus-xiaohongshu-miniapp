@@ -174,7 +174,8 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
 
     @Override
     public void markIgnored(Long logId, int audioBytes, int imageCount, String reason) {
-        update(logId, "status = 'IGNORED', audio_bytes = :audioBytes, image_count = :imageCount,"
+        update(logId, "status = 'IGNORED', asr_status = 'SKIPPED',"
+                        + " audio_bytes = :audioBytes, image_count = :imageCount,"
                         + " error_code = :errorCode, error_message = :errorMessage",
                 new MapSqlParameterSource("audioBytes", Math.max(0, audioBytes))
                         .addValue("imageCount", Math.max(0, imageCount))
