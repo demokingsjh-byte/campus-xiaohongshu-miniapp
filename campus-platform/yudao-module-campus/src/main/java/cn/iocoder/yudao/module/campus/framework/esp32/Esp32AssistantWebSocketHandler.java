@@ -64,6 +64,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     private final Map<String, AtomicInteger> activeIps = new ConcurrentHashMap<>();
     private final ExecutorService mediaExecutor = Executors.newFixedThreadPool(
             Math.max(4, Runtime.getRuntime().availableProcessors()));
+    /** 旁路日志补录不能占用模型音频回调或图片落库线程。 */
+    private final ExecutorService transcriptExecutor = Executors.newFixedThreadPool(2);
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
     @Override
@@ -94,8 +96,16 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
 
                 @Override
                 public void onUserTranscript(String requestId, String transcript, long elapsedMs) {
+                    if (transcript == null || transcript.trim().isEmpty()) {
+                        log.warn("[ESP32_OMNI_TRANSCRIPT_EMPTY] deviceId={} requestId={} 继续等待异步补录",
+                                context.deviceId, requestId);
+                        return;
+                    }
                     Long logId = context.realtimeLogIds.remove(requestId);
-                    mediaExecutor.execute(() -> logService.markRealtimeTranscript(logId, elapsedMs, transcript));
+                    context.realtimeCommittedRequests.remove(requestId);
+                    if (logId != null) {
+                        mediaExecutor.execute(() -> logService.markRealtimeTranscript(logId, elapsedMs, transcript));
+                    }
                 }
 
                 @Override
@@ -490,7 +500,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         if (properties.isRealtimeProtocol()) {
             mediaExecutor.execute(() -> logService.saveImages(turn.logId, turn.images));
             long submitStartedAt = System.nanoTime();
+            context.realtimeCommittedRequests.add(turn.requestId);
             if (context.omniSession == null || !context.omniSession.commit()) {
+                context.realtimeCommittedRequests.remove(turn.requestId);
                 if (context.omniSession != null) {
                     context.omniSession.interrupt();
                 }
@@ -500,6 +512,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
             logService.markSubmitted(turn.logId, turn.pcm.length, turn.images.size(), captureMs,
                     elapsedMillis(submitStartedAt), speechEndMs, speechEndToCommitMs);
+            scheduleRealtimeTranscriptRecovery(context, turn);
             log.info("[ESP32_OMNI_TURN_SUBMITTED] deviceId={} requestId={} audioBytes={} imageCount={} captureMs={}",
                     context.deviceId, turn.requestId, turn.pcm.length, turn.images.size(), captureMs);
             return;
@@ -974,8 +987,6 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 completedWithAudio = true;
             }
         }
-        scheduler.schedule(() -> finishRealtimeTranscript(context, requestId, false),
-                15, TimeUnit.SECONDS);
         if (!completedWithAudio) {
             return;
         }
@@ -991,12 +1002,70 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }, Math.max(0, properties.getCooldownMillis()), TimeUnit.MILLISECONDS);
     }
 
+    /** 旁路转写不参与回答；若上游没有最终文字，延迟使用旧 ASR 异步补录。 */
+    private void scheduleRealtimeTranscriptRecovery(DeviceContext context, TurnData turn) {
+        if (turn.logId == null) {
+            return;
+        }
+        String requestId = turn.requestId;
+        long committedAt = System.nanoTime();
+        if (properties.isRealtimeTranscriptFallbackEnabled() && properties.isAsrEnabled()
+                && hasText(properties.getAsrAppId()) && hasText(properties.getAsrAccessToken())) {
+            scheduler.schedule(() -> {
+                if (!context.realtimeLogIds.containsKey(requestId)) {
+                    return;
+                }
+                transcriptExecutor.execute(() -> {
+                    if (!context.realtimeLogIds.containsKey(requestId)) {
+                        return;
+                    }
+                    long startedAt = System.nanoTime();
+                    try {
+                        byte[] wav = Esp32ProtocolUtils.pcm16LeToWav(
+                                turn.pcm, Esp32ProtocolUtils.INPUT_SAMPLE_RATE);
+                        String transcript = asrClient.transcribe(wav);
+                        if (transcript == null || transcript.trim().isEmpty()) {
+                            throw new IllegalStateException("异步补录没有返回文字");
+                        }
+                        Long logId = context.realtimeLogIds.remove(requestId);
+                        context.realtimeCommittedRequests.remove(requestId);
+                        if (logId != null) {
+                            logService.markRealtimeTranscript(logId, elapsedMillis(committedAt), transcript.trim());
+                            log.info("[ESP32_OMNI_TRANSCRIPT_RECOVERED] deviceId={} requestId={} sinceCommitMs={} asrMs={}",
+                                    context.deviceId, requestId, elapsedMillis(committedAt), elapsedMillis(startedAt));
+                        }
+                    } catch (Exception exception) {
+                        // 上游旁路转写仍可能迟到；不在此处清除 request_id 的日志关联。
+                        log.warn("[ESP32_OMNI_TRANSCRIPT_FALLBACK_FAILED] deviceId={} requestId={}",
+                                context.deviceId, requestId, exception);
+                    }
+                });
+            }, 3, TimeUnit.SECONDS);
+        }
+        // 先标记缺失，再继续保留关联一段时间，允许迟到的最终转写修复日志。
+        scheduler.schedule(() -> {
+            Long logId = context.realtimeLogIds.get(requestId);
+            if (logId != null) {
+                logService.markRealtimeTranscriptUnavailable(logId);
+            }
+        }, 30, TimeUnit.SECONDS);
+        scheduler.schedule(() -> {
+            context.realtimeLogIds.remove(requestId);
+            context.realtimeCommittedRequests.remove(requestId);
+        }, 5, TimeUnit.MINUTES);
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
     /** 结束仍在等待的旁路转写；该状态不改变实时模型回答是否成功。 */
     private void finishRealtimeTranscript(DeviceContext context, String requestId, boolean skipped) {
         if (requestId == null || requestId.isEmpty()) {
             return;
         }
         Long pendingLogId = context.realtimeLogIds.remove(requestId);
+        context.realtimeCommittedRequests.remove(requestId);
         if (pendingLogId == null) {
             return;
         }
@@ -1089,10 +1158,12 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         log.warn("[ESP32_MODEL_FAILED] deviceId={} sessionId={}",
                 context.deviceId, context.session.getId(), throwable);
         synchronized (context.lock) {
-            for (Long pendingLogId : context.realtimeLogIds.values()) {
-                logService.markRealtimeTranscriptUnavailable(pendingLogId);
+            for (Map.Entry<String, Long> pending : context.realtimeLogIds.entrySet()) {
+                if (!context.realtimeCommittedRequests.contains(pending.getKey())
+                        && context.realtimeLogIds.remove(pending.getKey(), pending.getValue())) {
+                    logService.markRealtimeTranscriptUnavailable(pending.getValue());
+                }
             }
-            context.realtimeLogIds.clear();
             logService.markFailed(context.activeLogId, "MODEL_FAILED", "模型服务暂时不可用",
                     context.turnStartedAt > 0 ? elapsedMillis(context.turnStartedAt) : null);
             sendErrorLocked(context, "GATEWAY_ERROR", "模型服务暂时不可用", true,
@@ -1422,10 +1493,12 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             if (context.omniSession != null) {
                 context.omniSession.close();
             }
-            for (Long pendingLogId : context.realtimeLogIds.values()) {
-                logService.markRealtimeTranscriptUnavailable(pendingLogId);
+            for (Map.Entry<String, Long> pending : context.realtimeLogIds.entrySet()) {
+                if (!context.realtimeCommittedRequests.contains(pending.getKey())
+                        && context.realtimeLogIds.remove(pending.getKey(), pending.getValue())) {
+                    logService.markRealtimeTranscriptUnavailable(pending.getValue());
+                }
             }
-            context.realtimeLogIds.clear();
         }
         AtomicInteger count = activeIps.get(context.clientIp);
         if (count != null && count.decrementAndGet() <= 0) {
@@ -1449,6 +1522,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
         }
         mediaExecutor.shutdownNow();
+        transcriptExecutor.shutdownNow();
         scheduler.shutdownNow();
     }
 
@@ -1476,6 +1550,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private final StringBuilder pendingTtsText = new StringBuilder();
         private final StringBuilder realtimeAnswer = new StringBuilder();
         private final Map<String, Long> realtimeLogIds = new ConcurrentHashMap<>();
+        private final Set<String> realtimeCommittedRequests = ConcurrentHashMap.newKeySet();
         /** 设备首播遥测可能在模型完成事件之后到达，保留少量近期请求的日志映射。 */
         private final Map<String, Long> deviceMetricLogIds = new LinkedHashMap<>();
         private DeviceState state = DeviceState.CONNECTING;

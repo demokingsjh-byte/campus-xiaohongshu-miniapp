@@ -79,6 +79,8 @@ public class CampusEsp32AssistantProperties {
     private String realtimeVoice = "Tina";
     /** 可单独指定实时模型 Key；留空时兼容使用 model-token。 */
     private String realtimeModelToken = "";
+    /** 实时模型旁路转写缺失时，用已有火山 ASR 异步补录日志；绝不阻塞回答。 */
+    private boolean realtimeTranscriptFallbackEnabled = true;
     /**
      * 模型请求协议：omni-realtime（音频与图片双向流，模型直接输出文字和音频）/
      * auto（仅对非实时 model-url 推断）/ responses（火山方舟 Responses）/

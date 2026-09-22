@@ -397,6 +397,8 @@ campus:
     realtime-model-name: ${CAMPUS_LLM_REALTIME_MODEL:qwen3.8-omni-flash-realtime}
     realtime-voice: ${CAMPUS_LLM_REALTIME_VOICE:Tina}
     realtime-model-token: ${CAMPUS_LLM_REALTIME_API_KEY:}
+    # 旁路转写缺失时才用现有火山 ASR 异步补录日志，不影响实时模型回答。
+    realtime-transcript-fallback-enabled: ${CAMPUS_ESP32_REALTIME_TRANSCRIPT_FALLBACK_ENABLED:true}
     model-url: ${CAMPUS_LLM_MODEL_URL:https://ws-h4b3rjk7w0en5w9e.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions}
     model-name: ${CAMPUS_LLM_MODEL:qwen3-vl-flash}
     model-token: ${CAMPUS_LLM_API_KEY:sk-a48f07cc203942f49b88e5dd5949ffde}

@@ -3,6 +3,7 @@ package cn.iocoder.yudao.module.campus.framework.esp32;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -30,6 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * https://help.aliyun.com/en/model-studio/client-events 。这里使用手动分轮，
  * 由设备的 turn_commit 决定何时让模型回答。</p>
  */
+@Slf4j
 @Component
 public class OmniRealtimeClient {
 
@@ -110,6 +112,9 @@ public class OmniRealtimeClient {
         private final AtomicBoolean failureNotified = new AtomicBoolean();
         private final Map<String, Turn> turnsByItemId = new HashMap<>();
         private final ArrayDeque<String> itemOrder = new ArrayDeque<>();
+        /** 上游不保证转写事件与 committed 回执先后顺序，先按 item_id 暂存。 */
+        private final Map<String, JsonNode> earlyTranscriptEvents = new HashMap<>();
+        private final ArrayDeque<String> earlyTranscriptOrder = new ArrayDeque<>();
         private volatile WebSocket webSocket;
         private boolean updateSent;
         private boolean ready;
@@ -354,6 +359,7 @@ public class OmniRealtimeClient {
         private void onCommitted(JsonNode event) {
             Turn turn;
             boolean sent;
+            JsonNode earlyTranscript = null;
             synchronized (this) {
                 turn = active;
                 if (turn == null || !turn.committed) {
@@ -367,6 +373,8 @@ public class OmniRealtimeClient {
                 if (!itemId.isEmpty()) {
                     turnsByItemId.put(itemId, turn);
                     itemOrder.addLast(itemId);
+                    earlyTranscript = earlyTranscriptEvents.remove(itemId);
+                    earlyTranscriptOrder.remove(itemId);
                     while (itemOrder.size() > 64) {
                         turnsByItemId.remove(itemOrder.removeFirst());
                     }
@@ -376,18 +384,38 @@ public class OmniRealtimeClient {
             }
             if (!sent) {
                 notifyFailure(new IllegalStateException("实时模型 response.create 发送失败"));
+            } else if (earlyTranscript != null) {
+                onTranscript(earlyTranscript);
             }
         }
 
         private void onTranscript(JsonNode event) {
             Turn turn;
+            String itemId = event.path("item_id").asText("");
             synchronized (this) {
-                turn = turnsByItemId.get(event.path("item_id").asText());
-                if (turn == null || turn.cancelled) {
+                turn = turnsByItemId.get(itemId);
+                if (turn == null) {
+                    if (!itemId.isEmpty()) {
+                        earlyTranscriptEvents.put(itemId, event);
+                        earlyTranscriptOrder.remove(itemId);
+                        earlyTranscriptOrder.addLast(itemId);
+                        while (earlyTranscriptOrder.size() > 64) {
+                            earlyTranscriptEvents.remove(earlyTranscriptOrder.removeFirst());
+                        }
+                    }
+                    return;
+                }
+                if (turn.cancelled) {
                     return;
                 }
             }
-            listener.onUserTranscript(turn.requestId, event.path("transcript").asText(""),
+            String transcript = "conversation.item.input_audio_transcription.completed"
+                    .equals(event.path("type").asText()) ? event.path("transcript").asText("") : "";
+            if (transcript.isEmpty()) {
+                log.warn("[ESP32_OMNI_TRANSCRIPT_UPSTREAM_EMPTY] requestId={} code={}",
+                        turn.requestId, event.path("error").path("code").asText("empty_transcript"));
+            }
+            listener.onUserTranscript(turn.requestId, transcript,
                     elapsedMs(turn.committedAtNanos, System.nanoTime()));
         }
 

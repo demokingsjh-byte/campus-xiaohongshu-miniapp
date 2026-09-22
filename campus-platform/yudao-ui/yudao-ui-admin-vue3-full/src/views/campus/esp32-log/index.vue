@@ -131,7 +131,7 @@
           </div>
           <p v-if="detail.questionText" class="conversation-text">{{ detail.questionText }}</p>
           <p v-else class="empty-copy">{{ questionPlaceholder(detail) }}</p>
-          <small v-if="detail.asrStatus === 'PENDING' && detail.status !== 'IGNORED'" class="content-note">后台正在处理转写；旧图文链路依赖转写，实时音频模型只用转写记录日志。点击“刷新详情”查看结果。</small>
+          <small v-if="detail.asrStatus === 'PENDING' && detail.status !== 'IGNORED'" class="content-note">后台正在处理转写；实时链路启用补录时会在旁路无结果后异步重试，不影响语音回答。点击“刷新详情”查看最新结果。</small>
         </section>
         <section class="conversation-section">
           <div class="section-heading"><h3>用户图片</h3><small>{{ detail.storedImageCount || 0 }} 张已留存 / {{ detail.imageCount || 0 }} 张上传</small></div>
@@ -399,8 +399,8 @@ const questionPlaceholder = (row: CampusEsp32Log) => {
   if (row.status === 'IGNORED' && row.errorCode === 'capture_cancelled') return '设备主动取消了本轮采集'
   if (row.status === 'IGNORED' && row.errorCode === 'audio_too_short') return '音频太短，未提交模型'
   if (row.status === 'IGNORED') return '本轮已忽略，未提交模型'
-  if (row.asrStatus === 'PENDING') return '正在转写语音…'
-  if (row.asrStatus === 'FAILED' && row.pipelineMode === 'omni-realtime' && row.status === 'COMPLETED') return '旁路日志转写未返回；语音回答已完成'
+  if (row.asrStatus === 'PENDING') return row.pipelineMode === 'omni-realtime' ? '正在旁路转写或异步补录…' : '正在转写语音…'
+  if (row.asrStatus === 'FAILED' && row.pipelineMode === 'omni-realtime' && row.status === 'COMPLETED') return '旁路转写与补录暂无结果；语音回答已完成'
   if (row.asrStatus === 'FAILED') return '语音转写失败'
   if (row.asrStatus === 'DISABLED') return '未启用语音转写'
   return '暂无用户提问'
@@ -432,9 +432,9 @@ const asrTag = (row: CampusEsp32Log): AsrTagType => {
 const asrText = (row: CampusEsp32Log) => {
   const status = row.asrStatus
   if (status === 'SUCCESS') return '已转写'
-  if (status === 'FAILED' && row.pipelineMode === 'omni-realtime' && row.status === 'COMPLETED') return '旁路转写未返回（不影响回答）'
+  if (status === 'FAILED' && row.pipelineMode === 'omni-realtime' && row.status === 'COMPLETED') return '转写暂无结果（不影响回答）'
   if (status === 'FAILED') return '转写失败'
-  if (status === 'PENDING') return '转写中'
+  if (status === 'PENDING') return row.pipelineMode === 'omni-realtime' ? '转写/补录中' : '转写中'
   if (status === 'DISABLED') return '未启用'
   if (status === 'SKIPPED') return '未转写'
   return '未开始'

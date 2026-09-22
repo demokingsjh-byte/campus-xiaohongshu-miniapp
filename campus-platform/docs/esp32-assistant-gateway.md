@@ -34,6 +34,7 @@ ESP32-S3                      campus-platform                  Qwen Omni Realtim
 - 每个设备连接对应一条上游 Omni Realtime WebSocket，同一连接保留多轮上下文；设备协议仍是半双工，回答期间不继续上传下一轮媒体。
 - PCM 在采集期间直接转发给模型，不等待 `turn_commit` 才上传整段录音。手动提交后，模型直接生成文字和音频，不再串行等待独立 ASR 与 TTS。
 - `input_audio_transcription` 使用 `qwen3-asr-flash-realtime` 生成用户问题文字。该结果是日志旁路；即使转写晚到或失败，已开始的模型回答不受影响。
+- 旁路最终转写缺失时，默认在提交后 3 秒使用现有火山 ASR 异步补录该轮日志（要求已配置 ASR 凭证）；迟到的上游结果仍可覆盖暂时的「未返回」。补录不参加模型输入，也不阻塞回答，可用 `CAMPUS_ESP32_REALTIME_TRANSCRIPT_FALLBACK_ENABLED=false` 关闭。
 - 默认每轮目标 3 张图片：开始、中途、提交前各一张；模型以最后一张作为当前画面，前两张只用于观察变化。图片是离散快照，不等同实时视频。
 - 上游实时接口要求图片体积更小。网关会把送模型的副本缩放、压缩到安全范围，后台仍异步保存设备上传的原始 JPEG。
 - `chat` / `responses` 回退模式仍在采集期流式喂火山 ASR，提交后等待最终文字，再调用图文模型并用火山 TTS 合成音频。只有该回退链路中，ASR 才是回答前置步骤。
@@ -311,7 +312,7 @@ CAMPUS_LLM_REALTIME_API_KEY=<阿里云百炼 API Key>
 
 `CAMPUS_LLM_PROTOCOL` 必须显式确认。生产环境若遗留 `CAMPUS_LLM_PROTOCOL=chat`，它会覆盖 `application.yaml` 的新默认值，部署新代码后仍然走旧链路。上线后通过 health 的 `pipeline`、`modelProtocol`、`model`、`modelInput`、`modelOutput` 核对实际配置。
 
-默认实时链路不依赖 `CAMPUS_VOLC_ASR_*` 与 `CAMPUS_VOLC_TTS_*` 回答；这些变量仅供下述回退链路使用。`configured=true` 只表示字段齐全，上游连接是否可用仍以设备连接日志和真实请求为准。
+默认实时链路不依赖 `CAMPUS_VOLC_ASR_*` 与 `CAMPUS_VOLC_TTS_*` 来生成回答；其中火山 ASR 可在旁路转写缺失时异步补录日志。`configured=true` 只表示回答主链路字段齐全，不保证旁路补录已配置，也不代表上游连接成功。
 
 ### 7.1 实时链路配置
 
@@ -324,6 +325,7 @@ campus:
     realtime-model-name: ${CAMPUS_LLM_REALTIME_MODEL:qwen3.8-omni-flash-realtime}
     realtime-voice: ${CAMPUS_LLM_REALTIME_VOICE:Tina}
     realtime-model-token: ${CAMPUS_LLM_REALTIME_API_KEY:}
+    realtime-transcript-fallback-enabled: ${CAMPUS_ESP32_REALTIME_TRANSCRIPT_FALLBACK_ENABLED:true}
     model-token: ${CAMPUS_LLM_API_KEY:<旧链路 API Key>}
 ```
 
@@ -472,7 +474,7 @@ GET /admin-api/campus/esp32/log/get?id=日志编号
 GET /admin-api/campus/esp32/log/image?id=图片编号
 ```
 
-用户提问取自本轮语音转写全文；回答取自模型本轮返回的全文。`asrStatus` 区分 `PENDING`（转写中）、`SUCCESS`、`FAILED`、`DISABLED`，旧日志该字段可能为空。在默认实时链路中，转写只用于留存，回答可在转写完成前开始；`COMPLETED + asrStatus=FAILED` 表示回答成功但日志转写未返回，不是主链路失败。只有 chat/responses 回退链路必须先取得 ASR 文字才能调用图文模型。
+用户提问取自本轮语音转写全文；回答取自模型本轮返回的全文。`asrStatus` 区分 `PENDING`（转写/补录中）、`SUCCESS`、`FAILED`、`DISABLED`，旧日志该字段可能为空。在默认实时链路中，转写只用于留存，回答可在转写完成前开始；提交后 30 秒仍无结果时暂标 `FAILED`，但仍保留短时间的 `request_id` 关联，迟到的上游转写或补录成功可回填成 `SUCCESS`。`COMPLETED + asrStatus=FAILED` 不代表模型回答失败。只有 chat/responses 回退链路必须先取得 ASR 文字才能调用图文模型。
 
 图片异步保存到独立的私有数据库表，每轮最多 5 张 JPEG（可通过 `campus.esp32-assistant.max-image-count` 调整），单张最多 2MB。列表和详情仅返回图片数量、编号与大小，图片内容通过单独的鉴权接口读取，要求已登录且有 `campus:esp32-log:query` 权限。前端用携带登录身份的请求加载图片，关闭详情时释放临时预览地址，不生成公开图片链接。
 
@@ -492,7 +494,7 @@ GET /admin-api/campus/esp32/log/image?id=图片编号
 | `speechEndToPlaybackMs` | `deviceFirstPlaybackMs - speechEndMs`；设备指标缺失时为空 |
 | `commitToFirstAudioMs` | `turn_commit` 到网关收到首个回答音频；由 `ttsFirstAudioMs - captureMs` 计算，不含设备播放缓冲 |
 | `submitMs` | 网关发送提交事件所用时间；不表示上游完成推理 |
-| `asrMs` | 实时链路为提交后旁路转写返回时间，不阻塞回答；回退链路为前置 ASR 收尾时间 |
+| `asrMs` | 实时链路为提交后旁路转写/异步补录取得文字的时间，不阻塞回答；回退链路为前置 ASR 收尾时间 |
 | `modelFirstTokenMs` | 请求回答到首个文字或音频事件，后台应显示为“模型首响应”而非只称 token |
 | `modelTotalMs` | 上游回答文字/音频转写完成时间；不等同整段音频已发送完毕 |
 | `ttsFirstAudioMs` | 网关收到 `turn_start` 到收到首个回答音频；不代表设备扬声器已经出声 |
