@@ -314,11 +314,17 @@ public class GuideModelClient {
             List<String> images = new ArrayList<>();
             Object raw = event.get("images");
             if (raw instanceof Iterable<?>) {
+                // ESP32 按时间顺序上传连续抓拍。当前场景问答只用最后一张，
+                // 避免模型把起始时的旧画面当作现在，并减少视觉 token 与请求体积。
+                String latestImage = "";
                 for (Object image : (Iterable<?>) raw) {
                     String imageUrl = stringValue(image);
                     if (!imageUrl.isEmpty()) {
-                        images.add(imageUrl);
+                        latestImage = imageUrl;
                     }
+                }
+                if (!latestImage.isEmpty()) {
+                    images.add(latestImage);
                 }
             }
             return images;

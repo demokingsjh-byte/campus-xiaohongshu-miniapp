@@ -14,6 +14,7 @@ import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,7 +40,7 @@ class GuideModelClientTest {
     }
 
     @Test
-    void shouldSendResponsesImageAndAsrTextWithoutAudio() throws Exception {
+    void shouldSendLatestResponsesImageAndAsrTextWithoutAudio() throws Exception {
         AtomicReference<String> requestBody = new AtomicReference<>();
         HttpServer server = startSseServer(requestBody,
                 "data: {\"type\":\"response.output_text.delta\",\"delta\":\"你好\"}\n\n"
@@ -54,7 +55,10 @@ class GuideModelClientTest {
             chat.put("type", "chat");
             chat.put("request_id", "req-1");
             chat.put("question", "这里是哪里？");
-            chat.put("images", Collections.singletonList("https://example.com/camera.jpg"));
+            chat.put("images", Arrays.asList(
+                    "https://example.com/start.jpg",
+                    "https://example.com/middle.jpg",
+                    "https://example.com/latest.jpg"));
             assertTrue(session.send(chat));
 
             assertTrue(done.await(5, TimeUnit.SECONDS));
@@ -70,7 +74,7 @@ class GuideModelClientTest {
         JsonNode content = body.path("input").get(0).path("content");
         assertEquals(2, content.size());
         assertEquals("input_image", content.get(0).path("type").asText());
-        assertEquals("https://example.com/camera.jpg", content.get(0).path("image_url").asText());
+        assertEquals("https://example.com/latest.jpg", content.get(0).path("image_url").asText());
         assertEquals("input_text", content.get(1).path("type").asText());
         assertTrue(content.get(1).path("text").asText().contains("这里是哪里？"));
         assertTrue(requestBody.get().indexOf("input_audio") < 0);
