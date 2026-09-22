@@ -367,6 +367,8 @@ campus:
     # 多个设备 token 使用英文逗号分隔。
     device-tokens: ${CAMPUS_ESP32_DEVICE_TOKENS:esp32_1KwVNp4Uv9C1_i5iE89eiFgySb32wxCQYsitrABMRO4}
     max-audio-seconds: 30
+    # 设备启动采集后未上传有效语音时自动释放，避免卡死后续对话。
+    no-speech-capture-timeout-millis: ${CAMPUS_ESP32_NO_SPEECH_CAPTURE_TIMEOUT_MILLIS:8000}
     max-connections-per-ip: 20
     # 冷却须覆盖设备侧约 1.2 秒的缓冲尾音，避免边放音边收音。
     cooldown-millis: ${CAMPUS_ESP32_COOLDOWN_MILLIS:1250}

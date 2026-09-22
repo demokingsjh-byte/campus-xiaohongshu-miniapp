@@ -282,6 +282,40 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                         () -> runSilenceCheck(context),
                         silenceCommitMillis(), TimeUnit.MILLISECONDS);
             }
+            if (properties.getNoSpeechCaptureTimeoutMillis() > 0) {
+                TurnBuffer startedTurn = context.turn;
+                startedTurn.noSpeechTimeoutFuture = scheduler.schedule(
+                        () -> expireNoSpeechCapture(context, startedTurn),
+                        properties.getNoSpeechCaptureTimeoutMillis(), TimeUnit.MILLISECONDS);
+            }
+        }
+    }
+
+    /**
+     * 设备可能在 turn_ready 后麦克风任务停止，既不上传有效语音也不发送
+     * turn_cancel。如果不释放 context.turn，后续所有 turn_start 都只会收到 busy。
+     */
+    private void expireNoSpeechCapture(DeviceContext context, TurnBuffer expected) {
+        synchronized (context.lock) {
+            if (context.turn != expected || context.state != DeviceState.CAPTURING
+                    || expected.speechDetected) {
+                return;
+            }
+            logService.markIgnored(expected.logId, expected.pcm.size(), expected.images.size(),
+                    "no_speech_capture_timeout");
+            closeAsrLocked(context);
+            if (context.omniSession != null) {
+                context.omniSession.interrupt();
+            }
+            finishRealtimeTranscript(context, expected.requestId, true);
+            context.turn = null;
+            Map<String, Object> ignored = event("turn_ignored", "request_id", expected.requestId);
+            ignored.put("reason", "no_speech_capture_timeout");
+            sendJsonLocked(context, ignored);
+            setStateLocked(context, DeviceState.LISTENING, expected.requestId,
+                    "未收到有效语音，已重新开始聆听");
+            log.warn("[ESP32_CAPTURE_TIMEOUT] deviceId={} requestId={} audioBytes={} imageCount={}",
+                    context.deviceId, expected.requestId, expected.pcm.size(), expected.images.size());
         }
     }
 
@@ -470,6 +504,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 return;
             }
             turn = context.turn.snapshot();
+            cancelTurnTimers(context.turn);
             context.turn = null;
             if (turn.pcm.length < Esp32ProtocolUtils.MIN_AUDIO_BYTES) {
                 logService.markIgnored(turn.logId, turn.pcm.length, turn.images.size(), "audio_too_short");
@@ -894,6 +929,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 return;
             }
             String requestId = context.turn.requestId;
+            cancelTurnTimers(context.turn);
             String logReason = normalizeCancelReason(reason);
             logService.markIgnored(context.turn.logId, context.turn.pcm.size(), context.turn.images.size(),
                     logReason);
@@ -905,6 +941,18 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             context.turn = null;
             setStateLocked(context, DeviceState.LISTENING, requestId,
                     "已取消，请重新提问");
+        }
+    }
+
+    private static void cancelTurnTimers(TurnBuffer turn) {
+        if (turn == null) {
+            return;
+        }
+        if (turn.silenceCheckFuture != null) {
+            turn.silenceCheckFuture.cancel(false);
+        }
+        if (turn.noSpeechTimeoutFuture != null) {
+            turn.noSpeechTimeoutFuture.cancel(false);
         }
     }
 
@@ -1480,6 +1528,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
         synchronized (context.lock) {
+            cancelTurnTimers(context.turn);
             Long logId = context.activeLogId != null ? context.activeLogId
                     : context.turn == null ? null : context.turn.logId;
             long startedAt = context.turnStartedAt > 0 ? context.turnStartedAt
@@ -1595,6 +1644,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private boolean silenceCommitted;
         /** 静音检查的延迟任务，收到新音频或结束采集时会重新挂或取消。 */
         private ScheduledFuture<?> silenceCheckFuture;
+        /** 无有效语音时释放卡住的采集轮次。 */
+        private ScheduledFuture<?> noSpeechTimeoutFuture;
 
         private TurnBuffer(String requestId, Long logId) {
             this.requestId = requestId;

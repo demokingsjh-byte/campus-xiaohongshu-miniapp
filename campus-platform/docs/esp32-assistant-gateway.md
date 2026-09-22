@@ -32,6 +32,7 @@ ESP32-S3                      campus-platform                  Qwen Omni Realtim
 关键设计：
 
 - 每个设备连接对应一条上游 Omni Realtime WebSocket，同一连接保留多轮上下文；设备协议仍是半双工，回答期间不继续上传下一轮媒体。
+- `turn_start` 后 8 秒仍未检测到有效语音时，网关会主动忽略并释放该轮，防止设备采集任务异常时后续对话永久被 `busy` 拒绝；可用 `CAMPUS_ESP32_NO_SPEECH_CAPTURE_TIMEOUT_MILLIS` 调整。
 - PCM 在采集期间直接转发给模型，不等待 `turn_commit` 才上传整段录音。手动提交后，模型直接生成文字和音频，不再串行等待独立 ASR 与 TTS。
 - `input_audio_transcription` 使用 `qwen3-asr-flash-realtime` 生成用户问题文字。该结果是日志旁路；即使转写晚到或失败，已开始的模型回答不受影响。
 - 旁路最终转写缺失时，默认在提交后 3 秒使用现有火山 ASR 异步补录该轮日志（要求已配置 ASR 凭证）；迟到的上游结果仍可覆盖暂时的「未返回」。补录不参加模型输入，也不阻塞回答，可用 `CAMPUS_ESP32_REALTIME_TRANSCRIPT_FALLBACK_ENABLED=false` 关闭。

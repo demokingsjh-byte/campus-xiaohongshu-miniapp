@@ -28,6 +28,11 @@ public class CampusEsp32AssistantProperties {
     private String legacyPath = "/ai_guide_service/api/v1/esp32/assistant/ws";
     private String deviceTokens = "";
     private int maxAudioSeconds = 30;
+    /**
+     * turn_start 后迟迟没有检测到语音时，自动释放该轮。
+     * 用于防止设备麦克风任务异常后一直占用 CAPTURING，导致后续轮次全部 busy。
+     */
+    private int noSpeechCaptureTimeoutMillis = 8000;
     private int maxConnectionsPerIp = 20;
     /**
      * 播报结束到恢复聆听的冷却时长。音频按领先量下发，设备侧还有约 1.2 秒缓冲未播完，
