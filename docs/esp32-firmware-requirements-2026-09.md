@@ -110,3 +110,14 @@
 - 固件 `turn_commit` 上报 `speech_end_ms`、`speech_end_to_commit_ms`；首次 I2S 写入后上报 `turn_metrics`，包含 `first_audio_received_ms`、`first_i2s_write_ms`。后台以同一设备时钟计算“末次语音→首次 I2S 写入”，旧固件缺字段则显示空值。
 - 实时链路 `asrStatus` 是旁路日志转写状态；回答已完成而旁路转写失败时，不应把整轮改为失败。后台应显示本轮 `pipelineMode`、`modelName`，避免新旧链路平均耗时混淆。
 - 本次固件与网关改动由用户自行烧录和实测；提交代码不等同于设备端与线上验证通过。
+
+## 2026-09-23 多轮后无响应修复
+
+现场表现为前数轮正常，之后说「你好小智」无反馈，且后台不再产生新请求。最后一轮有时长期停留在 `CAPTURING`。这不是模型的三轮限制，而是设备唤醒与网关轮次释放都缺少恢复机制。
+
+- 固件：WakeNet 每次真正检测到唤醒词后，在下次进入 `LISTENING` 时由麦克风任务串行调用 `clean()` 和 `reset_det_threshold()`，再喂入静音预热。不允许主循环与麦克风任务并发操作模型。
+- 固件：串口增加累计唤醒次数和模型重置日志，便于区分「未检测到唤醒词」与「已唤醒但请求未发出」。
+- 网关：`turn_start` 后默认 8 秒仍无有效语音，自动标记 `no_speech_capture_timeout`、清理上游未提交输入、发送 `turn_ignored` 并恢复 `LISTENING`，避免后续 `turn_start` 永久被 `busy` 拒绝。
+- 配置：可通过 `CAMPUS_ESP32_NO_SPEECH_CAPTURE_TIMEOUT_MILLIS` 调整无语音采集硬超时，默认 8000ms。
+
+验收时连续进行至少 10 轮，不应只验收前 3 轮；如果故意只说唤醒词不接问题，8 秒后后台应显示忽略并自动恢复，下一次唤醒仍能创建新请求。
