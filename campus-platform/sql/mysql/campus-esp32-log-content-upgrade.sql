@@ -4,6 +4,73 @@
 -- 图片按日志分行存储，便于审计、详情查看和后续清理；接口不会把图片地址暴露给小程序端。
 SET NAMES utf8mb4;
 
+-- 实时模型链路与设备端体感延迟口径。所有字段均为幂等升级；旧固件不上报时保持 NULL。
+SET @sql := IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campus_esp32_assistant_log'
+      AND COLUMN_NAME = 'pipeline_mode') = 0,
+  'ALTER TABLE campus_esp32_assistant_log ADD COLUMN pipeline_mode varchar(24) NOT NULL DEFAULT ''legacy'' COMMENT ''链路模式：omni-realtime/chat/responses'' AFTER status',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campus_esp32_assistant_log'
+      AND COLUMN_NAME = 'model_name') = 0,
+  'ALTER TABLE campus_esp32_assistant_log ADD COLUMN model_name varchar(128) DEFAULT NULL COMMENT ''本轮上游模型'' AFTER pipeline_mode',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campus_esp32_assistant_log'
+      AND COLUMN_NAME = 'speech_end_ms') = 0,
+  'ALTER TABLE campus_esp32_assistant_log ADD COLUMN speech_end_ms bigint DEFAULT NULL COMMENT ''设备本轮开始到VAD末次语音'' AFTER capture_ms',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campus_esp32_assistant_log'
+      AND COLUMN_NAME = 'speech_end_to_commit_ms') = 0,
+  'ALTER TABLE campus_esp32_assistant_log ADD COLUMN speech_end_to_commit_ms bigint DEFAULT NULL COMMENT ''设备VAD末次语音到turn_commit'' AFTER speech_end_ms',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campus_esp32_assistant_log'
+      AND COLUMN_NAME = 'device_first_audio_ms') = 0,
+  'ALTER TABLE campus_esp32_assistant_log ADD COLUMN device_first_audio_ms bigint DEFAULT NULL COMMENT ''设备本轮开始到收到首个音频帧'' AFTER tts_first_audio_ms',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @sql := IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'campus_esp32_assistant_log'
+      AND COLUMN_NAME = 'device_first_playback_ms') = 0,
+  'ALTER TABLE campus_esp32_assistant_log ADD COLUMN device_first_playback_ms bigint DEFAULT NULL COMMENT ''设备本轮开始到首次I2S写入'' AFTER device_first_audio_ms',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 -- 这几个字段用动态 DDL，保证已经执行过的线上版本可以重复发布。
 SET @sql := IF(
   (SELECT COUNT(*) FROM information_schema.COLUMNS

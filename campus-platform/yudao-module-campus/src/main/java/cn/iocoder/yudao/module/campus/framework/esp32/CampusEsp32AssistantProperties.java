@@ -69,13 +69,20 @@ public class CampusEsp32AssistantProperties {
      */
     private int silenceEnergyThreshold = 200;
 
-    /** 火山方舟 Responses 地址；如需兼容旧自建模型，可改为 ws:// 地址。 */
+    /** 非实时回退模型地址：支持 OpenAI Chat Completions 或火山方舟 Responses。 */
     private String modelUrl = RESPONSES_API;
     private String modelName = PRO_MODEL;
     private String modelToken = "";
+    /** 原生双向音视频模型；和旧图文链路地址分开，便于必要时回退。 */
+    private String realtimeModelUrl = "";
+    private String realtimeModelName = "qwen3.8-omni-flash-realtime";
+    private String realtimeVoice = "Tina";
+    /** 可单独指定实时模型 Key；留空时兼容使用 model-token。 */
+    private String realtimeModelToken = "";
     /**
-     * 模型请求协议：auto（按 model-url 推断）/ responses（火山方舟 Responses）/
-     * chat（OpenAI 兼容 /chat/completions，例如 PAI-EAS 部署的 GLM、Qwen-VL、vLLM）。
+     * 模型请求协议：omni-realtime（音频与图片双向流，模型直接输出文字和音频）/
+     * auto（仅对非实时 model-url 推断）/ responses（火山方舟 Responses）/
+     * chat（OpenAI 兼容 /chat/completions，例如 Qwen-VL、GLM、vLLM）。
      */
     private String modelProtocol = "auto";
     /**
@@ -115,13 +122,14 @@ public class CampusEsp32AssistantProperties {
     /**
      * 解析实际生效的模型协议。
      *
-     * <p>显式配置 {@code chat} / {@code responses} 时优先使用配置值；
+     * <p>显式配置 {@code omni-realtime} / {@code chat} / {@code responses} 时优先使用配置值；
      * {@code auto} 则按 model-url 推断：包含 {@code /chat/completions} 走 OpenAI 兼容协议，
-     * 其余（含 ws:// 自建模型）走火山方舟 Responses 协议。</p>
+     * 其余走 Responses 协议。auto 不会隐式启用实时链路。</p>
      */
     public String getResolvedModelProtocol() {
         String value = modelProtocol == null ? "" : modelProtocol.trim().toLowerCase();
-        if ("chat".equals(value) || "responses".equals(value)) {
+        if ("chat".equals(value) || "responses".equals(value)
+                || "omni-realtime".equals(value)) {
             return value;
         }
         String url = getModelUrl();
@@ -133,9 +141,17 @@ public class CampusEsp32AssistantProperties {
         return "chat".equals(getResolvedModelProtocol());
     }
 
+    public boolean isRealtimeProtocol() {
+        return "omni-realtime".equals(getResolvedModelProtocol());
+    }
+
+    public String getResolvedRealtimeModelToken() {
+        return hasText(realtimeModelToken) ? realtimeModelToken : modelToken;
+    }
+
     /** 供日志与健康检查展示的模型提供方标识。 */
     public String getModelProvider() {
-        String url = getModelUrl();
+        String url = isRealtimeProtocol() ? getRealtimeModelUrl() : getModelUrl();
         if (url == null || url.trim().isEmpty()) {
             return "unknown";
         }
@@ -161,16 +177,17 @@ public class CampusEsp32AssistantProperties {
     }
 
     public boolean isFullyConfigured() {
-        return enabled
-                && !getDeviceTokenList().isEmpty()
-                && hasText(modelUrl)
-                && hasText(modelName)
-                && hasText(modelToken)
-                && asrEnabled
-                && hasText(asrAppId)
-                && hasText(asrAccessToken)
-                && hasText(ttsAppId)
-                && hasText(ttsAccessToken)
+        if (!enabled || getDeviceTokenList().isEmpty()) {
+            return false;
+        }
+        if (isRealtimeProtocol()) {
+            return hasText(getResolvedRealtimeModelToken())
+                    && hasText(realtimeModelUrl) && hasText(realtimeModelName)
+                    && hasText(realtimeVoice);
+        }
+        return hasText(modelToken) && hasText(modelUrl) && hasText(modelName)
+                && asrEnabled && hasText(asrAppId) && hasText(asrAccessToken)
+                && hasText(ttsAppId) && hasText(ttsAccessToken)
                 && hasText(ttsVoiceType);
     }
 

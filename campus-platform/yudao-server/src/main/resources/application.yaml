@@ -386,11 +386,17 @@ campus:
     silence-commit-millis: ${CAMPUS_ESP32_SILENCE_COMMIT_MILLIS:1500}
     silence-energy-threshold: ${CAMPUS_ESP32_SILENCE_ENERGY_THRESHOLD:200}
 
-    # 多模态模型：ASR 转写后，将问题文字与 JPEG 图片提交给阿里 MaaS 网关的 qwen3-vl-flash。
-    # 默认走 OpenAI 兼容的 /chat/completions；如需切回火山方舟 Responses，设置
-    # CAMPUS_LLM_PROTOCOL=responses 与 CAMPUS_LLM_MODEL_URL=<方舟 responses 地址>。
-    # 所有项都可用环境变量覆盖；凭证默认值随代码提交，如外泄请直接轮换 Key。
-    model-protocol: ${CAMPUS_LLM_PROTOCOL:chat}
+    # 默认实时链路：设备 PCM + JPEG 持续转发给 Qwen-Omni-Realtime，模型直接流式返回
+    # 文字与 24kHz PCM；用户语音转写是旁路日志，不阻塞模型回答。
+    # 回退链路：设置 CAMPUS_LLM_PROTOCOL=chat（或 responses），由火山 ASR 先转文字，
+    # 再向 model-url 提交文字 + JPEG，最后由火山 TTS 生成 24kHz PCM。
+    # 实时模型可使用独立 CAMPUS_LLM_REALTIME_API_KEY；留空时兼容回退到 model-token。
+    # 生产环境应使用环境变量注入凭证，并以 health 返回的 modelProtocol 确认实际生效链路。
+    model-protocol: ${CAMPUS_LLM_PROTOCOL:omni-realtime}
+    realtime-model-url: ${CAMPUS_LLM_REALTIME_URL:wss://ws-h4b3rjk7w0en5w9e.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime}
+    realtime-model-name: ${CAMPUS_LLM_REALTIME_MODEL:qwen3.8-omni-flash-realtime}
+    realtime-voice: ${CAMPUS_LLM_REALTIME_VOICE:Tina}
+    realtime-model-token: ${CAMPUS_LLM_REALTIME_API_KEY:}
     model-url: ${CAMPUS_LLM_MODEL_URL:https://ws-h4b3rjk7w0en5w9e.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions}
     model-name: ${CAMPUS_LLM_MODEL:qwen3-vl-flash}
     model-token: ${CAMPUS_LLM_API_KEY:sk-a48f07cc203942f49b88e5dd5949ffde}
@@ -399,7 +405,7 @@ campus:
     # 提交给模型的图片长边上限：缩小视觉 token 数以降低首 token 延迟与成本；0 表示不缩放。
     model-image-max-edge: ${CAMPUS_LLM_IMAGE_MAX_EDGE:1024}
 
-    # ASR 先将设备音频转为用户问题文字，再调用图文模型。
+    # 以下 ASR/TTS 仅供 chat/responses 回退链路使用；omni-realtime 不依赖它们回答。
     asr-enabled: ${CAMPUS_ESP32_ASR_ENABLED:true}
     asr-url: wss://openspeech.bytedance.com/api/v3/sauc/bigmodel
     asr-app-id: ${CAMPUS_VOLC_ASR_APP_ID:1828671130}

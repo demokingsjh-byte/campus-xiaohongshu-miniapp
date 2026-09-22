@@ -46,7 +46,7 @@
 
     <ContentWrap>
       <div class="table-title">
-        <div><h2>请求明细</h2><p>点击详情查看完整对话与原图；“提交→首音频”不含录音采集，耗时均为毫秒。</p></div>
+        <div><h2>请求明细</h2><p>点击详情查看完整对话与原图；采集含说话及提交前等待，首音频指网关收到音频包，并非设备出声。耗时均为毫秒。</p></div>
         <el-tag effect="plain">对话内容与链路耗时</el-tag>
       </div>
       <el-table v-loading="loading" :data="list" row-key="id" stripe>
@@ -57,6 +57,9 @@
           <template #default="{ row }">
             <div class="identity-cell"><strong>{{ row.deviceId }}</strong><small>{{ row.requestId }}</small></div>
           </template>
+        </el-table-column>
+        <el-table-column label="链路 / 模型" min-width="175">
+          <template #default="{ row }"><div class="identity-cell"><strong>{{ pipelineText(row.pipelineMode) }}</strong><small>{{ row.modelName || '-' }}</small></div></template>
         </el-table-column>
         <el-table-column label="状态" width="115" align="center">
           <template #default="{ row }"><el-tag :type="statusTag(row.status)" effect="light" round>{{ statusText(row.status) }}</el-tag></template>
@@ -71,14 +74,15 @@
             <div class="conversation-summary" :class="{ 'empty-copy': !row.answerText }">{{ row.answerText || answerPlaceholder(row) }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="采集" width="90" align="right"><template #default="{ row }">{{ formatMs(row.captureMs) }}</template></el-table-column>
-        <el-table-column label="提交→首音频" width="130" align="right"><template #default="{ row }">{{ formatMs(row.commitToFirstAudioMs) }}</template></el-table-column>
-        <el-table-column label="提交模型" width="105" align="right"><template #default="{ row }">{{ formatMs(row.submitMs) }}</template></el-table-column>
-        <el-table-column label="ASR" width="90" align="right"><template #default="{ row }">{{ formatMs(row.asrMs) }}</template></el-table-column>
-        <el-table-column label="模型首 token" width="120" align="right"><template #default="{ row }">{{ formatMs(row.modelFirstTokenMs) }}</template></el-table-column>
-        <el-table-column label="模型总耗时" width="110" align="right"><template #default="{ row }">{{ formatMs(row.modelTotalMs) }}</template></el-table-column>
-        <el-table-column label="开始→首音频" width="120" align="right"><template #default="{ row }">{{ formatMs(row.ttsFirstAudioMs) }}</template></el-table-column>
-        <el-table-column label="TTS 输出" width="100" align="right"><template #default="{ row }">{{ formatMs(row.ttsAudioMs) }}</template></el-table-column>
+        <el-table-column label="采集/提交前" width="110" align="right"><template #default="{ row }">{{ formatMs(row.captureMs) }}</template></el-table-column>
+        <el-table-column label="说完→首次 I2S 写入" width="155" align="right"><template #default="{ row }">{{ formatMs(row.speechEndToPlaybackMs) }}</template></el-table-column>
+        <el-table-column label="提交→网关首包" width="140" align="right"><template #default="{ row }">{{ formatMs(row.commitToFirstAudioMs) }}</template></el-table-column>
+        <el-table-column label="提交输入" width="105" align="right"><template #default="{ row }">{{ formatMs(row.submitMs) }}</template></el-table-column>
+        <el-table-column label="转写" width="90" align="right"><template #default="{ row }">{{ formatMs(row.asrMs) }}</template></el-table-column>
+        <el-table-column label="模型首响应" width="120" align="right"><template #default="{ row }">{{ formatMs(row.modelFirstTokenMs) }}</template></el-table-column>
+        <el-table-column label="回答文本完成" width="120" align="right"><template #default="{ row }">{{ formatMs(row.modelTotalMs) }}</template></el-table-column>
+        <el-table-column label="开始→网关首包" width="140" align="right"><template #default="{ row }">{{ formatMs(row.ttsFirstAudioMs) }}</template></el-table-column>
+        <el-table-column label="音频输出" width="100" align="right"><template #default="{ row }">{{ formatMs(row.ttsAudioMs) }}</template></el-table-column>
         <el-table-column label="总耗时" width="105" align="right">
           <template #default="{ row }"><strong class="total-ms">{{ formatMs(row.totalMs) }}</strong></template>
         </el-table-column>
@@ -113,6 +117,7 @@
           <el-tag :type="statusTag(detail.status)" effect="light" round>{{ statusText(detail.status) }}</el-tag>
           <h2>{{ detail.deviceId }}</h2>
           <p>{{ detail.requestId }} · {{ formatTime(detail.createTime) }}</p>
+          <p>{{ pipelineText(detail.pipelineMode) }} · {{ detail.modelName || '模型未记录' }}</p>
         </div>
         <el-alert
           v-if="!detail.contentRecorded"
@@ -122,11 +127,11 @@
         <section class="conversation-section">
           <div class="section-heading">
             <h3>用户提问</h3>
-            <el-tag v-if="detail.contentRecorded && detail.asrStatus" :type="asrTag(detail.asrStatus)" size="small" effect="plain">{{ asrText(detail.asrStatus) }}</el-tag>
+            <el-tag v-if="detail.contentRecorded && detail.asrStatus" :type="asrTag(detail)" size="small" effect="plain">{{ asrText(detail) }}</el-tag>
           </div>
           <p v-if="detail.questionText" class="conversation-text">{{ detail.questionText }}</p>
           <p v-else class="empty-copy">{{ questionPlaceholder(detail) }}</p>
-          <small v-if="detail.asrStatus === 'PENDING' && detail.status !== 'IGNORED'" class="content-note">转写异步完成，点击“刷新详情”可查看最新结果。</small>
+          <small v-if="detail.asrStatus === 'PENDING' && detail.status !== 'IGNORED'" class="content-note">后台正在处理转写；旧图文链路依赖转写，实时音频模型只用转写记录日志。点击“刷新详情”查看结果。</small>
         </section>
         <section class="conversation-section">
           <div class="section-heading"><h3>用户图片</h3><small>{{ detail.storedImageCount || 0 }} 张已留存 / {{ detail.imageCount || 0 }} 张上传</small></div>
@@ -169,6 +174,8 @@
           <div><small>客户端 IP</small><strong>{{ detail.clientIp || '-' }}</strong></div>
           <div><small>音频大小</small><strong>{{ formatBytes(detail.audioBytes) }}</strong></div>
           <div><small>图片数量</small><strong>{{ detail.imageCount || 0 }} 张</strong></div>
+          <div><small>链路模式</small><strong>{{ pipelineText(detail.pipelineMode) }}</strong></div>
+          <div><small>模型</small><strong>{{ detail.modelName || '-' }}</strong></div>
         </section>
         <el-alert
           v-if="detail.errorCode || detail.errorMessage"
@@ -240,21 +247,26 @@ const metrics = computed(() => [
   { label: '已完成', value: Number(summary.value.completedCount || 0), icon: 'ep:circle-check', color: '#10b981' },
   { label: '失败 / 中断', value: Number(summary.value.failedCount || 0), icon: 'ep:warning', color: '#ef4444' },
   { label: '平均总耗时', value: formatMs(summary.value.averageTotalMs), icon: 'ep:timer', color: '#8b5cf6' },
-  { label: '平均提交→首音频', value: formatMs(summary.value.averageCommitToFirstAudioMs), icon: 'ep:video-play', color: '#0f766e' },
+  { label: '平均说完→首次 I2S 写入', value: formatMs(summary.value.averageSpeechEndToPlaybackMs), icon: 'ep:microphone', color: '#0e7490' },
+  { label: '平均提交→网关首包', value: formatMs(summary.value.averageCommitToFirstAudioMs), icon: 'ep:video-play', color: '#0f766e' },
   { label: '平均模型耗时', value: formatMs(summary.value.averageModelMs), icon: 'ep:cpu', color: '#f59e0b' }
 ])
 
 const detailStages = computed(() => {
   if (!detail.value) return []
   return [
-    { label: '音频采集', value: detail.value.captureMs, note: 'turn_start → turn_commit' },
-    { label: '提交→首音频', value: detail.value.commitToFirstAudioMs, note: '网关收到 turn_commit → 收到 TTS 首包；不含设备端静音判定与扬声器播放缓冲' },
-    { label: '提交模型', value: detail.value.submitMs, note: '网关发送 → 上游接收' },
-    { label: 'ASR 转写', value: detail.value.asrMs, note: '异步记录，不阻塞回答' },
-    { label: '模型首 token', value: detail.value.modelFirstTokenMs, note: '上游模型统计' },
-    { label: '模型完成', value: detail.value.modelTotalMs, note: '上游模型统计' },
-    { label: '开始→首音频', value: detail.value.ttsFirstAudioMs, note: 'turn_start → 网关收到 TTS 首包，包含采集时间' },
-    { label: 'TTS 输出', value: detail.value.ttsAudioMs, note: '首包 → 音频发送完成' },
+    { label: '采集与提交前等待', value: detail.value.captureMs, note: '网关收到 turn_start → turn_commit；包含说话、静音判定、提交前拍照与上传等待，不能单独代表录音时长' },
+    { label: '说完→首次 I2S 写入', value: detail.value.speechEndToPlaybackMs, note: '设备检测到末次语音 → 首次 I2S 写入；最接近体感等待，旧固件不上报时为空' },
+    { label: '说完→提交', value: detail.value.speechEndToCommitMs, note: '设备 VAD 末次语音 → 发出 turn_commit；包含静音确认与图片宽限' },
+    { label: '提交→网关首音频', value: detail.value.commitToFirstAudioMs, note: '网关收到 turn_commit → 收到首个回答音频包；不含前段采集与设备端播放缓冲' },
+    { label: '设备收到首音频', value: detail.value.deviceFirstAudioMs, note: '设备本轮开始 → 收到首个音频帧' },
+    { label: '设备首次 I2S 写入', value: detail.value.deviceFirstPlaybackMs, note: '设备本轮开始 → 首次写入音频接口；扬声器实际发声还可能有硬件缓冲' },
+    { label: '提交输入', value: detail.value.submitMs, note: '网关发送输入事件耗时，不代表上游完成处理' },
+    { label: '语音转写', value: detail.value.asrMs, note: '旧图文链路须等转写后提交模型；实时音频链路的转写只用于记录，不阻塞回答' },
+    { label: '模型首响应', value: detail.value.modelFirstTokenMs, note: '从请求模型回答到首个文字或音频事件' },
+    { label: '回答文本完成', value: detail.value.modelTotalMs, note: '实时链路为回答转写完成；音频结束仍以本轮完成为准' },
+    { label: '开始→网关首音频', value: detail.value.ttsFirstAudioMs, note: '网关收到 turn_start → 收到首个回答音频包，包含采集时间；不代表设备扬声器已出声' },
+    { label: '音频输出', value: detail.value.ttsAudioMs, note: '首包 → 音频发送完成；不是等待首声的时间' },
     { label: '本轮总耗时', value: detail.value.totalMs, note: 'turn_start → turn_done' }
   ]
 })
@@ -388,6 +400,7 @@ const questionPlaceholder = (row: CampusEsp32Log) => {
   if (row.status === 'IGNORED' && row.errorCode === 'audio_too_short') return '音频太短，未提交模型'
   if (row.status === 'IGNORED') return '本轮已忽略，未提交模型'
   if (row.asrStatus === 'PENDING') return '正在转写语音…'
+  if (row.asrStatus === 'FAILED' && row.pipelineMode === 'omni-realtime' && row.status === 'COMPLETED') return '旁路日志转写未返回；语音回答已完成'
   if (row.asrStatus === 'FAILED') return '语音转写失败'
   if (row.asrStatus === 'DISABLED') return '未启用语音转写'
   return '暂无用户提问'
@@ -407,20 +420,31 @@ const imagePlaceholder = (row: CampusEsp32Log) => {
 }
 
 type AsrTagType = 'success' | 'warning' | 'danger' | 'info'
-const asrTag = (status: CampusEsp32Log['asrStatus']): AsrTagType => {
+const asrTag = (row: CampusEsp32Log): AsrTagType => {
+  const status = row.asrStatus
   if (status === 'SUCCESS') return 'success'
+  if (status === 'FAILED' && row.pipelineMode === 'omni-realtime' && row.status === 'COMPLETED') return 'warning'
   if (status === 'FAILED') return 'danger'
   if (status === 'PENDING') return 'warning'
   return 'info'
 }
 
-const asrText = (status: CampusEsp32Log['asrStatus']) => {
+const asrText = (row: CampusEsp32Log) => {
+  const status = row.asrStatus
   if (status === 'SUCCESS') return '已转写'
+  if (status === 'FAILED' && row.pipelineMode === 'omni-realtime' && row.status === 'COMPLETED') return '旁路转写未返回（不影响回答）'
   if (status === 'FAILED') return '转写失败'
   if (status === 'PENDING') return '转写中'
   if (status === 'DISABLED') return '未启用'
   if (status === 'SKIPPED') return '未转写'
   return '未开始'
+}
+
+const pipelineText = (mode?: string) => {
+  if (mode === 'omni-realtime') return '实时音频/视觉'
+  if (mode === 'chat') return '旧图文回退'
+  if (mode === 'responses') return 'Responses 回退'
+  return '历史链路未记录'
 }
 
 const formatMs = (value?: number) => value == null ? '-' : `${Math.max(0, Number(value))} ms`
@@ -455,7 +479,7 @@ onMounted(() => void refreshAll())
 .log-hero span { font-size: 10px; letter-spacing: .18em; opacity: .7; }
 .log-hero h1 { margin: 5px 0; font-size: 28px; }
 .log-hero p { margin: 0; opacity: .8; }
-.metric-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 16px; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 16px; }
 .metric-grid article { display: flex; gap: 14px; align-items: center; padding: 18px; background: #fff; border-radius: 16px; box-shadow: 0 8px 24px rgb(39 52 48 / 6%); }
 .metric-grid small, .metric-grid strong { display: block; }
 .metric-grid small { color: #83908d; }

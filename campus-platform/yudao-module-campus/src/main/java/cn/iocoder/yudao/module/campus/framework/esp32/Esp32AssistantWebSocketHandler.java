@@ -43,7 +43,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * ESP32-S3 视听说闭环：设备媒体接入、ASR 转写、模型转发和 TTS PCM 回传。
+ * ESP32-S3 视听说闭环：原生音视频实时模型，或旧版 ASR + 图文模型 + TTS 回退链路。
  */
 @Slf4j
 @Component
@@ -57,6 +57,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     private final DoubaoAsrClient asrClient;
     private final DoubaoTtsClient ttsClient;
     private final GuideModelClient modelClient;
+    private final OmniRealtimeClient omniClient;
     private final CampusEsp32LogService logService;
 
     private final Map<String, DeviceContext> sessions = new ConcurrentHashMap<>();
@@ -82,6 +83,49 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         sessions.put(session.getId(), context);
         log.info("[ESP32_SESSION_OPEN] sessionId={} deviceId={} clientIp={}",
                 session.getId(), deviceId, clientIp);
+        if (properties.isRealtimeProtocol()) {
+            context.omniSession = omniClient.connect(new OmniRealtimeClient.Listener() {
+                @Override
+                public void onReady(String model) {
+                    ObjectNode upstream = JsonUtils.getObjectMapper().createObjectNode();
+                    upstream.put("model", model);
+                    handleModelConnected(context, upstream);
+                }
+
+                @Override
+                public void onUserTranscript(String requestId, String transcript, long elapsedMs) {
+                    Long logId = context.realtimeLogIds.remove(requestId);
+                    mediaExecutor.execute(() -> logService.markRealtimeTranscript(logId, elapsedMs, transcript));
+                }
+
+                @Override
+                public void onAssistantTextDelta(String requestId, String delta) {
+                    handleOmniTextDelta(context, requestId, delta);
+                }
+
+                @Override
+                public void onAssistantTextDone(String requestId, String answer,
+                                                long modelElapsedMs, long firstTokenMs) {
+                    handleOmniTextDone(context, requestId, answer, modelElapsedMs, firstTokenMs);
+                }
+
+                @Override
+                public void onAssistantAudio(String requestId, byte[] pcm) {
+                    handleOmniAudio(context, requestId, pcm);
+                }
+
+                @Override
+                public void onResponseDone(String requestId) {
+                    handleOmniResponseDone(context, requestId);
+                }
+
+                @Override
+                public void onFailure(Throwable throwable) {
+                    handleModelFailure(context, throwable);
+                }
+            });
+            return;
+        }
         context.modelSession = modelClient.connect(new GuideModelClient.ModelEventListener() {
             @Override
             public void onConnected(JsonNode event) {
@@ -117,7 +161,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         if ("turn_start".equals(type)) {
             startTurn(context, event.path("request_id").asText());
         } else if ("turn_commit".equals(type)) {
-            commitTurn(context);
+            commitTurn(context, event);
+        } else if ("turn_metrics".equals(type)) {
+            recordDeviceTurnMetrics(context, event);
         } else if ("turn_cancel".equals(type)) {
             cancelCapture(context, event.path("reason").asText());
         } else if ("interrupt".equals(type)) {
@@ -189,20 +235,42 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             String id = requestId == null || requestId.trim().isEmpty()
                     ? "esp32_turn_" + UUID.randomUUID().toString().replace("-", "")
                     : requestId.trim().substring(0, Math.min(100, requestId.trim().length()));
-            Long logId = logService.startTurn(context.session.getId(), context.deviceId, context.clientIp, id);
+            Long logId = logService.startTurn(context.session.getId(), context.deviceId, context.clientIp, id,
+                    properties.getResolvedModelProtocol(), properties.isRealtimeProtocol()
+                            ? properties.getRealtimeModelName() : properties.getModelName());
             context.turn = new TurnBuffer(id, logId);
-            // 采集一开始就建立流式 ASR：音频边说边转写，commit 后只需等待最终结果。
+            if (logId != null) {
+                context.deviceMetricLogIds.put(id, logId);
+                if (context.deviceMetricLogIds.size() > 16) {
+                    context.deviceMetricLogIds.remove(context.deviceMetricLogIds.keySet().iterator().next());
+                }
+            }
             closeAsrLocked(context);
-            if (properties.isAsrEnabled()) {
+            if (properties.isRealtimeProtocol()) {
+                if (context.omniSession == null || !context.omniSession.beginTurn(id)) {
+                    logService.markFailed(logId, "MODEL_UNAVAILABLE", "实时模型会话不可用", null);
+                    context.turn = null;
+                    sendErrorLocked(context, "MODEL_UNAVAILABLE", "实时模型会话不可用", true, id);
+                    return;
+                }
+                context.realtimeAnswer.setLength(0);
+                context.realtimeModelDone = false;
+                context.ttsFirstAudioAt = 0L;
+                resetAudioPacing(context);
+                if (logId != null) {
+                    context.realtimeLogIds.put(id, logId);
+                }
+            } else if (properties.isAsrEnabled()) {
+                // 旧图文链路仍在采集期间并行喂流式 ASR。
                 context.asrStream = asrClient.startStream();
             }
             setStateLocked(context, DeviceState.CAPTURING, id, "正在聆听");
             sendJsonLocked(context, event("turn_ready", "request_id", id));
             // 启动静音自动提交兜底：到点后若检测到持续静音就主动 commitTurn。
-            if (properties.getSilenceCommitMillis() > 0) {
+            if (silenceCommitMillis() > 0) {
                 context.turn.silenceCheckFuture = scheduler.schedule(
                         () -> runSilenceCheck(context),
-                        properties.getSilenceCommitMillis(), TimeUnit.MILLISECONDS);
+                        silenceCommitMillis(), TimeUnit.MILLISECONDS);
             }
         }
     }
@@ -228,10 +296,16 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         // 每收到一帧就做能量检测；只有检测到语音才重置静音计时。
         // 静音帧仍持续上行时，反复重置任务会让兜底永远无法触发。
         detectSilenceAndReschedule(context, payload);
-        // 实时喂给流式 ASR；会话不存在或已失败时静默跳过，commit 时走批处理兜底。
-        DoubaoAsrClient.AsrStream stream = context.asrStream;
-        if (stream != null) {
-            stream.appendAudio(payload);
+        if (properties.isRealtimeProtocol()) {
+            if (context.omniSession == null || !context.omniSession.appendAudio(payload)) {
+                handleModelFailure(context, new IllegalStateException("实时模型音频流发送失败"));
+            }
+        } else {
+            // 旧图文链路实时喂给 ASR；commit 时等待最终转写。
+            DoubaoAsrClient.AsrStream stream = context.asrStream;
+            if (stream != null) {
+                stream.appendAudio(payload);
+            }
         }
     }
 
@@ -241,7 +315,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
         int threshold = properties.getSilenceEnergyThreshold();
-        long commitMillis = properties.getSilenceCommitMillis();
+        long commitMillis = silenceCommitMillis();
         boolean hasSpeech = false;
         if (threshold > 0 && payload.length >= 2) {
             int max = 0;
@@ -260,6 +334,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
         }
         if (hasSpeech) {
+            turn.speechDetected = true;
             turn.lastSpeechAtNanos = System.nanoTime();
         }
         if (commitMillis <= 0) {
@@ -278,6 +353,14 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 Math.max(0L, commitMillis - silenceMs), TimeUnit.MILLISECONDS);
     }
 
+    private long silenceCommitMillis() {
+        long configured = properties.getSilenceCommitMillis();
+        // 实时链路以设备端 700 ms 静音判定和提交前末张抓拍为准。网关只做较晚的
+        // 故障兜底，避免抢先 commit 导致最新一张图落在模型提交之后。
+        return properties.isRealtimeProtocol() && configured > 0
+                ? Math.max(3500L, configured) : configured;
+    }
+
     static boolean shouldScheduleSilenceCheck(boolean hasSpeech, ScheduledFuture<?> current) {
         return hasSpeech || current == null || current.isDone();
     }
@@ -289,7 +372,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                     || context.state != DeviceState.CAPTURING) {
                 return;
             }
-            long commitMillis = properties.getSilenceCommitMillis();
+            long commitMillis = silenceCommitMillis();
             if (commitMillis <= 0) {
                 return;
             }
@@ -298,7 +381,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             if (silenceMs < commitMillis) {
                 return;
             }
-            if (turn.pcm.size() < Esp32ProtocolUtils.MIN_AUDIO_BYTES) {
+            if (!turn.speechDetected || turn.pcm.size() < Esp32ProtocolUtils.MIN_AUDIO_BYTES) {
                 // 还没攒到最小音频量（用户可能只是按了按钮没说话），不主动 commit，
                 // 让原本的设备端 turn_commit 或最大时长限制来收尾。
                 return;
@@ -311,7 +394,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             committed.put("reason", "silence");
             committed.put("silence_ms", silenceMs);
             sendJsonLocked(context, committed);
-            commitTurn(context);
+            commitTurn(context, null);
         }
     }
 
@@ -344,15 +427,32 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                     turn.requestId);
             return;
         }
+        byte[] modelImage = null;
+        if (properties.isRealtimeProtocol()) {
+            modelImage = prepareRealtimeImage(payload);
+            if (modelImage == null) {
+                sendErrorLocked(context, "IMAGE_TOO_LARGE_FOR_MODEL",
+                        "图片压缩后仍超过实时模型单帧上限", false, turn.requestId);
+                return;
+            }
+        }
+        if (modelImage != null) {
+            if (context.omniSession == null || !context.omniSession.appendImage(modelImage)) {
+                handleModelFailure(context, new IllegalStateException("实时模型图片流发送失败"));
+                return;
+            }
+        }
         turn.images.add(payload);
         Map<String, Object> received = event("image_received", "request_id", turn.requestId);
         received.put("count", turn.images.size());
         sendJsonLocked(context, received);
     }
 
-    private void commitTurn(DeviceContext context) {
+    private void commitTurn(DeviceContext context, JsonNode commitEvent) {
         TurnData turn;
         DoubaoAsrClient.AsrStream asrStream;
+        Long speechEndMs = optionalNonNegativeLong(commitEvent, "speech_end_ms");
+        Long speechEndToCommitMs = optionalNonNegativeLong(commitEvent, "speech_end_to_commit_ms");
         synchronized (context.lock) {
             asrStream = null;
             if (context.turn == null || context.state != DeviceState.CAPTURING) {
@@ -364,6 +464,10 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             if (turn.pcm.length < Esp32ProtocolUtils.MIN_AUDIO_BYTES) {
                 logService.markIgnored(turn.logId, turn.pcm.length, turn.images.size(), "audio_too_short");
                 closeAsrLocked(context);
+                if (context.omniSession != null) {
+                    context.omniSession.interrupt();
+                }
+                finishRealtimeTranscript(context, turn.requestId, true);
                 Map<String, Object> ignored = event("turn_ignored", "request_id", turn.requestId);
                 ignored.put("reason", "audio_too_short");
                 sendJsonLocked(context, ignored);
@@ -383,6 +487,23 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             context.asrStream = null;
         }
         long captureMs = elapsedMillis(turn.startedAt);
+        if (properties.isRealtimeProtocol()) {
+            mediaExecutor.execute(() -> logService.saveImages(turn.logId, turn.images));
+            long submitStartedAt = System.nanoTime();
+            if (context.omniSession == null || !context.omniSession.commit()) {
+                if (context.omniSession != null) {
+                    context.omniSession.interrupt();
+                }
+                finishRealtimeTranscript(context, turn.requestId, false);
+                handleModelFailure(context, new IllegalStateException("实时模型输入提交失败"));
+                return;
+            }
+            logService.markSubmitted(turn.logId, turn.pcm.length, turn.images.size(), captureMs,
+                    elapsedMillis(submitStartedAt), speechEndMs, speechEndToCommitMs);
+            log.info("[ESP32_OMNI_TURN_SUBMITTED] deviceId={} requestId={} audioBytes={} imageCount={} captureMs={}",
+                    context.deviceId, turn.requestId, turn.pcm.length, turn.images.size(), captureMs);
+            return;
+        }
         byte[] wav = Esp32ProtocolUtils.pcm16LeToWav(
                 turn.pcm, Esp32ProtocolUtils.INPUT_SAMPLE_RATE);
 
@@ -396,7 +517,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         // 当前 Turbo 图文模型不接受设备音频，必须先转写，再提交“文字 + 图片”。
         if (properties.isAsrEnabled()) {
             final DoubaoAsrClient.AsrStream stream = asrStream;
-            mediaExecutor.execute(() -> transcribeAndSubmit(context, turn, wav, captureMs, stream));
+            mediaExecutor.execute(() -> transcribeAndSubmit(context, turn, wav, captureMs, stream,
+                    speechEndMs, speechEndToCommitMs));
         } else {
             logService.markAsrDisabled(turn.logId);
             failBeforeModel(context, turn, "ASR_DISABLED", "当前模型需要先开启语音转写");
@@ -443,7 +565,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     private void transcribeAndSubmit(DeviceContext context, TurnData turn, byte[] wav, long captureMs,
-                                     DoubaoAsrClient.AsrStream asrStream) {
+                                     DoubaoAsrClient.AsrStream asrStream,
+                                     Long speechEndMs, Long speechEndToCommitMs) {
         long startedAt = System.nanoTime();
         String transcript;
         try {
@@ -498,7 +621,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             return;
         }
         long submitMs = elapsedMillis(submitStartedAt);
-        logService.markSubmitted(turn.logId, turn.pcm.length, turn.images.size(), captureMs, submitMs);
+        logService.markSubmitted(turn.logId, turn.pcm.length, turn.images.size(), captureMs, submitMs,
+                speechEndMs, speechEndToCommitMs);
         log.info("[ESP32_TURN_SUBMITTED] deviceId={} requestId={} audioBytes={} imageCount={} submitMs={}",
                 context.deviceId, turn.requestId, turn.pcm.length, turn.images.size(),
                 submitMs);
@@ -761,9 +885,125 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             logService.markIgnored(context.turn.logId, context.turn.pcm.size(), context.turn.images.size(),
                     logReason);
             closeAsrLocked(context);
+            if (context.omniSession != null) {
+                context.omniSession.interrupt();
+            }
+            finishRealtimeTranscript(context, requestId, true);
             context.turn = null;
             setStateLocked(context, DeviceState.LISTENING, requestId,
                     "已取消，请重新提问");
+        }
+    }
+
+    private void handleOmniTextDelta(DeviceContext context, String requestId, String delta) {
+        synchronized (context.lock) {
+            if (!requestId.equals(context.activeRequestId)
+                    || context.interruptedRequests.contains(requestId) || delta == null || delta.isEmpty()) {
+                return;
+            }
+            context.realtimeAnswer.append(delta);
+            sendJsonLocked(context, event("text_delta", "request_id", requestId, "text", delta));
+        }
+    }
+
+    private void handleOmniTextDone(DeviceContext context, String requestId, String answer,
+                                    long modelElapsedMs, long firstTokenMs) {
+        synchronized (context.lock) {
+            if (!requestId.equals(context.activeRequestId)
+                    || context.interruptedRequests.contains(requestId) || context.realtimeModelDone) {
+                return;
+            }
+            String finalAnswer = answer == null || answer.isEmpty()
+                    ? context.realtimeAnswer.toString() : answer;
+            context.realtimeModelDone = true;
+            sendJsonLocked(context, event("text_done", "request_id", requestId, "text", finalAnswer));
+            logService.markModelDone(context.activeLogId, modelElapsedMs, firstTokenMs, finalAnswer);
+        }
+    }
+
+    private void handleOmniAudio(DeviceContext context, String requestId, byte[] pcm) {
+        if (pcm == null || pcm.length == 0) {
+            return;
+        }
+        synchronized (context.lock) {
+            if (!requestId.equals(context.activeRequestId)
+                    || context.interruptedRequests.contains(requestId)) {
+                return;
+            }
+            if (context.ttsFirstAudioAt == 0L) {
+                Map<String, Object> start = event("audio_start", "request_id", requestId);
+                start.put("format", "pcm_s16le");
+                start.put("sample_rate", Esp32ProtocolUtils.OUTPUT_SAMPLE_RATE);
+                start.put("channels", 1);
+                sendJsonLocked(context, start);
+                context.ttsFirstAudioAt = System.nanoTime();
+                setStateLocked(context, DeviceState.SPEAKING, requestId, "AI 正在回答");
+                logService.markTtsFirstAudio(context.activeLogId,
+                        TimeUnit.NANOSECONDS.toMillis(context.ttsFirstAudioAt - context.turnStartedAt));
+            }
+            sendPacedAudioLocked(context, pcm);
+        }
+    }
+
+    private void handleOmniResponseDone(DeviceContext context, String requestId) {
+        boolean completedWithAudio = false;
+        synchronized (context.lock) {
+            if (!requestId.equals(context.activeRequestId)
+                    || context.interruptedRequests.contains(requestId)) {
+                return;
+            }
+            if (!context.realtimeModelDone) {
+                handleOmniTextDone(context, requestId, context.realtimeAnswer.toString(), 0L, 0L);
+            }
+            if (context.ttsFirstAudioAt == 0L) {
+                logService.markFailed(context.activeLogId, "MODEL_AUDIO_EMPTY", "实时模型没有返回音频",
+                        elapsedMillis(context.turnStartedAt));
+                sendErrorLocked(context, "MODEL_AUDIO_EMPTY", "没有收到语音回答，请再试一次", true, requestId);
+                sendJsonLocked(context, event("turn_done", "request_id", requestId));
+                context.activeRequestId = "";
+                context.activeLogId = null;
+                setStateLocked(context, DeviceState.LISTENING, requestId, "请再说一次");
+            } else {
+                sendJsonLocked(context, event("audio_done", "request_id", requestId));
+                sendJsonLocked(context, event("turn_done", "request_id", requestId));
+                long totalMs = elapsedMillis(context.turnStartedAt);
+                logService.markCompleted(context.activeLogId, totalMs,
+                        elapsedMillis(context.ttsFirstAudioAt));
+                context.activeLogId = null;
+                setStateLocked(context, DeviceState.COOLDOWN, requestId, "即将恢复聆听");
+                completedWithAudio = true;
+            }
+        }
+        scheduler.schedule(() -> finishRealtimeTranscript(context, requestId, false),
+                15, TimeUnit.SECONDS);
+        if (!completedWithAudio) {
+            return;
+        }
+        scheduler.schedule(() -> {
+            synchronized (context.lock) {
+                if (context.state != DeviceState.COOLDOWN
+                        || !requestId.equals(context.activeRequestId)) {
+                    return;
+                }
+                context.activeRequestId = "";
+                setStateLocked(context, DeviceState.LISTENING, requestId, "可以提问了");
+            }
+        }, Math.max(0, properties.getCooldownMillis()), TimeUnit.MILLISECONDS);
+    }
+
+    /** 结束仍在等待的旁路转写；该状态不改变实时模型回答是否成功。 */
+    private void finishRealtimeTranscript(DeviceContext context, String requestId, boolean skipped) {
+        if (requestId == null || requestId.isEmpty()) {
+            return;
+        }
+        Long pendingLogId = context.realtimeLogIds.remove(requestId);
+        if (pendingLogId == null) {
+            return;
+        }
+        if (skipped) {
+            logService.markRealtimeTranscriptSkipped(pendingLogId);
+        } else {
+            logService.markRealtimeTranscriptUnavailable(pendingLogId);
         }
     }
 
@@ -774,18 +1014,28 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
 
     private void interrupt(DeviceContext context, String requestedId) {
         synchronized (context.lock) {
+            String fallbackRequestId = !context.activeRequestId.isEmpty()
+                    ? context.activeRequestId : context.turn == null ? "" : context.turn.requestId;
             String requestId = requestedId == null || requestedId.trim().isEmpty()
-                    ? context.activeRequestId : requestedId.trim();
+                    ? fallbackRequestId : requestedId.trim();
             if (!requestId.isEmpty()) {
                 context.interruptedRequests.add(requestId);
                 if (context.modelSession != null) {
                     context.modelSession.send(event("interrupt", "request_id", requestId));
                 }
+                if (context.omniSession != null) {
+                    context.omniSession.interrupt();
+                }
+                finishRealtimeTranscript(context, requestId, true);
             }
             closeTtsLocked(context);
             closeAsrLocked(context);
-            logService.markInterrupted(context.activeLogId, context.turnStartedAt > 0
-                    ? elapsedMillis(context.turnStartedAt) : null);
+            Long interruptedLogId = context.activeLogId != null ? context.activeLogId
+                    : context.turn == null ? null : context.turn.logId;
+            long interruptedStartedAt = context.turnStartedAt > 0 ? context.turnStartedAt
+                    : context.turn == null ? 0L : context.turn.startedAt;
+            logService.markInterrupted(interruptedLogId, interruptedStartedAt > 0
+                    ? elapsedMillis(interruptedStartedAt) : null);
             context.activeRequestId = "";
             context.activeLogId = null;
             context.turn = null;
@@ -797,11 +1047,32 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
+    private void recordDeviceTurnMetrics(DeviceContext context, JsonNode event) {
+        String requestId = event.path("request_id").asText("");
+        Long firstAudioReceivedMs = optionalNonNegativeLong(event, "first_audio_received_ms");
+        Long firstPlaybackMs = optionalNonNegativeLong(event, "first_i2s_write_ms");
+        synchronized (context.lock) {
+            Long logId = context.deviceMetricLogIds.get(requestId);
+            if (requestId.isEmpty() || logId == null) {
+                return;
+            }
+            logService.markDevicePlaybackMetrics(logId,
+                    firstAudioReceivedMs, firstPlaybackMs);
+        }
+    }
+
     private void ping(DeviceContext context, JsonNode event) {
         Map<String, Object> ping = new LinkedHashMap<>();
         ping.put("type", "ping");
         if (event.has("timestamp")) {
             ping.put("timestamp", event.get("timestamp").asLong());
+        }
+        if (properties.isRealtimeProtocol()) {
+            ping.put("type", "pong");
+            synchronized (context.lock) {
+                sendJsonLocked(context, ping);
+            }
+            return;
         }
         if (context.modelSession == null || !context.modelSession.send(ping)) {
             ping.put("type", "pong");
@@ -818,6 +1089,10 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         log.warn("[ESP32_MODEL_FAILED] deviceId={} sessionId={}",
                 context.deviceId, context.session.getId(), throwable);
         synchronized (context.lock) {
+            for (Long pendingLogId : context.realtimeLogIds.values()) {
+                logService.markRealtimeTranscriptUnavailable(pendingLogId);
+            }
+            context.realtimeLogIds.clear();
             logService.markFailed(context.activeLogId, "MODEL_FAILED", "模型服务暂时不可用",
                     context.turnStartedAt > 0 ? elapsedMillis(context.turnStartedAt) : null);
             sendErrorLocked(context, "GATEWAY_ERROR", "模型服务暂时不可用", true,
@@ -1033,6 +1308,62 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         return event;
     }
 
+    /** Omni Realtime 单帧 Base64 最多 256 KB，原始 JPEG 留余量控制在 180 KiB 内。 */
+    private byte[] prepareRealtimeImage(byte[] jpeg) {
+        final int maxRawBytes = 180 * 1024;
+        byte[] candidate = downscaleForModel(jpeg);
+        if (candidate.length <= maxRawBytes) {
+            return candidate;
+        }
+        try {
+            BufferedImage source = ImageIO.read(new ByteArrayInputStream(candidate));
+            if (source == null) {
+                return null;
+            }
+            int longest = Math.max(source.getWidth(), source.getHeight());
+            for (int edge : new int[]{Math.min(longest, 640), 480, 320}) {
+                if (edge <= 0 || edge > longest) {
+                    continue;
+                }
+                double scale = (double) edge / longest;
+                int width = Math.max(1, (int) Math.round(source.getWidth() * scale));
+                int height = Math.max(1, (int) Math.round(source.getHeight() * scale));
+                BufferedImage scaled = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+                Graphics2D graphics = scaled.createGraphics();
+                graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                graphics.drawImage(source, 0, 0, width, height, null);
+                graphics.dispose();
+                for (float quality : new float[]{0.75f, 0.60f, 0.45f}) {
+                    ImageWriter writer = ImageIO.getImageWritersByFormatName("jpeg").next();
+                    ImageWriteParam param = writer.getDefaultWriteParam();
+                    param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                    param.setCompressionQuality(quality);
+                    ByteArrayOutputStream output = new ByteArrayOutputStream();
+                    try (ImageOutputStream stream = ImageIO.createImageOutputStream(output)) {
+                        writer.setOutput(stream);
+                        writer.write(null, new IIOImage(scaled, null, null), param);
+                    } finally {
+                        writer.dispose();
+                    }
+                    if (output.size() <= maxRawBytes) {
+                        return output.toByteArray();
+                    }
+                }
+            }
+        } catch (Exception exception) {
+            log.warn("[ESP32_OMNI_IMAGE_COMPRESS_FAILED] bytes={}", jpeg.length, exception);
+        }
+        return null;
+    }
+
+    private static Map<String, Object> event(String type, String firstKey, Object firstValue,
+                                              String secondKey, Object secondValue) {
+        Map<String, Object> event = event(type, firstKey, firstValue);
+        event.put(secondKey, secondValue);
+        return event;
+    }
+
     private static Map<String, Object> mediaDescription(Integer prefix, String format,
                                                          int sampleRate) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -1054,6 +1385,14 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             return null;
         }
         return value.asLong();
+    }
+
+    private static Long optionalNonNegativeLong(JsonNode event, String field) {
+        if (event == null || !event.has(field) || !event.get(field).canConvertToLong()) {
+            return null;
+        }
+        long value = event.get(field).asLong();
+        return value < 0 ? null : value;
     }
 
     private static String abbreviate(String value, int maxLength) {
@@ -1080,6 +1419,13 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             if (context.modelSession != null) {
                 context.modelSession.close();
             }
+            if (context.omniSession != null) {
+                context.omniSession.close();
+            }
+            for (Long pendingLogId : context.realtimeLogIds.values()) {
+                logService.markRealtimeTranscriptUnavailable(pendingLogId);
+            }
+            context.realtimeLogIds.clear();
         }
         AtomicInteger count = activeIps.get(context.clientIp);
         if (count != null && count.decrementAndGet() <= 0) {
@@ -1096,6 +1442,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 closeTtsLocked(context);
                 if (context.modelSession != null) {
                     context.modelSession.close();
+                }
+                if (context.omniSession != null) {
+                    context.omniSession.close();
                 }
             }
         }
@@ -1125,14 +1474,20 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private final String clientIp;
         private final Set<String> interruptedRequests = ConcurrentHashMap.newKeySet();
         private final StringBuilder pendingTtsText = new StringBuilder();
+        private final StringBuilder realtimeAnswer = new StringBuilder();
+        private final Map<String, Long> realtimeLogIds = new ConcurrentHashMap<>();
+        /** 设备首播遥测可能在模型完成事件之后到达，保留少量近期请求的日志映射。 */
+        private final Map<String, Long> deviceMetricLogIds = new LinkedHashMap<>();
         private DeviceState state = DeviceState.CONNECTING;
         private TurnBuffer turn;
         private GuideModelClient.ModelSession modelSession;
+        private OmniRealtimeClient.Session omniSession;
         private DoubaoTtsClient.TtsStream tts;
         private String ttsRequestId = "";
         private String activeRequestId = "";
         private boolean ttsFirstAudio;
         private boolean ttsHasText;
+        private boolean realtimeModelDone;
         /** 本轮的 audio_start 是否已经发给设备。 */
         private boolean ttsAnnounced;
         private DoubaoAsrClient.AsrStream asrStream;
@@ -1159,6 +1514,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private final List<byte[]> images = new ArrayList<>();
         /** 本轮最后一次检测到语音（能量 ≥ 阈值）的时间，用于服务端静音自动提交。 */
         private long lastSpeechAtNanos = startedAt;
+        /** 至少检测到过一次有效语音；纯静音永不由网关兜底抢先提交。 */
+        private boolean speechDetected;
         /** 是否已经因为持续静音触发过自动提交，防止反复 commitTurn。 */
         private boolean silenceCommitted;
         /** 静音检查的延迟任务，收到新音频或结束采集时会重新挂或取消。 */

@@ -36,25 +36,32 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
     }
 
     @Override
-    public Long startTurn(String sessionId, String deviceId, String clientIp, String requestId) {
+    public Long startTurn(String sessionId, String deviceId, String clientIp, String requestId,
+                          String pipelineMode, String modelName) {
         return safe(() -> {
             MapSqlParameterSource params = new MapSqlParameterSource()
                     .addValue("sessionId", limit(sessionId, 64))
                     .addValue("deviceId", limit(deviceId, 64))
                     .addValue("clientIp", limit(clientIp, 64))
-                    .addValue("requestId", limit(requestId, 100));
+                    .addValue("requestId", limit(requestId, 100))
+                    .addValue("pipelineMode", limit(pipelineMode, 24))
+                    .addValue("modelName", limit(modelName, 128));
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbcTemplate.update("INSERT INTO " + TABLE
                             + " (session_id, device_id, request_id, client_ip, status, content_recorded,"
-                            + " asr_status, question_text, answer_text, creator, updater, tenant_id)"
+                            + " asr_status, question_text, answer_text, pipeline_mode, model_name,"
+                            + " creator, updater, tenant_id)"
                             + " VALUES (:sessionId, :deviceId, :requestId, :clientIp, 'CAPTURING', b'1',"
-                            + " 'PENDING', NULL, NULL, '', '', 0)"
+                            + " 'PENDING', NULL, NULL, :pipelineMode, :modelName, '', '', 0)"
                             + " ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), status = 'CAPTURING',"
                             + " audio_bytes = 0, image_count = 0, capture_ms = NULL, submit_ms = NULL,"
                             + " asr_ms = NULL, model_first_token_ms = NULL, model_total_ms = NULL,"
                             + " tts_first_audio_ms = NULL, tts_audio_ms = NULL, total_ms = NULL,"
+                            + " speech_end_ms = NULL, speech_end_to_commit_ms = NULL,"
+                            + " device_first_audio_ms = NULL, device_first_playback_ms = NULL,"
                             + " error_code = NULL, error_message = NULL, content_recorded = b'1',"
                             + " asr_status = 'PENDING', question_text = NULL, answer_text = NULL,"
+                            + " pipeline_mode = :pipelineMode, model_name = :modelName,"
                             + " update_time = NOW(), deleted = b'0'",
                     params, keyHolder, new String[]{"id"});
             Number key = keyHolder.getKey();
@@ -63,13 +70,25 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
     }
 
     @Override
-    public void markSubmitted(Long logId, int audioBytes, int imageCount, long captureMs, long submitMs) {
+    public void markSubmitted(Long logId, int audioBytes, int imageCount, long captureMs, long submitMs,
+                              Long speechEndMs, Long speechEndToCommitMs) {
         update(logId, "status = 'SUBMITTED', audio_bytes = :audioBytes, image_count = :imageCount,"
-                        + " capture_ms = :captureMs, submit_ms = :submitMs",
+                        + " capture_ms = :captureMs, submit_ms = :submitMs,"
+                        + " speech_end_ms = :speechEndMs, speech_end_to_commit_ms = :speechEndToCommitMs",
                 new MapSqlParameterSource("audioBytes", Math.max(0, audioBytes))
                         .addValue("imageCount", Math.max(0, imageCount))
                         .addValue("captureMs", nonNegative(captureMs))
-                        .addValue("submitMs", nonNegative(submitMs)));
+                        .addValue("submitMs", nonNegative(submitMs))
+                        .addValue("speechEndMs", nullableNonNegative(speechEndMs))
+                        .addValue("speechEndToCommitMs", nullableNonNegative(speechEndToCommitMs)));
+    }
+
+    @Override
+    public void markDevicePlaybackMetrics(Long logId, Long firstAudioReceivedMs, Long firstPlaybackMs) {
+        update(logId, "device_first_audio_ms = :firstAudioReceivedMs,"
+                        + " device_first_playback_ms = :firstPlaybackMs",
+                new MapSqlParameterSource("firstAudioReceivedMs", nullableNonNegative(firstAudioReceivedMs))
+                        .addValue("firstPlaybackMs", nullableNonNegative(firstPlaybackMs)));
     }
 
     @Override
@@ -89,6 +108,30 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                             + " error_code = COALESCE(error_code, 'ASR_FAILED')",
                     new MapSqlParameterSource("asrMs", nonNegative(asrMs)));
         }
+    }
+
+    @Override
+    public void markRealtimeTranscript(Long logId, long asrMs, String questionText) {
+        boolean success = questionText != null && !questionText.trim().isEmpty();
+        update(logId, "asr_ms = :asrMs, asr_status = :asrStatus, content_recorded = b'1',"
+                        + " question_text = :questionText",
+                new MapSqlParameterSource("asrMs", nonNegative(asrMs))
+                        .addValue("asrStatus", success ? "SUCCESS" : "FAILED")
+                        .addValue("questionText", success ? limitText(questionText) : null));
+    }
+
+    @Override
+    public void markRealtimeTranscriptUnavailable(Long logId) {
+        update(logId, "asr_status = CASE WHEN asr_status = 'PENDING' THEN 'FAILED' ELSE asr_status END,"
+                        + " content_recorded = b'1'",
+                new MapSqlParameterSource());
+    }
+
+    @Override
+    public void markRealtimeTranscriptSkipped(Long logId) {
+        update(logId, "asr_status = CASE WHEN asr_status = 'PENDING' THEN 'SKIPPED' ELSE asr_status END,"
+                        + " content_recorded = b'1'",
+                new MapSqlParameterSource());
     }
 
     @Override
@@ -254,6 +297,9 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                 + " ROUND(AVG(CASE WHEN capture_ms IS NOT NULL AND tts_first_audio_ms IS NOT NULL"
                 + " THEN GREATEST(tts_first_audio_ms - capture_ms, 0) ELSE NULL END), 0)"
                 + " AS averageCommitToFirstAudioMs,"
+                + " ROUND(AVG(CASE WHEN speech_end_ms IS NOT NULL AND device_first_playback_ms IS NOT NULL"
+                + " THEN GREATEST(device_first_playback_ms - speech_end_ms, 0) ELSE NULL END), 0)"
+                + " AS averageSpeechEndToPlaybackMs,"
                 + " ROUND(AVG(model_total_ms), 0) AS averageModelMs, MAX(create_time) AS lastTime"
                 + " FROM " + TABLE + where, params), fallback);
     }
@@ -303,6 +349,13 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                 + " CASE WHEN capture_ms IS NOT NULL AND tts_first_audio_ms IS NOT NULL"
                 + " THEN GREATEST(tts_first_audio_ms - capture_ms, 0) ELSE NULL END"
                 + " AS commitToFirstAudioMs,"
+                + " speech_end_ms AS speechEndMs, speech_end_to_commit_ms AS speechEndToCommitMs,"
+                + " device_first_audio_ms AS deviceFirstAudioMs,"
+                + " device_first_playback_ms AS deviceFirstPlaybackMs,"
+                + " CASE WHEN speech_end_ms IS NOT NULL AND device_first_playback_ms IS NOT NULL"
+                + " THEN GREATEST(device_first_playback_ms - speech_end_ms, 0) ELSE NULL END"
+                + " AS speechEndToPlaybackMs,"
+                + " pipeline_mode AS pipelineMode, model_name AS modelName,"
                 + " model_first_token_ms AS modelFirstTokenMs, model_total_ms AS modelTotalMs,"
                 + " tts_first_audio_ms AS ttsFirstAudioMs, tts_audio_ms AS ttsAudioMs, total_ms AS totalMs,"
                 + " error_code AS errorCode, error_message AS errorMessage, create_time AS createTime,"

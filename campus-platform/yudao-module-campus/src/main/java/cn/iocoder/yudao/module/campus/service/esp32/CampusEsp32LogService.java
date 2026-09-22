@@ -8,9 +8,14 @@ import java.util.Map;
 
 public interface CampusEsp32LogService {
 
-    Long startTurn(String sessionId, String deviceId, String clientIp, String requestId);
+    Long startTurn(String sessionId, String deviceId, String clientIp, String requestId,
+                   String pipelineMode, String modelName);
 
-    void markSubmitted(Long logId, int audioBytes, int imageCount, long captureMs, long submitMs);
+    void markSubmitted(Long logId, int audioBytes, int imageCount, long captureMs, long submitMs,
+                       Long speechEndMs, Long speechEndToCommitMs);
+
+    /** 设备实测的首包接收与首个 I2S 写入时刻（均相对本轮开始）。 */
+    void markDevicePlaybackMetrics(Long logId, Long firstAudioReceivedMs, Long firstPlaybackMs);
 
     void markAsr(Long logId, long asrMs, boolean success);
 
@@ -18,6 +23,15 @@ public interface CampusEsp32LogService {
      * 记录 ASR 结果。问题文本只写入受权限保护的后台日志，不通过设备协议回传。
      */
     void markAsr(Long logId, long asrMs, boolean success, String questionText);
+
+    /** 原生实时模型的旁路转写；失败不影响已成功的回答。 */
+    void markRealtimeTranscript(Long logId, long asrMs, String questionText);
+
+    /** 转写事件长时间未返回时结束日志等待，不改变回答状态。 */
+    void markRealtimeTranscriptUnavailable(Long logId);
+
+    /** 轮次被取消或中断时停止等待旁路转写。 */
+    void markRealtimeTranscriptSkipped(Long logId);
 
     void markAsrDisabled(Long logId);
 

@@ -31,11 +31,18 @@ export interface CampusEsp32Log {
   imageCount: number
   contentRecorded: boolean
   storedImageCount: number
+  pipelineMode?: 'omni-realtime' | 'chat' | 'responses' | string
+  modelName?: string | null
   questionText?: string | null
   answerText?: string | null
   asrStatus?: CampusEsp32AsrStatus | null
   captureMs?: number
   commitToFirstAudioMs?: number
+  speechEndMs?: number
+  speechEndToCommitMs?: number
+  deviceFirstAudioMs?: number
+  deviceFirstPlaybackMs?: number
+  speechEndToPlaybackMs?: number
   submitMs?: number
   asrMs?: number
   modelFirstTokenMs?: number
@@ -70,6 +77,7 @@ export interface CampusEsp32LogSummary {
   averageTotalMs?: number
   averageFirstAudioMs?: number
   averageCommitToFirstAudioMs?: number
+  averageSpeechEndToPlaybackMs?: number
   averageModelMs?: number
   lastTime?: string | number
 }
