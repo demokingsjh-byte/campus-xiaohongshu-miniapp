@@ -370,8 +370,10 @@ campus:
     # 设备启动采集后未上传有效语音时自动释放，避免卡死后续对话。
     no-speech-capture-timeout-millis: ${CAMPUS_ESP32_NO_SPEECH_CAPTURE_TIMEOUT_MILLIS:8000}
     max-connections-per-ip: 20
-    # 冷却须覆盖设备侧约 1.2 秒的缓冲尾音，避免边放音边收音。
+    # 旧固件仍使用固定冷却；新固件以实际播放完成回执恢复监听。
     cooldown-millis: ${CAMPUS_ESP32_COOLDOWN_MILLIS:1250}
+    # 协商 playback_finished 的设备等待回执，缺失时有界释放（实际下限 10 秒）。
+    playback-finished-timeout-millis: ${CAMPUS_ESP32_PLAYBACK_FINISHED_TIMEOUT_MILLIS:15000}
     output-audio-chunk-bytes: 1920
     # 音频下发速率上限（相对实时的百分比）：必须 >100 才能在设备侧建立播放缓冲。
     playback-pace-percent: ${CAMPUS_ESP32_AUDIO_PACE_PERCENT:300}

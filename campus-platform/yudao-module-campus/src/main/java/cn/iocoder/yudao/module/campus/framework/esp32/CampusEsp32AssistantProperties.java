@@ -39,6 +39,8 @@ public class CampusEsp32AssistantProperties {
      * 冷却必须覆盖这段尾音，否则设备可能在自己的播报声里打开麦克风（自激）。
      */
     private int cooldownMillis = 1250;
+    /** 支持播放完成回执的设备超过此时长仍未确认时恢复聆听；至少保留 10 秒保护。 */
+    private int playbackFinishedTimeoutMillis = 15000;
     private int outputAudioChunkBytes = 1920;
     /**
      * 音频下发速率上限（相对实时的百分比）。≥100 才能在设备侧建立播放缓冲；

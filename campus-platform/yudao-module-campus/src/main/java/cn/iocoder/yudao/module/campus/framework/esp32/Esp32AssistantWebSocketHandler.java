@@ -169,13 +169,16 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }
         String type = event.path("type").asText();
         if ("turn_start".equals(type)) {
-            startTurn(context, event.path("request_id").asText());
+            startTurn(context, event.path("request_id").asText(),
+                    event.path("playback_finished").asBoolean(false));
         } else if ("turn_commit".equals(type)) {
             commitTurn(context, event);
         } else if ("turn_metrics".equals(type)) {
             recordDeviceTurnMetrics(context, event);
+        } else if ("playback_finished".equals(type)) {
+            playbackFinished(context, event.path("request_id").asText());
         } else if ("turn_cancel".equals(type)) {
-            cancelCapture(context, event.path("reason").asText());
+            cancelCapture(context, event.path("request_id").asText(), event.path("reason").asText());
         } else if ("interrupt".equals(type)) {
             interrupt(context, event.path("request_id").asText());
         } else if ("ping".equals(type)) {
@@ -219,6 +222,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             connected.put("device_id", context.deviceId);
             connected.put("protocol_version", "esp32-av/1.0");
             connected.put("mode", "half_duplex");
+            Map<String, Object> features = new LinkedHashMap<>();
+            features.put("playback_finished", true);
+            connected.put("features", features);
             connected.put("model", upstream.path("model").asText(null));
             connected.put("input_audio", mediaDescription(1, "pcm_s16le",
                     Esp32ProtocolUtils.INPUT_SAMPLE_RATE));
@@ -234,21 +240,47 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    private void startTurn(DeviceContext context, String requestId) {
+    private void startTurn(DeviceContext context, String requestId, boolean playbackFinishedAckEnabled) {
         synchronized (context.lock) {
-            if (context.state != DeviceState.LISTENING || context.turn != null) {
-                Map<String, Object> busy = event("busy", "state", context.state.value);
-                busy.put("msg", "当前轮次尚未结束");
-                sendJsonLocked(context, busy);
-                return;
-            }
             String id = requestId == null || requestId.trim().isEmpty()
                     ? "esp32_turn_" + UUID.randomUUID().toString().replace("-", "")
                     : requestId.trim().substring(0, Math.min(100, requestId.trim().length()));
-            Long logId = logService.startTurn(context.session.getId(), context.deviceId, context.clientIp, id,
-                    properties.getResolvedModelProtocol(), properties.isRealtimeProtocol()
-                            ? properties.getRealtimeModelName() : properties.getModelName());
+            if (context.state != DeviceState.LISTENING || context.turn != null) {
+                sendBusyLocked(context, id, "当前轮次尚未结束");
+                return;
+            }
+            if (properties.isRealtimeProtocol()) {
+                if (context.omniSession == null || !context.omniSession.isReady()) {
+                    // 不让设备进入采集但网关没有上游会话；重连时双方重新握手。
+                    handleModelFailure(context, new IllegalStateException("实时模型会话不可用"));
+                    return;
+                }
+                if (!context.omniSession.beginTurn(id)) {
+                    if (!context.omniSession.isReady()) {
+                        handleModelFailure(context, new IllegalStateException("实时模型会话不可用"));
+                    } else {
+                        // 上一轮取消回执尚未到达；不能强行清除上游 active 后串轮。
+                        sendBusyLocked(context, id, "上一轮正在结束，请稍后重试");
+                        scheduleUpstreamTurnReleaseLocked(context, id);
+                    }
+                    return;
+                }
+            }
+            clearUpstreamTurnReleaseLocked(context);
+            Long logId;
+            try {
+                logId = logService.startTurn(context.session.getId(), context.deviceId, context.clientIp, id,
+                        properties.getResolvedModelProtocol(), properties.isRealtimeProtocol()
+                                ? properties.getRealtimeModelName() : properties.getModelName());
+            } catch (RuntimeException exception) {
+                if (context.omniSession != null) {
+                    context.omniSession.interrupt();
+                }
+                handleModelFailure(context, exception);
+                return;
+            }
             context.turn = new TurnBuffer(id, logId);
+            context.playbackFinishedAckEnabled = playbackFinishedAckEnabled;
             if (logId != null) {
                 context.deviceMetricLogIds.put(id, logId);
                 if (context.deviceMetricLogIds.size() > 16) {
@@ -257,12 +289,6 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
             closeAsrLocked(context);
             if (properties.isRealtimeProtocol()) {
-                if (context.omniSession == null || !context.omniSession.beginTurn(id)) {
-                    logService.markFailed(logId, "MODEL_UNAVAILABLE", "实时模型会话不可用", null);
-                    context.turn = null;
-                    sendErrorLocked(context, "MODEL_UNAVAILABLE", "实时模型会话不可用", true, id);
-                    return;
-                }
                 context.realtimeAnswer.setLength(0);
                 context.realtimeModelDone = false;
                 context.ttsFirstAudioAt = 0L;
@@ -288,6 +314,52 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                         () -> expireNoSpeechCapture(context, startedTurn),
                         properties.getNoSpeechCaptureTimeoutMillis(), TimeUnit.MILLISECONDS);
             }
+        }
+    }
+
+    private void sendBusyLocked(DeviceContext context, String requestId, String message) {
+        Map<String, Object> busy = event("busy", "state", context.state.value);
+        busy.put("request_id", requestId);
+        long retryAfterMillis = 200L;
+        if (context.state == DeviceState.COOLDOWN && !context.awaitingPlaybackFinished
+                && context.playbackWaitDeadlineNanos > 0L) {
+            retryAfterMillis = Math.max(1L, TimeUnit.NANOSECONDS.toMillis(
+                    context.playbackWaitDeadlineNanos - System.nanoTime()));
+        }
+        busy.put("retry_after_ms", retryAfterMillis);
+        busy.put("msg", message);
+        sendJsonLocked(context, busy);
+    }
+
+    /** 给取消／完成回执短暂时间，不让上游 active 异常时永久 busy。 */
+    private void scheduleUpstreamTurnReleaseLocked(DeviceContext context, String requestId) {
+        if (context.upstreamTurnReleaseFuture != null) {
+            return;
+        }
+        long generation = context.upstreamTurnReleaseGeneration;
+        context.upstreamTurnReleaseFuture = scheduler.schedule(() -> {
+            synchronized (context.lock) {
+                if (generation != context.upstreamTurnReleaseGeneration
+                        || context.state != DeviceState.LISTENING || context.turn != null
+                        || !context.session.isOpen()) {
+                    return;
+                }
+                clearUpstreamTurnReleaseLocked(context);
+                if (context.omniSession == null || !context.omniSession.isReady()
+                        || context.omniSession.hasActiveTurn()) {
+                    handleModelFailure(context, new IllegalStateException("上一轮实时模型回执超时"));
+                    return;
+                }
+                setStateLocked(context, DeviceState.LISTENING, requestId, "可以重新提问了");
+            }
+        }, 5, TimeUnit.SECONDS);
+    }
+
+    private void clearUpstreamTurnReleaseLocked(DeviceContext context) {
+        context.upstreamTurnReleaseGeneration++;
+        if (context.upstreamTurnReleaseFuture != null) {
+            context.upstreamTurnReleaseFuture.cancel(false);
+            context.upstreamTurnReleaseFuture = null;
         }
     }
 
@@ -877,19 +949,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             context.activeLogId = null;
             context.tts = null;
             context.ttsRequestId = "";
-            setStateLocked(context, DeviceState.COOLDOWN, requestId, "即将恢复聆听");
+            startPlaybackWaitLocked(context, requestId);
         }
-        scheduler.schedule(() -> {
-            synchronized (context.lock) {
-                if (context.state != DeviceState.COOLDOWN
-                        || !requestId.equals(context.activeRequestId)) {
-                    return;
-                }
-                context.activeRequestId = "";
-                context.activeLogId = null;
-                setStateLocked(context, DeviceState.LISTENING, requestId, "可以提问了");
-            }
-        }, Math.max(0, properties.getCooldownMillis()), TimeUnit.MILLISECONDS);
     }
 
     private void onTtsFailed(DeviceContext context, String requestId, Throwable throwable) {
@@ -920,12 +981,21 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    private void cancelCapture(DeviceContext context, String reason) {
+    private void cancelCapture(DeviceContext context, String requestedId, String reason) {
         synchronized (context.lock) {
-            if (context.turn == null || context.state != DeviceState.CAPTURING) {
-                Map<String, Object> busy = event("busy", "state", context.state.value);
-                busy.put("msg", "当前没有可取消的采集轮次");
-                sendJsonLocked(context, busy);
+            if (context.awaitingPlaybackFinished && context.state == DeviceState.COOLDOWN
+                    && requestedId != null && !requestedId.isEmpty()
+                    && requestedId.equals(context.activeRequestId)) {
+                // 设备已停止本轮播放时，也允许取消仍在等待的播放回执。
+                context.activeRequestId = "";
+                setStateLocked(context, DeviceState.LISTENING, requestedId, "已取消，可以提问了");
+                return;
+            }
+            if (context.turn == null || context.state != DeviceState.CAPTURING
+                    || (requestedId != null && !requestedId.isEmpty()
+                        && !requestedId.equals(context.turn.requestId))) {
+                sendBusyLocked(context, requestedId == null ? "" : requestedId,
+                        "当前没有可取消的采集轮次");
                 return;
             }
             String requestId = context.turn.requestId;
@@ -1007,7 +1077,6 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     private void handleOmniResponseDone(DeviceContext context, String requestId) {
-        boolean completedWithAudio = false;
         synchronized (context.lock) {
             if (!requestId.equals(context.activeRequestId)
                     || context.interruptedRequests.contains(requestId)) {
@@ -1031,23 +1100,62 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 logService.markCompleted(context.activeLogId, totalMs,
                         elapsedMillis(context.ttsFirstAudioAt));
                 context.activeLogId = null;
-                setStateLocked(context, DeviceState.COOLDOWN, requestId, "即将恢复聆听");
-                completedWithAudio = true;
+                startPlaybackWaitLocked(context, requestId);
             }
         }
-        if (!completedWithAudio) {
-            return;
-        }
-        scheduler.schedule(() -> {
+    }
+
+    private void startPlaybackWaitLocked(DeviceContext context, String requestId) {
+        clearPlaybackWaitLocked(context);
+        context.awaitingPlaybackFinished = context.playbackFinishedAckEnabled;
+        long waitMillis = context.awaitingPlaybackFinished
+                ? Math.max(10000L, properties.getPlaybackFinishedTimeoutMillis())
+                : Math.max(0L, properties.getCooldownMillis());
+        context.playbackWaitDeadlineNanos = System.nanoTime()
+                + TimeUnit.MILLISECONDS.toNanos(waitMillis);
+        setStateLocked(context, DeviceState.COOLDOWN, requestId,
+                context.awaitingPlaybackFinished ? "等待设备播放完成" : "即将恢复聆听");
+        long generation = context.playbackWaitGeneration;
+        context.playbackWaitFuture = scheduler.schedule(() -> {
             synchronized (context.lock) {
-                if (context.state != DeviceState.COOLDOWN
-                        || !requestId.equals(context.activeRequestId)) {
+                if (generation != context.playbackWaitGeneration
+                        || context.state != DeviceState.COOLDOWN
+                        || !requestId.equals(context.activeRequestId)
+                        || !context.session.isOpen()) {
                     return;
+                }
+                if (context.awaitingPlaybackFinished) {
+                    log.warn("[ESP32_PLAYBACK_ACK_TIMEOUT] deviceId={} requestId={} timeoutMs={}",
+                            context.deviceId, requestId, waitMillis);
                 }
                 context.activeRequestId = "";
                 setStateLocked(context, DeviceState.LISTENING, requestId, "可以提问了");
             }
-        }, Math.max(0, properties.getCooldownMillis()), TimeUnit.MILLISECONDS);
+        }, waitMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private void playbackFinished(DeviceContext context, String requestId) {
+        synchronized (context.lock) {
+            // 回执只释放当前已发送完音频的轮次。迟到／重复／旧轮回执都不能开麦。
+            if (requestId == null || requestId.isEmpty() || !context.awaitingPlaybackFinished
+                    || context.state != DeviceState.COOLDOWN
+                    || !requestId.equals(context.activeRequestId)) {
+                return;
+            }
+            context.activeRequestId = "";
+            setStateLocked(context, DeviceState.LISTENING, requestId, "播放结束，可以提问了");
+            log.info("[ESP32_PLAYBACK_FINISHED] deviceId={} requestId={}", context.deviceId, requestId);
+        }
+    }
+
+    private void clearPlaybackWaitLocked(DeviceContext context) {
+        context.playbackWaitGeneration++;
+        context.awaitingPlaybackFinished = false;
+        context.playbackWaitDeadlineNanos = 0L;
+        if (context.playbackWaitFuture != null) {
+            context.playbackWaitFuture.cancel(false);
+            context.playbackWaitFuture = null;
+        }
     }
 
     /** 旁路转写不参与回答；若上游没有最终文字，延迟使用旧 ASR 异步补录。 */
@@ -1206,6 +1314,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         log.warn("[ESP32_MODEL_FAILED] deviceId={} sessionId={}",
                 context.deviceId, context.session.getId(), throwable);
         synchronized (context.lock) {
+            clearPlaybackWaitLocked(context);
+            clearUpstreamTurnReleaseLocked(context);
             for (Map.Entry<String, Long> pending : context.realtimeLogIds.entrySet()) {
                 if (!context.realtimeCommittedRequests.contains(pending.getKey())
                         && context.realtimeLogIds.remove(pending.getKey(), pending.getValue())) {
@@ -1237,8 +1347,17 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
 
     private void setStateLocked(DeviceContext context, DeviceState state,
                                 String requestId, String message) {
+        if (state != DeviceState.COOLDOWN) {
+            clearPlaybackWaitLocked(context);
+        }
+        if (state != DeviceState.LISTENING) {
+            clearUpstreamTurnReleaseLocked(context);
+        }
         context.state = state;
         Map<String, Object> event = event("state", "state", state.value);
+        if (state == DeviceState.COOLDOWN) {
+            event.put("awaiting_playback_finished", context.awaitingPlaybackFinished);
+        }
         if (requestId != null && !requestId.isEmpty()) {
             event.put("request_id", requestId);
         }
@@ -1376,7 +1495,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 }
                 long chunkMillis = Math.max(1L, Math.round(size * 1000.0
                         / (Esp32ProtocolUtils.OUTPUT_SAMPLE_RATE * 2)));
-                long minIntervalNanos = chunkMillis * 100_000L / speedPercent;
+                long minIntervalNanos = TimeUnit.MILLISECONDS.toNanos(chunkMillis) * 100L / speedPercent;
                 waitForSendWindow(context, minIntervalNanos, leadTargetMillis);
                 if (!context.session.isOpen()) {
                     return;
@@ -1529,6 +1648,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }
         synchronized (context.lock) {
             cancelTurnTimers(context.turn);
+            clearPlaybackWaitLocked(context);
+            clearUpstreamTurnReleaseLocked(context);
             Long logId = context.activeLogId != null ? context.activeLogId
                     : context.turn == null ? null : context.turn.logId;
             long startedAt = context.turnStartedAt > 0 ? context.turnStartedAt
@@ -1561,6 +1682,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     public void destroy() {
         for (DeviceContext context : sessions.values()) {
             synchronized (context.lock) {
+                clearPlaybackWaitLocked(context);
+                clearUpstreamTurnReleaseLocked(context);
                 closeTtsLocked(context);
                 if (context.modelSession != null) {
                     context.modelSession.close();
@@ -1609,6 +1732,14 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private DoubaoTtsClient.TtsStream tts;
         private String ttsRequestId = "";
         private String activeRequestId = "";
+        /** 每轮由设备主动声明；旧固件仍采用固定冷却时长。 */
+        private boolean playbackFinishedAckEnabled;
+        private boolean awaitingPlaybackFinished;
+        private long playbackWaitDeadlineNanos;
+        private long playbackWaitGeneration;
+        private ScheduledFuture<?> playbackWaitFuture;
+        private long upstreamTurnReleaseGeneration;
+        private ScheduledFuture<?> upstreamTurnReleaseFuture;
         private boolean ttsFirstAudio;
         private boolean ttsHasText;
         private boolean realtimeModelDone;

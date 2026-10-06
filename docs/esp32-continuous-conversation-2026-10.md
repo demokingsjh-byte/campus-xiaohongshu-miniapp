@@ -1,0 +1,65 @@
+# ESP32 连续对话优化（2026-10-05）
+
+## 本次解决什么
+
+现场问题是第一轮正常，第二轮往往要重新说「你好小智」，偶发取消或错误后不再产生请求。优先处理设备监听窗口、播放完成时机和异常状态恢复，不通过换模型、减少三张图片或把转写重新串行化来解决。
+
+保留现有架构：ESP32-S3 → 校园平台 WebSocket 网关 → `qwen3.8-omni-flash-realtime`。16kHz PCM 在采集期流式输入；三张 JPEG 属于同一轮，网关提交时交给模型；模型返回文字和 24kHz PCM，用户转写仍是日志旁路。半双工保持不变，暂不实现边播放边说话的回声消除。
+
+## P0：连续会话与异常恢复
+
+- 一次唤醒开启 60 秒续聊会话，开始下一轮不清空会话；开始新轮次及本机播放完成时续期，空采集/取消不把会话立即关掉。
+- 独立区分「会话仍有效」「网关允许下一轮」「设备实际播完」。三者同时满足才恢复自动续聊。
+- 暂时 `busy`、可重试网络错误和取消确认都有有界恢复；控制状态不再无限停在 REQUESTING。硬件初始化失败仍明确报错，不伪装为可用。
+- 网关 `busy` 返回被拒绝的 `request_id`、`state`、`retry_after_ms`。上游取消回执尚未到达时先等待，5 秒保护期后仍未释放则断线重新握手，不强行清除上游 active 导致串轮。
+- 带 request ID 的跨轮控制消息被过滤；播放回执及相关定时器按当前 request ID 和代际隔离。
+
+## P1：按真实播放完成恢复监听
+
+| 时点 | 含义 |
+| --- | --- |
+| `audio_done` / `turn_done` | 网关已发完这一轮，不代表扬声器已经播完 |
+| 播放队列为空 + I2S DMA 尾音已发送 | 设备端本轮 PCM 播放完成 |
+| `playback_finished(request_id)` | 新固件通知网关本轮已播完 |
+| 网关 `state=listening` | 下一轮媒体可以开始上传 |
+
+协议通过 `connected.features.playback_finished=true` 和每轮 `turn_start.playback_finished=true` 双向协商。新固件不向旧网关发送未知事件；旧固件不声明能力时仍采用 1250ms 固定冷却。新网关默认等待 15 秒回执，配置下限 10 秒，超时会记录 `ESP32_PLAYBACK_ACK_TIMEOUT` 并有界释放。
+
+固件将网络收包和播放分离：128KiB 有界 PSRAM 音频队列、独立播放任务、80ms 起播预缓冲。全部有效 PCM 分片处理，不再按单包 2048 字节截尾；队列溢出或写入失败明确取消/恢复，不静默丢数据。Arduino ESP32 3.3.8 没有 `i2s_channel_wait_all_done`，因此根据实际 DMA 环容量及硬件 `on_sent` 完成事件确认尾音，不把 I2S 写入成功当作播完。
+
+后端修正百分比 pacing 的纳秒单位：1920 字节是约 40ms 的 PCM24k；300% 下每块最短发送间隔约 13.3ms，旧换算小了 1000 倍。现有 1200ms 领先量上限继续保留。
+
+## P2：续聊句首与本地语音判定
+
+- 监听期间滚动保存最近 512ms PCM，续聊触发后保留句首轻音，而不是只缓存超过阈值的高能量片段。
+- 逐样本高通去除 DC 偏置，监听噪声底自适应；续聊改为累计约 96ms 语音触发采集，允许约 160ms 短间断，替代旧的 10 个连续强音块。本轮仍须累计 300ms 真实语音证据，预录中的静音不计入。
+- 连续静音提交仍为 700ms；三张图片仍为开始、中途、提交前，末图宽限上限 280ms。
+- WakeNet 重置仍由唯一麦克风任务串行操作；缩短旧的零音频预热/重入等待，保留短保护期。
+
+这仍是本地能量 VAD，不是完整 ESP-SR AFE，也不能可靠区分电视里的人声和用户说话。若现场电视背景仍造成误触发或顶满 8 秒，需要下一阶段单独引入 AFE/VAD/降噪并实测；AEC 还需要可靠的播放参考通道，不能只开一个开关就称为全双工。
+
+## 文件与配置
+
+- 后端：`CampusEsp32AssistantProperties.java`、`Esp32AssistantWebSocketHandler.java`、`OmniRealtimeClient.java`。
+- 配置：`campus-platform/yudao-server/src/main/resources/application.yaml`，新增 `CAMPUS_ESP32_PLAYBACK_FINISHED_TIMEOUT_MILLIS`，默认 15000。
+- 固件工作源：本机 `C:/Users/admin/Documents/ChatGPT/ai机器人/board_restore_20260916/wake_xiaozhi/wake_xiaozhi.ino`，Wi-Fi/token 仍由私有 `device_config.h` 提供，不新增凭证到 Git。
+- 详细接口：[网关协议文档](../campus-platform/docs/esp32-assistant-gateway.md)。
+
+## 验收交给用户
+
+本次只做编译和静态审查，不自行发起模型请求或对话测试。推送、烧录成功也不等同于现场效果已验证。
+
+编译记录：后端 Maven `-Dmaven.test.skip=true compile` 成功；Arduino ESP32 3.3.8 / XIAO ESP32-S3（8MB Flash、OPI PSRAM）固件编译成功，程序 1,444,102 字节（43%），全局 RAM 65,924 字节（20%）。
+
+1. 说一次「你好小智」后连续问至少 10 轮，后续不重复唤醒词；确认后台逐轮产生新请求。
+2. 分别测试安静环境、电视背景和说话较轻的句首；确认不会持续噪声触发，也不会漏掉第二句开头。
+3. 只唤醒不提问、等待取消后立即提问；确认取消不会让后续轮次永久无响应。
+4. 等 AI 真正播完后再接话；本版本不支持播放期间自动打断。
+5. 临时断网再恢复，确认重连后能继续唤醒；注意会话过期后仍需重新唤醒。
+6. 看同一轮的 3 张图片、最新末图和异步转写；用「说完 → 首次 I2S 写入」评估反应时间，不用「本轮开始 → 首音频帧」替代。
+
+首次 I2S 写入是设备计时的代理指标，不等同精确声学出声时间；VAD 最后语音时间若被噪声刷新，也会让该差值偏小。
+
+## 借鉴而非整库迁移
+
+参考 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 的播完后恢复监听思路，保留当前设备和网关协议；其 ESP-IDF 构建、Opus/hello/listen 协议不能直接替换当前 Arduino PCM/JPEG 固件。后续若迁移 [ESP-SR AFE](https://github.com/espressif/esp-sr)，应单独评估内存、线程、播放参考和硬件适配。

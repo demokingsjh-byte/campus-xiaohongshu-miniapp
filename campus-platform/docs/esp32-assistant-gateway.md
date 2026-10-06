@@ -2,7 +2,7 @@
 
 ## 1. 目标与边界
 
-本服务位于 `yudao-module-campus`。默认链路使用 `qwen3.8-omni-flash-realtime`：设备的 PCM 音频与 JPEG 图片在同一条上游实时会话中持续输入，模型直接流式返回回答文字和 24kHz PCM。用户语音转写由实时会话旁路产生，只用于后台日志，不是模型回答的前置条件。
+本服务位于 `yudao-module-campus`。默认链路使用 `qwen3.8-omni-flash-realtime`：PCM 在采集期流式输入同一条上游会话；JPEG 先在网关暂存，`turn_commit` 时批量发送本轮图片后提交音频，收到提交回执再请求模型回答。模型直接流式返回回答文字和 24kHz PCM。用户语音转写由实时会话旁路产生，只用于后台日志，不是模型回答的前置条件。
 
 它是校园平台内的一条独立设备链路，不修改原 AI_GUIDE H5 视频通话接口。设备仍以 `turn_start` / `turn_commit` 手动分轮，摄像头画面变化不会单独触发回答。`chat` / `responses` 保留为回退协议；回退时才使用“火山 ASR → 图文模型 → 火山 TTS”的旧链路。
 
@@ -16,15 +16,18 @@ ESP32-S3                      campus-platform                  Qwen Omni Realtim
    │                                │                                │
    ├── turn_start ─────────────────>│                                │
    ├── 0x01 + PCM 音频帧 ──────────>├── input_audio_buffer.append ──>│
-   ├── 0x02 + JPEG（目标 3 张）─────>├── input_image_buffer.append ──>│
-   ├── turn_commit ────────────────>├── commit / response.create ───>│
+   ├── 0x02 + JPEG（目标 3 张）─────>│ 暂存本轮 JPEG                  │
+   ├── turn_commit ────────────────>├── input_image_buffer.append ──>│
+   │                                ├── input_audio_buffer.commit ──>│
+   │                                │<── committed 回执 ─────────────┤
+   │                                ├── response.create ────────────>│
    │                                │<── 回答文字增量 + 音频增量 ─────┤
    │<── text_delta（与音频可交错）───┤                                │
    │<── audio_start ────────────────┤                                │
    │<── PCM16LE / 24k 二进制流 ─────┤                                │
    │<── text_done / audio_done ─────┤                                │
    │<── turn_done ──────────────────┤                                │
-   │       （默认冷却 1250ms）        │                                │
+   ├── playback_finished ──────────>│ （支持的新固件实际播完后回执）   │
    │<── listening ──────────────────┤                                │
    │                                │<── 用户语音旁路转写（可晚到）─────┤
 ```
@@ -39,8 +42,8 @@ ESP32-S3                      campus-platform                  Qwen Omni Realtim
 - 默认每轮目标 3 张图片：开始、中途、提交前各一张；模型以最后一张作为当前画面，前两张只用于观察变化。图片是离散快照，不等同实时视频。
 - 上游实时接口要求图片体积更小。网关会把送模型的副本缩放、压缩到安全范围，后台仍异步保存设备上传的原始 JPEG。
 - `chat` / `responses` 回退模式仍在采集期流式喂火山 ASR，提交后等待最终文字，再调用图文模型并用火山 TTS 合成音频。只有该回退链路中，ASR 才是回答前置步骤。
-- 返回音频采用网关限速分片下发；`playback-pace-percent` 和 `output-audio-lead-millis` 控制发送节奏。当前固件直接写入 I2S，并未实现独立的设备播放环形缓冲。
-- `cooldown-millis`（默认 1250）用于回答结束后留出播放尾音与重新收音的间隔；具体是否足够需由设备实测确认。
+- 返回音频采用网关限速分片下发；`playback-pace-percent` 和 `output-audio-lead-millis` 控制发送节奏。2026-10 固件将 WebSocket 接收与独立 I2S 播放任务分开，通过有界 PSRAM 队列承接音频，避免接收回调被播放阻塞。
+- 新固件协商 `playback_finished` 后，网关等待该轮实际播放完成回执再恢复监听；回执缺失时默认 15 秒兜底释放（实际下限 10 秒）。未声明该能力的旧固件仍使用 `cooldown-millis`（默认 1250）。
 - AI 播放期间采用半双工，不自动采集下一轮；设备发送 `interrupt` 可手动打断。
 - 网关一轮最多接收 5 张 JPEG，单张最大 2MB、总计最大 8MB（可配置）；当前固件本轮目标为 `min(3, connected.input_image.max_count)`。
 - 服务端静音自动提交：网关在每帧 PCM 上做能量检测，用于兜底设备固件 VAD。旧链路配置默认 1500ms；实时链路至少等待 3500ms，给提交前第三张图留出时间。触发时记录 `[ESP32_SILENCE_AUTO_COMMIT]` 日志。
@@ -96,8 +99,8 @@ DISCONNECTED --连接成功--> LISTENING --按键/唤醒--> CAPTURING
 1. Wi-Fi 就绪后建立 WSS，只有收到 `state=listening` 才允许开始一轮。
 2. 按键或唤醒后立即开始本地预录并发送 `turn_start`；收到 `turn_ready` 前不得向网关发媒体，收到后先冲刷预录缓冲，再上传后续音频，避免吞掉问题开头。
 3. 采集期间异步抓拍开始、中途、提交前 3 张图片。停止说话后最多给末张图约 280ms 宽限，随后立即发送 `turn_commit`；图片异常不能把语音提交重新拖慢。
-4. 收到 `audio_start` 后打开 24kHz I2S 播放；当前固件将二进制 PCM 直接写入 I2S。
-5. 收到 `audio_done` 后等待音频播放结束；收到 `turn_done` 后等待服务再次下发 `listening`。
+4. 收到 `audio_start` 后打开 24kHz I2S 播放；二进制 PCM 入有界队列，由独立任务写入 I2S，接收回调不等待播放。
+5. 收到 `audio_done`、`turn_done` 且本轮队列和硬件 DMA 尾音实际发送完毕后，已协商能力的设备发送 `playback_finished`；仍须等待网关的 `listening` 才能启动下一轮。旧网关未广播能力时不发送新事件。
 6. 播放中需要打断时发送 `interrupt`，收到 `interrupt_ack` 后停止播放。
 7. 网络断开后采用 1、2、4、8、15 秒退避重连；每 30 秒可发送一次 `ping` 保活。
 
@@ -114,6 +117,7 @@ DISCONNECTED --连接成功--> LISTENING --按键/唤醒--> CAPTURING
   "device_id": "xiao-esp32s3-01",
   "protocol_version": "esp32-av/1.0",
   "mode": "half_duplex",
+  "features": {"playback_finished": true},
   "model": "qwen3.8-omni-flash-realtime",
   "input_audio": {"binary_prefix": 1, "format": "pcm_s16le", "sample_rate": 16000, "channels": 1},
   "input_image": {"binary_prefix": 2, "format": "jpeg", "max_count": 5},
@@ -132,7 +136,7 @@ DISCONNECTED --连接成功--> LISTENING --按键/唤醒--> CAPTURING
 开始一轮：
 
 ```json
-{"type":"turn_start","request_id":"turn-001"}
+{"type":"turn_start","request_id":"turn-001","playback_finished":true}
 ```
 
 提交一轮：
@@ -148,6 +152,16 @@ DISCONNECTED --连接成功--> LISTENING --按键/唤醒--> CAPTURING
 {"type":"interrupt","request_id":"turn-001"}
 {"type":"ping","ts":1720000000}
 ```
+
+播放完成回执（仅在 `connected.features.playback_finished=true` 且该轮 `turn_start.playback_finished=true` 时发送）：
+
+```json
+{"type":"playback_finished","request_id":"turn-001"}
+```
+
+`audio_done` / `turn_done` 表示网关下发完成，不代表设备已播完。网关随后发送 `state=cooldown`，包含 `awaiting_playback_finished=true`；匹配当前轮次的回执才会释放为 `listening`。迟到、重复、旧轮次回执不改变新轮状态。旧固件可省略 `turn_start.playback_finished`，无需同时升级两端。
+
+暂时忙时返回 `busy`，包含请求的 `request_id`、当前 `state` 和 `retry_after_ms`。设备应有界等待可监听状态，不无限保持采集中。若上游上一轮取消回执尚未到达，网关不强行清除上游 active；5 秒保护期后仍未释放则关闭连接重新握手，避免串轮。
 
 ### 4.4 设备发送的二进制帧
 
@@ -238,7 +252,7 @@ state(capturing) → turn_ready → state(thinking)
 
 ### 5.3 接收与播放
 
-收到 `audio_start` 后，将 I2S TX 配置为 24000Hz、16 位、单声道。之后每个二进制 WebSocket 消息都是音频，不含 `0x01`/`0x02` 前缀。当前固件直接写入 I2S；若实测 Wi-Fi 抖动造成断续，再考虑增加小型播放缓冲。
+收到 `audio_start` 后，将 I2S TX 配置为 24000Hz、16 位、单声道。之后每个二进制 WebSocket 消息都是音频，不含 `0x01`/`0x02` 前缀。2026-10 固件用独立任务消费有界 PSRAM 队列，按全部有效 PCM 分片写入 I2S，不按单包 2048 字节截断。溢出或写入失败须明确取消/重连，不能静默丢音频；播完的判据包括队列为空和硬件 DMA 尾音发出，而不只是 `write()` 返回成功。
 
 ### 5.4 request_id 规则
 
@@ -327,6 +341,7 @@ campus:
     realtime-voice: ${CAMPUS_LLM_REALTIME_VOICE:Tina}
     realtime-model-token: ${CAMPUS_LLM_REALTIME_API_KEY:}
     realtime-transcript-fallback-enabled: ${CAMPUS_ESP32_REALTIME_TRANSCRIPT_FALLBACK_ENABLED:true}
+    playback-finished-timeout-millis: ${CAMPUS_ESP32_PLAYBACK_FINISHED_TIMEOUT_MILLIS:15000}
     model-token: ${CAMPUS_LLM_API_KEY:<旧链路 API Key>}
 ```
 
@@ -394,6 +409,8 @@ CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_roumeinvyou_uranus_bigtts
 
 - `playback-pace-percent: 300`：下发速率上限（相对实时的百分比）。**必须大于 100**，否则设备侧播放缓冲永远接近为空，任何 Wi-Fi 抖动都会变成播报断续。
 - `output-audio-lead-millis: 1200`：目标播放缓冲领先量。网关先以速率上限把缓冲填到该值，之后维持这一领先量，既不饿到设备也不撑爆设备内存。
+
+2026-10 修正了百分比节流的纳秒换算：`40ms × 100 / 300 ≈ 13.3ms`，此前间隔换算小了 1000 倍。领先量上限仍保留；本次不更换模型或提高图片数量。
 
 诊断方法：逐帧统计音频到达间隔与传输效率。
 

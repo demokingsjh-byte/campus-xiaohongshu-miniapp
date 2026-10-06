@@ -160,6 +160,15 @@ public class OmniRealtimeClient {
         }
 
         /** 仅在 session.updated 确认后接收新轮；同一连接保留跨轮上下文。 */
+        public synchronized boolean isReady() {
+            return ready && !closed;
+        }
+
+        public synchronized boolean hasActiveTurn() {
+            return active != null;
+        }
+
+        /** 新轮只有在上一轮响应／取消回执完成后才能进入。 */
         public synchronized boolean beginTurn(String requestId) {
             if (!ready || closed || requestId == null || requestId.trim().isEmpty() || active != null) {
                 return false;
