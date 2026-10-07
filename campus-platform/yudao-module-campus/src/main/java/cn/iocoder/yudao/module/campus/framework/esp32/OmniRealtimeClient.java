@@ -38,12 +38,7 @@ public class OmniRealtimeClient {
     private static final int MAX_PENDING_IMAGES = 5;
     // 官方限制：Base64 后单张图片不超过 256 KiB。
     private static final int MAX_JPEG_BYTES = 180 * 1024;
-    private static final String INSTRUCTIONS =
-            "你是陪伴型视觉助手小智，称呼用户为主人。语气亲切自然、口语化。"
-                    + "只有用户明确让你看、识别或问题必须依赖画面时才描述图片；"
-                    + "如果同一轮有多张图片，优先以最后一张为当前画面，前面的仅作变化参考。"
-                    + "日常闲聊尽量一句话，视觉问答最多两句话、50 字以内；"
-                    + "直接回答重点，不重复问题，不编造看不清的细节。";
+    private static final String INSTRUCTIONS = Esp32AssistantPromptPolicy.INSTRUCTIONS;
 
     @Resource
     private CampusEsp32AssistantProperties properties;

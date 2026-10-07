@@ -39,30 +39,17 @@ public class GuideModelClient {
     private static final MediaType JSON_MEDIA_TYPE =
             MediaType.parse("application/json; charset=utf-8");
 
-    /**
-     * 系统提示词：通用视觉陪伴人设，不绑定具体行业场景。
-     *
-     * <p>两条硬规则：一是默认不主动分析画面，只有主人明确要求看时才描述画面，
-     * 避免设备不看场合地念画面；二是回答长度受限，因为设备是语音播报，
-     * 回答越长用户等待和播报时间越长、TTS 成本越高。</p>
-     */
-    private static final String SYSTEM_PROMPT =
-            "你是一个陪伴型视觉助手，会通过镜头看主人身边的东西，陪主人聊天、解答疑问。\n"
-                    + "称呼用户为「主人」；语气亲切自然、口语化，像身边的小伙伴，不要说客套话和书面语。\n"
-                    + "默认不要主动描述或分析镜头里的画面：只有主人明确让你看、让你识别，"
-                    + "或者问题本身必须依赖画面时，才去看画面并回答；其余情况只做正常对话，不要提画面里的东西。\n"
-                    + "回答会被语音播报：日常闲聊尽量一句话，视觉问答最多两句话、50 字以内；"
-                    + "直接回答重点，不重复用户的问题，也不要每次都追加反问。\n"
-                    + "看画面时只说你确实看到的内容，看不清就说看不清，绝不要编造。";
+    /** 与实时链路共用任务优先规则；HTTP 回退本身不因此新增多轮历史。 */
+    private static final String SYSTEM_PROMPT = Esp32AssistantPromptPolicy.INSTRUCTIONS;
 
     private static final String IMAGE_ONLY_PROMPT =
-            "用户语音没能识别出来。请不要描述画面，改问主人想让你看什么。";
+            "用户语音没能识别出来。请简短让用户重说当前问题，不要根据图片自行猜任务或描述环境。";
 
     private static final String NO_IMAGE_PROMPT =
-            "用户语音没能识别出来，而且这轮没有画面。请提醒主人把镜头对准想看的东西再说一次。";
+            "用户语音没能识别出来，而且这轮没有图片。请简短让用户重说当前问题，不要默认要求看镜头。";
 
     private static final String NO_IMAGE_HINT =
-            "\n注意：这轮没有画面，不要描述任何环境；主人想看东西时，提醒他把镜头对准目标。";
+            "\n本轮没有图片。无需图片的问题直接回答；只有问题确实缺少必要视觉信息时，才请用户补充相关题干或图片。";
 
     @Resource
     private CampusEsp32AssistantProperties properties;
@@ -339,7 +326,7 @@ public class GuideModelClient {
             return question.isEmpty()
                     ? IMAGE_ONLY_PROMPT
                     : "主人说：" + question
-                            + "\n请直接回答；只有主人明确让你看画面时才描述画面，否则不要提画面里的内容。";
+                            + Esp32AssistantPromptPolicy.QUESTION_HINT;
         }
 
         private void consumeSse(BufferedSource source, ArkStreamState state) throws IOException {
