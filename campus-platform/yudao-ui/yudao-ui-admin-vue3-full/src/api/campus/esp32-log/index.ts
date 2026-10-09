@@ -13,6 +13,8 @@ export type CampusEsp32LogStatus =
 
 export type CampusEsp32AsrStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'DISABLED' | 'SKIPPED'
 
+export type CampusEsp32UsageStatus = 'PENDING' | 'REPORTED' | 'UNAVAILABLE'
+
 export interface CampusEsp32LogImage {
   id: number
   imageIndex: number
@@ -33,6 +35,18 @@ export interface CampusEsp32Log {
   storedImageCount: number
   pipelineMode?: 'omni-realtime' | 'chat' | 'responses' | string
   modelName?: string | null
+  usageStatus?: CampusEsp32UsageStatus | null
+  usageResponseId?: string | null
+  inputTokens?: number | null
+  outputTokens?: number | null
+  totalTokens?: number | null
+  inputTextTokens?: number | null
+  inputAudioTokens?: number | null
+  inputImageTokens?: number | null
+  inputVideoTokens?: number | null
+  inputCachedTokens?: number | null
+  outputTextTokens?: number | null
+  outputAudioTokens?: number | null
   questionText?: string | null
   answerText?: string | null
   asrStatus?: CampusEsp32AsrStatus | null
@@ -58,6 +72,7 @@ export interface CampusEsp32Log {
 
 export interface CampusEsp32LogDetail extends CampusEsp32Log {
   images: CampusEsp32LogImage[]
+  usageJson?: string | null
 }
 
 export interface CampusEsp32LogQuery {
@@ -79,6 +94,11 @@ export interface CampusEsp32LogSummary {
   averageCommitToFirstAudioMs?: number
   averageSpeechEndToPlaybackMs?: number
   averageModelMs?: number
+  tokenReportedCount: number
+  tokenUnavailableCount: number
+  totalInputTokens: number | null
+  totalOutputTokens: number | null
+  totalTokens: number | null
   lastTime?: string | number
 }
 

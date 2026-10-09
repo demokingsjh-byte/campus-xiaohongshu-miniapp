@@ -40,6 +40,9 @@ public interface CampusEsp32LogService {
     /** 记录模型最终回答文本，保留完整内容供后台排查。 */
     void markModelDone(Long logId, Long modelTotalMs, Long modelFirstTokenMs, String answerText);
 
+    /** 记录上游实际返回的 Token；缺失不估算，不把未返回当作零。 */
+    void markModelUsage(Long logId, String responseId, Map<String, Long> tokens, String usageJson);
+
     /** 异步保存本轮上传的 JPEG 图片，避免阻塞设备回答。 */
     void saveImages(Long logId, List<byte[]> images);
 

@@ -18,8 +18,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -62,6 +64,9 @@ public class OmniRealtimeClient {
         void onAssistantAudio(String requestId, byte[] pcm);
 
         void onResponseDone(String requestId);
+
+        /** 用量由 response.done 提供；未返回用量时 tokens 为空、usageJson 为 null。 */
+        void onResponseUsage(String requestId, String responseId, Map<String, Long> tokens, String usageJson);
 
         void onFailure(Throwable error);
     }
@@ -107,6 +112,11 @@ public class OmniRealtimeClient {
         private final AtomicBoolean failureNotified = new AtomicBoolean();
         private final Map<String, Turn> turnsByItemId = new HashMap<>();
         private final ArrayDeque<String> itemOrder = new ArrayDeque<>();
+        /** 取消或完成后保留少量响应关联，迟到用量不能记入下一轮。 */
+        private final Map<String, Turn> turnsByResponseId = new HashMap<>();
+        private final ArrayDeque<String> responseOrder = new ArrayDeque<>();
+        private final Set<String> doneEventIds = new HashSet<>();
+        private final ArrayDeque<String> doneEventOrder = new ArrayDeque<>();
         /** 上游不保证转写事件与 committed 回执先后顺序，先按 item_id 暂存。 */
         private final Map<String, JsonNode> earlyTranscriptEvents = new HashMap<>();
         private final ArrayDeque<String> earlyTranscriptOrder = new ArrayDeque<>();
@@ -299,16 +309,7 @@ public class OmniRealtimeClient {
                 return;
             }
             if ("response.created".equals(type)) {
-                boolean cancel;
-                synchronized (this) {
-                    cancel = active != null && active.cancelled;
-                    if (active != null) {
-                        active.responseInProgress = true;
-                    }
-                }
-                if (cancel) {
-                    send(event("response.cancel"));
-                }
+                onResponseCreated(event);
                 return;
             }
             if ("response.audio_transcript.delta".equals(type) || "response.text.delta".equals(type)) {
@@ -485,16 +486,27 @@ public class OmniRealtimeClient {
             String text = null;
             long elapsed = 0;
             long first = 0;
+            boolean finishActive;
+            String responseId = responseId(event);
             synchronized (this) {
-                turn = active;
-                if (turn == null) {
+                String eventId = textualId(event.path("event_id"));
+                if (!eventId.isEmpty() && doneEventIds.contains(eventId)) {
                     return;
                 }
-                if (turn.cancelled) {
-                    active = null;
+                turn = resolveResponseTurnLocked(responseId);
+                if (turn == null || turn.responseDone) {
                     return;
                 }
-                if (!turn.textDone) {
+                if (!eventId.isEmpty()) {
+                    doneEventIds.add(eventId);
+                    doneEventOrder.addLast(eventId);
+                    while (doneEventOrder.size() > 64) {
+                        doneEventIds.remove(doneEventOrder.removeFirst());
+                    }
+                }
+                turn.responseDone = true;
+                finishActive = turn == active;
+                if (finishActive && !turn.cancelled && !turn.textDone) {
                     turn.textDone = true;
                     text = turn.text.toString();
                     if (text.isEmpty()) {
@@ -503,7 +515,21 @@ public class OmniRealtimeClient {
                     elapsed = elapsedMs(turn.responseRequestedAtNanos, System.nanoTime());
                     first = elapsedMs(turn.responseRequestedAtNanos, turn.firstTokenAtNanos);
                 }
-                active = null;
+                if (finishActive) {
+                    active = null;
+                }
+            }
+            // 在生命周期回调清除网关 activeLogId 之前捕获；不持 Session 锁或同步写库。
+            try {
+                Esp32TokenUsage usage = Esp32TokenUsage.parse(event.path("response").path("usage"));
+                listener.onResponseUsage(turn.requestId, responseId.isEmpty() ? null : responseId,
+                        usage.getTokens(), usage.getUsageJson());
+            } catch (RuntimeException exception) {
+                // 旁路计量异常不能把正在完成的语音回答变成模型失败。
+                log.warn("[ESP32_OMNI_USAGE_CALLBACK_FAILED] requestId={}", turn.requestId);
+            }
+            if (!finishActive || turn.cancelled) {
+                return;
             }
             if (text != null) {
                 listener.onAssistantTextDone(turn.requestId, text, elapsed, first);
@@ -514,6 +540,66 @@ public class OmniRealtimeClient {
             } else {
                 listener.onResponseDone(turn.requestId);
             }
+        }
+
+        private void onResponseCreated(JsonNode event) {
+            boolean cancel;
+            synchronized (this) {
+                String responseId = responseId(event);
+                Turn known = responseId.isEmpty() ? null : turnsByResponseId.get(responseId);
+                Turn turn = known == null ? active : known;
+                if (turn == null || turn != active || turn.responseDone
+                        || (!responseId.isEmpty() && turn.responseId != null
+                            && !responseId.equals(turn.responseId))) {
+                    return;
+                }
+                if (!responseId.isEmpty()) {
+                    rememberResponseLocked(responseId, turn);
+                }
+                turn.responseInProgress = true;
+                cancel = turn.cancelled;
+            }
+            if (cancel) {
+                send(event("response.cancel"));
+            }
+        }
+
+        private Turn resolveResponseTurnLocked(String responseId) {
+            if (!responseId.isEmpty()) {
+                Turn known = turnsByResponseId.get(responseId);
+                if (known != null) {
+                    return known;
+                }
+                // 不把未知旧响应绑定到已经有 response_id 的新轮。
+                if (active == null || !active.responseInProgress || active.responseId != null) {
+                    return null;
+                }
+                // 兼容 created 回执没有 ID、done 才提供 ID 的上游。
+                rememberResponseLocked(responseId, active);
+                return active;
+            }
+            // 无 ID 时只接受当前已创建但同样未提供 ID 的响应，不能猜测旧轮关联。
+            return active != null && active.responseInProgress && active.responseId == null ? active : null;
+        }
+
+        private void rememberResponseLocked(String responseId, Turn turn) {
+            if (!turnsByResponseId.containsKey(responseId)) {
+                responseOrder.addLast(responseId);
+            }
+            turn.responseId = responseId;
+            turnsByResponseId.put(responseId, turn);
+            while (responseOrder.size() > 64) {
+                turnsByResponseId.remove(responseOrder.removeFirst());
+            }
+        }
+
+        private String responseId(JsonNode event) {
+            String responseId = textualId(event.path("response").path("id"));
+            return responseId.isEmpty() ? textualId(event.path("response_id")) : responseId;
+        }
+
+        private String textualId(JsonNode node) {
+            return node.isTextual() ? node.textValue() : "";
         }
 
         private void notifyFailure(Throwable error) {
@@ -562,6 +648,8 @@ public class OmniRealtimeClient {
         private boolean committed;
         private boolean cancelled;
         private boolean responseInProgress;
+        private boolean responseDone;
+        private String responseId;
         private boolean textDone;
         private int imageCount;
         private long committedAtNanos;

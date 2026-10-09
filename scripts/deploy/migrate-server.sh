@@ -124,6 +124,7 @@ migrations=(
   campus-menu.sql
   campus-esp32-log-upgrade.sql
   campus-esp32-log-content-upgrade.sql
+  campus-esp32-log-token-upgrade.sql
   campus-content-governance-upgrade.sql
   campus-contact-request-upgrade.sql
   campus-school-data-upgrade.sql

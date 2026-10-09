@@ -14,7 +14,11 @@
     <section class="metric-grid">
       <article v-for="item in metrics" :key="item.label">
         <Icon :icon="item.icon" :size="22" :color="item.color" />
-        <div><small>{{ item.label }}</small><strong>{{ item.value }}</strong></div>
+        <div>
+          <small>{{ item.label }}</small>
+          <strong>{{ item.value }}</strong>
+          <small v-if="item.note" class="metric-note">{{ item.note }}</small>
+        </div>
       </article>
     </section>
 
@@ -60,6 +64,16 @@
         </el-table-column>
         <el-table-column label="链路 / 模型" min-width="175">
           <template #default="{ row }"><div class="identity-cell"><strong>{{ pipelineText(row.pipelineMode) }}</strong><small>{{ row.modelName || '-' }}</small></div></template>
+        </el-table-column>
+        <el-table-column label="模型 Token" width="170" align="right">
+          <template #default="{ row }">
+            <div class="token-table-cell">
+              <el-tag :type="usageTag(row.usageStatus)" size="small" effect="plain">{{ usageStatusText(row.usageStatus) }}</el-tag>
+              <small>输入 {{ formatTokens(row.inputTokens) }}</small>
+              <small>输出 {{ formatTokens(row.outputTokens) }}</small>
+              <strong>总计 {{ formatTokens(row.totalTokens) }}</strong>
+            </div>
+          </template>
         </el-table-column>
         <el-table-column label="状态" width="115" align="center">
           <template #default="{ row }"><el-tag :type="statusTag(row.status)" effect="light" round>{{ statusText(row.status) }}</el-tag></template>
@@ -161,6 +175,51 @@
           <p v-else class="empty-copy">{{ answerPlaceholder(detail) }}</p>
           <small v-if="detail.answerText && ['INTERRUPTED', 'DISCONNECTED', 'FAILED'].includes(detail.status)" class="content-note">本轮链路未正常完成，以上为已收到的回答内容。</small>
         </section>
+        <section class="token-card">
+          <div class="section-heading">
+            <div>
+              <h3>模型 Token 用量</h3>
+              <small>由上游模型 usage 返回，不等同于金额或阿里云最终账单</small>
+            </div>
+            <el-tag :type="usageTag(detail.usageStatus)" effect="plain">{{ usageStatusText(detail.usageStatus) }}</el-tag>
+          </div>
+          <el-alert
+            v-if="usageStatusNotice(detail.usageStatus)"
+            :title="usageStatusNotice(detail.usageStatus)"
+            :type="detail.usageStatus === 'PENDING' ? 'info' : 'warning'"
+            :closable="false"
+            show-icon
+          />
+          <div class="token-overview">
+            <article><small>输入 Token</small><strong>{{ formatTokens(detail.inputTokens) }}</strong></article>
+            <article><small>输出 Token</small><strong>{{ formatTokens(detail.outputTokens) }}</strong></article>
+            <article><small>总 Token</small><strong>{{ formatTokens(detail.totalTokens) }}</strong></article>
+          </div>
+          <div class="usage-response-id">
+            <small>上游响应编号</small>
+            <strong>{{ detail.usageResponseId || '-' }}</strong>
+          </div>
+          <div class="token-breakdown">
+            <div class="token-breakdown-heading">输入模态明细</div>
+            <div><span>文本</span><strong>{{ formatTokens(detail.inputTextTokens) }}</strong></div>
+            <div><span>音频</span><strong>{{ formatTokens(detail.inputAudioTokens) }}</strong></div>
+            <div><span>图片</span><strong>{{ formatTokens(detail.inputImageTokens) }}</strong></div>
+            <div><span>视频</span><strong>{{ formatTokens(detail.inputVideoTokens) }}</strong></div>
+            <div class="cached-token"><span>缓存输入 <small>（输入总量的子集，不重复相加）</small></span><strong>{{ formatTokens(detail.inputCachedTokens) }}</strong></div>
+            <div class="token-breakdown-heading">输出模态明细</div>
+            <div><span>文本</span><strong>{{ formatTokens(detail.outputTextTokens) }}</strong></div>
+            <div><span>音频</span><strong>{{ formatTokens(detail.outputAudioTokens) }}</strong></div>
+          </div>
+          <ul class="token-notes">
+            <li>输入 Token 可能包含系统提示词、会话历史和本轮多模态输入，不只代表当前一句话。</li>
+            <li>横线表示上游没有返回该字段，不按 0 计算；缓存输入已经包含在输入 Token 中。</li>
+            <li>这里只记录模型 usage；ASR、TTS 与异步补录可能单独计费，目前未形成完整账单。</li>
+          </ul>
+          <details v-if="detail.usageJson" class="usage-json">
+            <summary>查看上游 usage 计量字段（规范化，不含对话全文）</summary>
+            <pre>{{ formatUsageJson(detail.usageJson) }}</pre>
+          </details>
+        </section>
         <div class="section-heading"><h3>链路耗时</h3><small>空值表示该阶段未返回统计</small></div>
         <section class="stage-list">
           <div v-for="stage in detailStages" :key="stage.label" class="stage-row">
@@ -200,7 +259,8 @@ import {
   type CampusEsp32LogImage,
   type CampusEsp32LogQuery,
   type CampusEsp32LogStatus,
-  type CampusEsp32LogSummary
+  type CampusEsp32LogSummary,
+  type CampusEsp32UsageStatus
 } from '@/api/campus/esp32-log'
 
 defineOptions({ name: 'CampusEsp32Log' })
@@ -208,7 +268,16 @@ defineOptions({ name: 'CampusEsp32Log' })
 const loading = ref(false)
 const list = ref<CampusEsp32Log[]>([])
 const total = ref(0)
-const summary = ref<CampusEsp32LogSummary>({ totalCount: 0, completedCount: 0, failedCount: 0 })
+const summary = ref<CampusEsp32LogSummary>({
+  totalCount: 0,
+  completedCount: 0,
+  failedCount: 0,
+  tokenReportedCount: 0,
+  tokenUnavailableCount: 0,
+  totalInputTokens: null,
+  totalOutputTokens: null,
+  totalTokens: null
+})
 const queryParams = reactive<CampusEsp32LogQuery>({ pageNo: 1, pageSize: 20 })
 const createTimeRange = ref<string[]>([])
 const detailVisible = ref(false)
@@ -249,7 +318,21 @@ const metrics = computed(() => [
   { label: '平均总耗时', value: formatMs(summary.value.averageTotalMs), icon: 'ep:timer', color: '#8b5cf6' },
   { label: '平均说完→首次 I2S 写入', value: formatMs(summary.value.averageSpeechEndToPlaybackMs), icon: 'ep:microphone', color: '#0e7490' },
   { label: '平均提交→网关首包', value: formatMs(summary.value.averageCommitToFirstAudioMs), icon: 'ep:video-play', color: '#0f766e' },
-  { label: '平均模型耗时', value: formatMs(summary.value.averageModelMs), icon: 'ep:cpu', color: '#f59e0b' }
+  { label: '平均模型耗时', value: formatMs(summary.value.averageModelMs), icon: 'ep:cpu', color: '#f59e0b' },
+  {
+    label: '累计模型 Token（已返回轮次）',
+    value: formatTokens(summary.value.totalTokens),
+    note: `输入 ${formatTokens(summary.value.totalInputTokens)} / 输出 ${formatTokens(summary.value.totalOutputTokens)}`,
+    icon: 'ep:coin',
+    color: '#7c3aed'
+  },
+  {
+    label: 'Token 已返回轮次',
+    value: `${Number(summary.value.tokenReportedCount || 0).toLocaleString('zh-CN')} 轮`,
+    note: `未获得统计 ${Number(summary.value.tokenUnavailableCount || 0).toLocaleString('zh-CN')} 轮；缺失值不计入累计`,
+    icon: 'ep:document-checked',
+    color: '#0369a1'
+  }
 ])
 
 const detailStages = computed(() => {
@@ -447,6 +530,19 @@ const pipelineText = (mode?: string) => {
   return '历史链路未记录'
 }
 
+const formatTokens = (value?: number | null) => {
+  if (value == null || !Number.isFinite(Number(value))) return '-'
+  return Math.max(0, Math.trunc(Number(value))).toLocaleString('zh-CN')
+}
+
+const formatUsageJson = (value: string) => {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2)
+  } catch {
+    return value
+  }
+}
+
 const formatMs = (value?: number) => value == null ? '-' : `${Math.max(0, Number(value))} ms`
 const formatBytes = (value?: number) => {
   const bytes = Number(value || 0)
@@ -463,6 +559,26 @@ const formatTime = (value?: string | number) => {
 }
 const statusText = (status: CampusEsp32LogStatus) => statusOptions.find((item) => item.value === status)?.label || status || '未知'
 type TagType = 'success' | 'warning' | 'danger' | 'info'
+const usageTag = (status?: CampusEsp32UsageStatus | null): TagType => {
+  if (status === 'REPORTED') return 'success'
+  if (status === 'PENDING') return 'info'
+  return 'warning'
+}
+
+const usageStatusText = (status?: CampusEsp32UsageStatus | null) => {
+  if (status === 'REPORTED') return '已返回'
+  if (status === 'PENDING') return '统计中'
+  if (status === 'UNAVAILABLE') return '未获得统计'
+  return '历史无统计'
+}
+
+const usageStatusNotice = (status?: CampusEsp32UsageStatus | null) => {
+  if (status === 'PENDING') return '本轮上游 usage 尚未返回，刷新详情后可查看最新状态。'
+  if (status === 'UNAVAILABLE') return '本轮尚未获得可用 usage（可能未返回、中断或写入尚未完成）；缺失字段显示为横线，不会按 0 处理。'
+  if (status == null) return '该历史记录没有采集 Token usage，旧记录无法回填。'
+  return ''
+}
+
 const statusTag = (status: CampusEsp32LogStatus): TagType => {
   if (status === 'COMPLETED') return 'success'
   if (status === 'FAILED' || status === 'DISCONNECTED') return 'danger'
@@ -484,6 +600,7 @@ onMounted(() => void refreshAll())
 .metric-grid small, .metric-grid strong { display: block; }
 .metric-grid small { color: #83908d; }
 .metric-grid strong { margin-top: 3px; font-size: 22px; color: #213c36; }
+.metric-grid .metric-note { margin-top: 4px; font-size: 11px; line-height: 1.35; }
 .table-title { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
 .table-title h2 { margin: 0 0 4px; font-size: 18px; }
 .table-title p { margin: 0; color: #8b9895; }
@@ -492,6 +609,9 @@ onMounted(() => void refreshAll())
 .identity-cell { display: grid; min-width: 0; gap: 4px; }
 .identity-cell strong, .identity-cell small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .identity-cell small { color: #8b9895; }
+.token-table-cell { display: grid; justify-items: end; gap: 3px; }
+.token-table-cell small { color: #7b8985; }
+.token-table-cell strong { color: #334e49; }
 .total-ms { color: #0f766e; }
 .detail-content { display: grid; gap: 18px; }
 .drawer-heading { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-right: 18px; }
@@ -514,6 +634,27 @@ onMounted(() => void refreshAll())
 .image-placeholder { gap: 6px; flex-direction: column; color: #9aa8a4; background: #f1f5f3; }
 .image-error { font-size: 12px; }
 .answer-section { background: linear-gradient(145deg, #f7faf9, #f1f7ff); }
+.token-card { display: grid; gap: 14px; padding: 16px; background: linear-gradient(145deg, #fbfaff, #f5f8ff); border: 1px solid #e6e2f5; border-radius: 15px; }
+.token-card > .section-heading { align-items: flex-start; }
+.token-card > .section-heading > div { display: grid; gap: 4px; }
+.token-card > .section-heading small { line-height: 1.45; }
+.token-overview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.token-overview article { display: grid; gap: 5px; padding: 13px; background: #fff; border: 1px solid #e8e5f4; border-radius: 12px; }
+.token-overview small, .usage-response-id small { color: #837f91; }
+.token-overview strong { font-size: 20px; color: #4c3f78; }
+.usage-response-id { display: grid; gap: 4px; min-width: 0; }
+.usage-response-id strong { overflow: hidden; color: #4c3f78; text-overflow: ellipsis; white-space: nowrap; }
+.token-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; background: #e8e5f4; border: 1px solid #e8e5f4; border-radius: 12px; }
+.token-breakdown > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; background: #fff; }
+.token-breakdown > div span { color: #5f5a6c; }
+.token-breakdown > div strong { color: #4c3f78; }
+.token-breakdown .token-breakdown-heading { grid-column: 1 / -1; color: #4c3f78; font-weight: 600; background: #f3f0fb; }
+.token-breakdown .cached-token { grid-column: 1 / -1; }
+.token-breakdown .cached-token small { color: #8a8497; }
+.token-notes { display: grid; gap: 5px; padding-left: 20px; margin: 0; color: #777184; font-size: 12px; line-height: 1.55; }
+.usage-json { overflow: hidden; background: #fff; border: 1px solid #e8e5f4; border-radius: 12px; }
+.usage-json summary { padding: 11px 13px; color: #4c3f78; font-size: 13px; cursor: pointer; }
+.usage-json pre { max-height: 320px; padding: 12px; margin: 0; overflow: auto; color: #3f3a49; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; background: #f8f7fb; border-top: 1px solid #e8e5f4; }
 .stage-list, .meta-grid { padding: 8px 16px; background: #f7faf9; border-radius: 15px; }
 .stage-row { display: grid; grid-template-columns: 16px 1fr auto; gap: 10px; align-items: center; padding: 11px 0; border-bottom: 1px solid #e5eeeb; }
 .stage-row:last-child { border-bottom: 0; }
@@ -526,5 +667,5 @@ onMounted(() => void refreshAll())
 .meta-grid div { display: grid; gap: 5px; min-width: 0; }
 .meta-grid strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (width <= 1200px) { .metric-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (width <= 700px) { .metric-grid { grid-template-columns: repeat(2, 1fr); } .log-hero { padding: 22px; } .log-hero h1 { font-size: 22px; } .image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .user-image, .image-placeholder { height: 120px; } }
+@media (width <= 700px) { .metric-grid { grid-template-columns: repeat(2, 1fr); } .log-hero { padding: 22px; } .log-hero h1 { font-size: 22px; } .image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .user-image, .image-placeholder { height: 120px; } .token-overview, .token-breakdown { grid-template-columns: 1fr; } .token-breakdown .token-breakdown-heading, .token-breakdown .cached-token { grid-column: auto; } }
 </style>

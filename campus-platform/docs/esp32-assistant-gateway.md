@@ -481,7 +481,7 @@ location /app-api/campus/esp32/assistant/ws {
 
 管理后台“校园运营 → ESP32链路日志”展示每轮请求的图片、用户提问、模型回答，以及采集、提交、旁路转写、模型首响应、回答生成、网关首音频、音频输出和本轮总耗时。列表显示问答摘要，点击“详情”查看完整问答和图片，点击图片放大查看。
 
-数据库按顺序执行 `sql/mysql/campus-esp32-log-upgrade.sql` 和 `sql/mysql/campus-esp32-log-content-upgrade.sql`。自动部署已包含这两个幂等脚本，并在迁移前备份现有日志表。新内容字段仅作用于升级后的轮次；升级前未保存过的图片和问答无法恢复。
+数据库按顺序执行 `sql/mysql/campus-esp32-log-upgrade.sql`、`sql/mysql/campus-esp32-log-content-upgrade.sql` 和 `sql/mysql/campus-esp32-log-token-upgrade.sql`。自动部署已包含这些幂等脚本，并在迁移前备份现有日志表。新内容与用量字段仅作用于升级后的轮次；升级前未保存过的图片、问答和 Token 用量无法恢复。
 
 页面对应接口为：
 
@@ -499,6 +499,10 @@ GET /admin-api/campus/esp32/log/image?id=图片编号
 列表新增 `questionText`、`answerText`（最多 160 字的摘要）、`asrStatus`、`contentRecorded`、`storedImageCount`。详情返回完整问答和 `images: [{id, imageIndex, sizeBytes, mimeType}]`；`contentRecorded=false` 表示该轮未启用内容保存，`storedImageCount` 表示实际已保存图片数，不等同于设备上报数量。图片接口返回原始 `image/jpeg`，设置禁止缓存。
 
 设备 Token 和原始语音不写入日志。数据库写入故障仍以对话不中断为优先，排障时应同时检查服务端日志。
+
+2026-10-09 新增模型 Token 展示：默认 `omni-realtime` 链路从 `response.done.response.usage` 读取输入、输出、总量及上游可用的模态拆分，按响应 ID 绑定原请求并异步落库；不等待 ASR，不增加模型调用。取消或失败的响应如有 usage 也记录。列表增加“模型 Token”，详情提供明细和规范化计量 JSON，汇总随现有筛选条件统计。
+
+`usageStatus` 为 `PENDING`（等待统计）、`REPORTED`（取得至少一个有效计量字段）、`UNAVAILABLE`（结束、中断或断线时未取得有效统计；异步写入或迟到事件仍可更新）；历史记录为空。缺失字段保持 NULL、显示横线，真实 0 显示 0；总量不由分项推算，缓存量是输入子集、不重复累加。输入可能包含会话历史。此版本未接入 chat/responses 回退用量或独立 ASR/TTS 账单，页面不是完整费用账单。详细字段与价格边界见 [Token 用量文档](../../docs/esp32-token-usage-2026-10.md)。
 
 耗时字段定义。为兼容历史表，部分数据库字段仍沿用 `asr` / `tts` 命名，后台展示以实际起止点为准：
 

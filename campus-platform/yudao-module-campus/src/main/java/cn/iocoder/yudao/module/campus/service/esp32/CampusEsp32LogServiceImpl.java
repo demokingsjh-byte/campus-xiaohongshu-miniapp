@@ -28,6 +28,8 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
 
     private static final String TABLE = "campus_esp32_assistant_log";
     private static final AtomicBoolean PERSISTENCE_WARNING_LOGGED = new AtomicBoolean();
+    private static final String FINISH_USAGE_SQL =
+            "usage_status = CASE WHEN usage_status = 'PENDING' THEN 'UNAVAILABLE' ELSE usage_status END";
 
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -45,14 +47,15 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                     .addValue("clientIp", limit(clientIp, 64))
                     .addValue("requestId", limit(requestId, 100))
                     .addValue("pipelineMode", limit(pipelineMode, 24))
-                    .addValue("modelName", limit(modelName, 128));
+                    .addValue("modelName", limit(modelName, 128))
+                    .addValue("usageStatus", "omni-realtime".equals(pipelineMode) ? "PENDING" : "UNAVAILABLE");
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbcTemplate.update("INSERT INTO " + TABLE
                             + " (session_id, device_id, request_id, client_ip, status, content_recorded,"
-                            + " asr_status, question_text, answer_text, pipeline_mode, model_name,"
+                            + " asr_status, question_text, answer_text, pipeline_mode, model_name, usage_status,"
                             + " creator, updater, tenant_id)"
                             + " VALUES (:sessionId, :deviceId, :requestId, :clientIp, 'CAPTURING', b'1',"
-                            + " 'PENDING', NULL, NULL, :pipelineMode, :modelName, '', '', 0)"
+                            + " 'PENDING', NULL, NULL, :pipelineMode, :modelName, :usageStatus, '', '', 0)"
                             + " ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id), status = 'CAPTURING',"
                             + " audio_bytes = 0, image_count = 0, capture_ms = NULL, submit_ms = NULL,"
                             + " asr_ms = NULL, model_first_token_ms = NULL, model_total_ms = NULL,"
@@ -62,6 +65,11 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                             + " error_code = NULL, error_message = NULL, content_recorded = b'1',"
                             + " asr_status = 'PENDING', question_text = NULL, answer_text = NULL,"
                             + " pipeline_mode = :pipelineMode, model_name = :modelName,"
+                            + " usage_status = :usageStatus, usage_response_id = NULL, usage_json = NULL,"
+                            + " input_tokens = NULL, output_tokens = NULL, total_tokens = NULL,"
+                            + " input_text_tokens = NULL, input_audio_tokens = NULL, input_image_tokens = NULL,"
+                            + " input_video_tokens = NULL, input_cached_tokens = NULL,"
+                            + " output_text_tokens = NULL, output_audio_tokens = NULL,"
                             + " update_time = NOW(), deleted = b'0'",
                     params, keyHolder, new String[]{"id"});
             Number key = keyHolder.getKey();
@@ -156,6 +164,45 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
     }
 
     @Override
+    public void markModelUsage(Long logId, String responseId, Map<String, Long> tokens, String usageJson) {
+        if (logId == null) {
+            return;
+        }
+        String[] keys = {"inputTokens", "outputTokens", "totalTokens", "inputTextTokens",
+                "inputAudioTokens", "inputImageTokens", "inputVideoTokens", "inputCachedTokens",
+                "outputTextTokens", "outputAudioTokens"};
+        String[] columns = {"input_tokens", "output_tokens", "total_tokens", "input_text_tokens",
+                "input_audio_tokens", "input_image_tokens", "input_video_tokens", "input_cached_tokens",
+                "output_text_tokens", "output_audio_tokens"};
+        boolean reported = false;
+        MapSqlParameterSource params = new MapSqlParameterSource("logId", logId)
+                .addValue("responseId", StrUtil.isBlank(responseId) ? null : limit(responseId, 128));
+        for (String key : keys) {
+            Long value = tokens == null ? null : nullableNonNegative(tokens.get(key));
+            params.addValue(key, value);
+            reported |= value != null;
+        }
+        // Normalized usage only, never a response body or raw audio. Do not truncate JSON.
+        params.addValue("usageJson", StrUtil.isBlank(usageJson) || usageJson.length() > 8192
+                ? null : usageJson);
+        StringBuilder assignments = new StringBuilder(reported
+                ? "usage_status = 'REPORTED'" : FINISH_USAGE_SQL);
+        assignments.append(", usage_response_id = COALESCE(usage_response_id, :responseId)");
+        if (reported) {
+            for (int i = 0; i < keys.length; i++) {
+                assignments.append(", ").append(columns[i]).append(" = COALESCE(:")
+                        .append(keys[i]).append(", ").append(columns[i]).append(")");
+            }
+            assignments.append(", usage_json = COALESCE(:usageJson, usage_json)");
+        }
+        // One response snapshot per request; duplicates replace/fill fields, never add counts.
+        safe(() -> jdbcTemplate.update("UPDATE " + TABLE + " SET " + assignments
+                + ", update_time = NOW() WHERE id = :logId AND deleted = b'0'"
+                + " AND (usage_response_id IS NULL OR :responseId IS NULL"
+                + " OR usage_response_id = :responseId)", params), 0);
+    }
+
+    @Override
     public void saveImages(Long logId, List<byte[]> images) {
         if (logId == null || images == null || images.isEmpty()) {
             return;
@@ -210,7 +257,8 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
 
     @Override
     public void markCompleted(Long logId, long totalMs, Long ttsAudioMs) {
-        update(logId, "status = 'COMPLETED', total_ms = :totalMs, tts_audio_ms = :ttsAudioMs",
+        update(logId, "status = 'COMPLETED', total_ms = :totalMs, tts_audio_ms = :ttsAudioMs, "
+                        + FINISH_USAGE_SQL,
                 new MapSqlParameterSource("totalMs", nonNegative(totalMs))
                         .addValue("ttsAudioMs", nullableNonNegative(ttsAudioMs)));
     }
@@ -219,7 +267,7 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
     public void markIgnored(Long logId, int audioBytes, int imageCount, String reason) {
         update(logId, "status = 'IGNORED', asr_status = 'SKIPPED',"
                         + " audio_bytes = :audioBytes, image_count = :imageCount,"
-                        + " error_code = :errorCode, error_message = :errorMessage",
+                        + " error_code = :errorCode, error_message = :errorMessage, " + FINISH_USAGE_SQL,
                 new MapSqlParameterSource("audioBytes", Math.max(0, audioBytes))
                         .addValue("imageCount", Math.max(0, imageCount))
                         .addValue("errorCode", limit(reason, 64))
@@ -228,14 +276,15 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
 
     @Override
     public void markInterrupted(Long logId, Long totalMs) {
-        update(logId, "status = 'INTERRUPTED', error_code = 'INTERRUPTED', total_ms = :totalMs",
+        update(logId, "status = 'INTERRUPTED', error_code = 'INTERRUPTED', total_ms = :totalMs, "
+                        + FINISH_USAGE_SQL,
                 new MapSqlParameterSource("totalMs", nullableNonNegative(totalMs)));
     }
 
     @Override
     public void markFailed(Long logId, String code, String message, Long totalMs) {
         update(logId, "status = 'FAILED', error_code = :errorCode, error_message = :errorMessage,"
-                        + " total_ms = :totalMs",
+                        + " total_ms = :totalMs, " + FINISH_USAGE_SQL,
                 new MapSqlParameterSource("errorCode", limit(code, 64))
                         .addValue("errorMessage", limit(message, 255))
                         .addValue("totalMs", nullableNonNegative(totalMs)));
@@ -245,7 +294,7 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
     public void markDisconnected(Long logId, Long totalMs) {
         update(logId, "status = CASE WHEN status = 'FAILED' THEN status ELSE 'DISCONNECTED' END,"
                         + " error_code = CASE WHEN status = 'FAILED' THEN error_code ELSE 'DISCONNECTED' END,"
-                        + " total_ms = :totalMs",
+                        + " total_ms = :totalMs, " + FINISH_USAGE_SQL,
                 new MapSqlParameterSource("totalMs", nullableNonNegative(totalMs)));
     }
 
@@ -289,6 +338,11 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
         fallback.put("totalCount", 0);
         fallback.put("completedCount", 0);
         fallback.put("failedCount", 0);
+        fallback.put("tokenReportedCount", 0);
+        fallback.put("tokenUnavailableCount", 0);
+        fallback.put("totalInputTokens", null);
+        fallback.put("totalOutputTokens", null);
+        fallback.put("totalTokens", null);
         return safe(() -> jdbcTemplate.queryForMap("SELECT COUNT(*) AS totalCount,"
                 + " SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) AS completedCount,"
                 + " SUM(CASE WHEN status IN ('FAILED', 'DISCONNECTED', 'INTERRUPTED') THEN 1 ELSE 0 END) AS failedCount,"
@@ -300,7 +354,12 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                 + " ROUND(AVG(CASE WHEN speech_end_ms IS NOT NULL AND device_first_playback_ms IS NOT NULL"
                 + " THEN GREATEST(device_first_playback_ms - speech_end_ms, 0) ELSE NULL END), 0)"
                 + " AS averageSpeechEndToPlaybackMs,"
-                + " ROUND(AVG(model_total_ms), 0) AS averageModelMs, MAX(create_time) AS lastTime"
+                + " ROUND(AVG(model_total_ms), 0) AS averageModelMs, MAX(create_time) AS lastTime,"
+                + " COALESCE(SUM(CASE WHEN usage_status = 'REPORTED' THEN 1 ELSE 0 END), 0) AS tokenReportedCount,"
+                + " COALESCE(SUM(CASE WHEN usage_status = 'UNAVAILABLE' THEN 1 ELSE 0 END), 0) AS tokenUnavailableCount,"
+                + " SUM(CASE WHEN usage_status = 'REPORTED' THEN input_tokens ELSE NULL END) AS totalInputTokens,"
+                + " SUM(CASE WHEN usage_status = 'REPORTED' THEN output_tokens ELSE NULL END) AS totalOutputTokens,"
+                + " SUM(CASE WHEN usage_status = 'REPORTED' THEN total_tokens ELSE NULL END) AS totalTokens"
                 + " FROM " + TABLE + where, params), fallback);
     }
 
@@ -330,14 +389,14 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
     }
 
     private String selectSql() {
-        return selectSql("LEFT(question_text, 160)", "LEFT(answer_text, 160)");
+        return selectSql("LEFT(question_text, 160)", "LEFT(answer_text, 160)", "NULL");
     }
 
     private String selectDetailSql() {
-        return selectSql("question_text", "answer_text");
+        return selectSql("question_text", "answer_text", "usage_json");
     }
 
-    private String selectSql(String questionExpression, String answerExpression) {
+    private String selectSql(String questionExpression, String answerExpression, String usageExpression) {
         return "SELECT id, session_id AS sessionId, device_id AS deviceId, request_id AS requestId,"
                 + " client_ip AS clientIp, status, audio_bytes AS audioBytes, image_count AS imageCount,"
                 + " IF(content_recorded = b'1', TRUE, FALSE) AS contentRecorded,"
@@ -356,6 +415,12 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                 + " THEN GREATEST(device_first_playback_ms - speech_end_ms, 0) ELSE NULL END"
                 + " AS speechEndToPlaybackMs,"
                 + " pipeline_mode AS pipelineMode, model_name AS modelName,"
+                + " usage_status AS usageStatus, usage_response_id AS usageResponseId,"
+                + " input_tokens AS inputTokens, output_tokens AS outputTokens, total_tokens AS totalTokens,"
+                + " input_text_tokens AS inputTextTokens, input_audio_tokens AS inputAudioTokens,"
+                + " input_image_tokens AS inputImageTokens, input_video_tokens AS inputVideoTokens,"
+                + " input_cached_tokens AS inputCachedTokens, output_text_tokens AS outputTextTokens,"
+                + " output_audio_tokens AS outputAudioTokens, " + usageExpression + " AS usageJson,"
                 + " model_first_token_ms AS modelFirstTokenMs, model_total_ms AS modelTotalMs,"
                 + " tts_first_audio_ms AS ttsFirstAudioMs, tts_audio_ms AS ttsAudioMs, total_ms AS totalMs,"
                 + " error_code AS errorCode, error_message AS errorMessage, create_time AS createTime,"

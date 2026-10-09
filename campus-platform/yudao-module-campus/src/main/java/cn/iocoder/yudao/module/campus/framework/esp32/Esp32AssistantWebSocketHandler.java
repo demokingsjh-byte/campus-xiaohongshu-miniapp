@@ -125,6 +125,12 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 }
 
                 @Override
+                public void onResponseUsage(String requestId, String responseId,
+                                            Map<String, Long> tokens, String usageJson) {
+                    recordOmniUsage(context, requestId, responseId, tokens, usageJson);
+                }
+
+                @Override
                 public void onResponseDone(String requestId) {
                     handleOmniResponseDone(context, requestId);
                 }
@@ -1034,6 +1040,22 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             }
             context.realtimeAnswer.append(delta);
             sendJsonLocked(context, event("text_delta", "request_id", requestId, "text", delta));
+        }
+    }
+
+    private void recordOmniUsage(DeviceContext context, String requestId, String responseId,
+                                 Map<String, Long> tokens, String usageJson) {
+        Long logId;
+        synchronized (context.lock) {
+            // 取消后 activeLogId 可能已清空；近期映射仍指向原请求，绝不采用下一轮日志。
+            logId = context.deviceMetricLogIds.get(requestId);
+            if (logId == null && requestId.equals(context.activeRequestId)) {
+                logId = context.activeLogId;
+            }
+        }
+        if (logId != null) {
+            Long usageLogId = logId;
+            mediaExecutor.execute(() -> logService.markModelUsage(usageLogId, responseId, tokens, usageJson));
         }
     }
 
