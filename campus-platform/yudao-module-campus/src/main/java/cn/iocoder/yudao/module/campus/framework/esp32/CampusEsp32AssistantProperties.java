@@ -108,6 +108,18 @@ public class CampusEsp32AssistantProperties {
     /** 同一设备超过该分钟数没有对话后，清空上下文记忆，开始新话题。 */
     private int modelHistoryIdleMinutes = 30;
     /**
+     * 主动搭话（仅 HTTP 图文链路）：设备空闲到点后拍一张发来，模型看画面决定开口还是保持安静。
+     * 需配合支持 features.proactive 的固件；旧固件忽略该字段。
+     */
+    private boolean proactiveEnabled = true;
+    /** 设备连续多少分钟没有对话后看一眼。 */
+    private int proactiveIdleMinutes = 30;
+    /** 两次真正开口之间的最短间隔；用户不回应时逐次翻倍。 */
+    private int proactiveMinIntervalMinutes = 60;
+    /** 北京时间静默时段，跨午夜写法如 22:30 ~ 08:00；起止相同表示不设静默。 */
+    private String proactiveQuietStart = "22:30";
+    private String proactiveQuietEnd = "08:00";
+    /**
      * 提交给模型的图片长边上限（像素）。超过则服务端等比缩小后再编码，
      * 用于降低模型首 token 延迟与视觉 token 成本；设为 0 或负数表示不缩放。
      */

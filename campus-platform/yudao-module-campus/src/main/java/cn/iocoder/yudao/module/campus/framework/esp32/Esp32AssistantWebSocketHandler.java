@@ -60,6 +60,11 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     private final OmniRealtimeClient omniClient;
     private final CampusEsp32LogService logService;
 
+    /** 主动搭话频率与静默时段；按设备号记状态，跨重连有效。 */
+    private final Esp32ProactivePolicy proactivePolicy = new Esp32ProactivePolicy();
+    /** 主动轮次只拍一张，设备迟迟不提交时释放，避免卡住后续提问。 */
+    private static final long PROACTIVE_CAPTURE_TIMEOUT_MILLIS = 8000L;
+
     private final Map<String, DeviceContext> sessions = new ConcurrentHashMap<>();
     private final Map<String, AtomicInteger> activeIps = new ConcurrentHashMap<>();
     private final ExecutorService mediaExecutor = Executors.newFixedThreadPool(
@@ -176,7 +181,8 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         String type = event.path("type").asText();
         if ("turn_start".equals(type)) {
             startTurn(context, event.path("request_id").asText(),
-                    event.path("playback_finished").asBoolean(false));
+                    event.path("playback_finished").asBoolean(false),
+                    event.path("proactive").asBoolean(false));
         } else if ("turn_commit".equals(type)) {
             commitTurn(context, event);
         } else if ("turn_metrics".equals(type)) {
@@ -230,6 +236,12 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             connected.put("mode", "half_duplex");
             Map<String, Object> features = new LinkedHashMap<>();
             features.put("playback_finished", true);
+            if (proactiveSupported()) {
+                Map<String, Object> proactive = new LinkedHashMap<>();
+                proactive.put("idle_ms", TimeUnit.MINUTES.toMillis(
+                        Math.max(1, properties.getProactiveIdleMinutes())));
+                features.put("proactive", proactive);
+            }
             connected.put("features", features);
             connected.put("model", upstream.path("model").asText(null));
             connected.put("input_audio", mediaDescription(1, "pcm_s16le",
@@ -246,7 +258,13 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
-    private void startTurn(DeviceContext context, String requestId, boolean playbackFinishedAckEnabled) {
+    /** 主动搭话只在 HTTP 图文链路实现：需要先看完整句回答再决定是否送 TTS。 */
+    private boolean proactiveSupported() {
+        return properties.isProactiveEnabled() && !properties.isRealtimeProtocol();
+    }
+
+    private void startTurn(DeviceContext context, String requestId, boolean playbackFinishedAckEnabled,
+                           boolean proactive) {
         synchronized (context.lock) {
             String id = requestId == null || requestId.trim().isEmpty()
                     ? "esp32_turn_" + UUID.randomUUID().toString().replace("-", "")
@@ -254,6 +272,21 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             if (context.state != DeviceState.LISTENING || context.turn != null) {
                 sendBusyLocked(context, id, "当前轮次尚未结束");
                 return;
+            }
+            if (proactive) {
+                String skipReason = proactiveSupported()
+                        ? proactivePolicy.decide(context.deviceId, properties)
+                        : "proactive_unsupported";
+                if (skipReason != null) {
+                    // 不落日志、不改状态：设备收到后直接回到聆听，等下一个空闲周期。
+                    Map<String, Object> ignored = event("turn_ignored", "request_id", id);
+                    ignored.put("reason", skipReason);
+                    sendJsonLocked(context, ignored);
+                    log.info("[ESP32_PROACTIVE_SKIPPED] deviceId={} reason={}", context.deviceId, skipReason);
+                    return;
+                }
+            } else {
+                proactivePolicy.onUserTurn(context.deviceId);
             }
             if (properties.isRealtimeProtocol()) {
                 if (context.omniSession == null || !context.omniSession.isReady()) {
@@ -285,7 +318,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 handleModelFailure(context, exception);
                 return;
             }
-            context.turn = new TurnBuffer(id, logId);
+            context.turn = new TurnBuffer(id, logId, proactive);
             context.playbackFinishedAckEnabled = playbackFinishedAckEnabled;
             if (logId != null) {
                 context.deviceMetricLogIds.put(id, logId);
@@ -302,12 +335,20 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 if (logId != null) {
                     context.realtimeLogIds.put(id, logId);
                 }
-            } else if (properties.isAsrEnabled()) {
+            } else if (properties.isAsrEnabled() && !proactive) {
                 // 旧图文链路仍在采集期间并行喂流式 ASR。
                 context.asrStream = asrClient.startStream();
             }
-            setStateLocked(context, DeviceState.CAPTURING, id, "正在聆听");
+            setStateLocked(context, DeviceState.CAPTURING, id, proactive ? "看一眼" : "正在聆听");
             sendJsonLocked(context, event("turn_ready", "request_id", id));
+            if (proactive) {
+                // 主动轮次没有语音：不挂静音兜底，只给抓拍一个上限时间。
+                TurnBuffer startedTurn = context.turn;
+                startedTurn.noSpeechTimeoutFuture = scheduler.schedule(
+                        () -> expireNoSpeechCapture(context, startedTurn),
+                        PROACTIVE_CAPTURE_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+                return;
+            }
             // 启动静音自动提交兜底：到点后若检测到持续静音就主动 commitTurn。
             if (silenceCommitMillis() > 0) {
                 context.turn.silenceCheckFuture = scheduler.schedule(
@@ -584,7 +625,15 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             turn = context.turn.snapshot();
             cancelTurnTimers(context.turn);
             context.turn = null;
-            if (turn.pcm.length < Esp32ProtocolUtils.MIN_AUDIO_BYTES) {
+            if (turn.proactive && turn.images.isEmpty()) {
+                logService.markIgnored(turn.logId, 0, 0, "proactive_no_image");
+                Map<String, Object> ignored = event("turn_ignored", "request_id", turn.requestId);
+                ignored.put("reason", "proactive_no_image");
+                sendJsonLocked(context, ignored);
+                setStateLocked(context, DeviceState.LISTENING, turn.requestId, "可以提问了");
+                return;
+            }
+            if (!turn.proactive && turn.pcm.length < Esp32ProtocolUtils.MIN_AUDIO_BYTES) {
                 logService.markIgnored(turn.logId, turn.pcm.length, turn.images.size(), "audio_too_short");
                 closeAsrLocked(context);
                 if (context.omniSession != null) {
@@ -639,6 +688,11 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
 
         // 图片体积较大，异步落库，不能阻塞 ASR、模型和设备播放。
         mediaExecutor.execute(() -> logService.saveImages(turn.logId, turn.images));
+
+        if (turn.proactive) {
+            mediaExecutor.execute(() -> submitProactive(context, turn, captureMs));
+            return;
+        }
 
         // 当前 Turbo 图文模型不接受设备音频，必须先转写，再提交“文字 + 图片”。
         if (properties.isAsrEnabled()) {
@@ -755,6 +809,59 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
 
     }
 
+    /** 主动搭话：没有语音，直接把抓拍交给模型；回答先整句缓存，确认要开口才送 TTS。 */
+    private void submitProactive(DeviceContext context, TurnData turn, long captureMs) {
+        logService.markAsr(turn.logId, 0L, true, "【主动搭话】");
+        synchronized (context.lock) {
+            if (!turn.requestId.equals(context.activeRequestId)
+                    || context.interruptedRequests.contains(turn.requestId)) {
+                return;
+            }
+            context.proactiveRequestId = turn.requestId;
+            context.proactiveText.setLength(0);
+        }
+        Map<String, Object> chat = event("chat", "request_id", turn.requestId);
+        chat.put("question", "");
+        chat.put("proactive", true);
+        List<String> images = new ArrayList<>();
+        for (byte[] image : turn.images) {
+            images.add("data:image/jpeg;base64,"
+                    + Base64.getEncoder().encodeToString(downscaleForModel(image)));
+        }
+        chat.put("images", images);
+        chat.put("output_audio", false);
+        Map<String, Object> modelContext = new LinkedHashMap<>();
+        modelContext.put("client", "esp32-s3");
+        modelContext.put("device_id", context.deviceId);
+        chat.put("context", modelContext);
+        long submitStartedAt = System.nanoTime();
+        if (context.modelSession == null || !context.modelSession.send(chat)) {
+            logService.markFailed(turn.logId, "MODEL_UNAVAILABLE", "模型连接不可用",
+                    elapsedMillis(turn.startedAt));
+            synchronized (context.lock) {
+                finishProactiveQuietlyLocked(context, turn.requestId, "proactive_model_unavailable");
+            }
+            return;
+        }
+        logService.markSubmitted(turn.logId, 0, turn.images.size(), captureMs,
+                elapsedMillis(submitStartedAt), null, null);
+        log.info("[ESP32_PROACTIVE_SUBMITTED] deviceId={} requestId={} imageCount={}",
+                context.deviceId, turn.requestId, turn.images.size());
+    }
+
+    /** 主动轮次不开口或失败时安静收尾：设备回到聆听，不播报、不报错。 */
+    private void finishProactiveQuietlyLocked(DeviceContext context, String requestId, String reason) {
+        context.proactiveRequestId = null;
+        context.proactiveText.setLength(0);
+        closeTtsLocked(context);
+        context.activeRequestId = "";
+        context.activeLogId = null;
+        Map<String, Object> ignored = event("turn_ignored", "request_id", requestId);
+        ignored.put("reason", reason);
+        sendJsonLocked(context, ignored);
+        setStateLocked(context, DeviceState.LISTENING, requestId, "可以提问了");
+    }
+
     private void failBeforeModel(DeviceContext context, TurnData turn, String code, String message) {
         synchronized (context.lock) {
             if (!turn.requestId.equals(context.activeRequestId)) {
@@ -799,6 +906,49 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                     context.interruptedRequests.remove(requestId);
                 }
                 return;
+            }
+            if (requestId.equals(context.proactiveRequestId)) {
+                if ("text_delta".equals(type)) {
+                    // 先攒整句：模型可能回答 [SILENT]，不能边生成边播报。
+                    context.proactiveText.append(event.path("text").asText(event.path("delta").asText("")));
+                    return;
+                }
+                if ("text_done".equals(type)) {
+                    String answer = event.path("text").asText("");
+                    if (answer.isEmpty()) {
+                        answer = context.proactiveText.toString();
+                    }
+                    context.proactiveRequestId = null;
+                    context.proactiveText.setLength(0);
+                    Long modelTotalMs = nullableStatMillis(event.path("stats").path("total_ms"));
+                    Long modelFirstTokenMs = nullableStatMillis(event.path("stats").path("first_token_ms"));
+                    if (Esp32AssistantPromptPolicy.isProactiveSilent(answer)) {
+                        logService.markModelDone(context.activeLogId, modelTotalMs, modelFirstTokenMs,
+                                answer);
+                        logService.markIgnored(context.activeLogId, 0, 0, "proactive_silent");
+                        log.info("[ESP32_PROACTIVE_SILENT] deviceId={} requestId={}",
+                                context.deviceId, requestId);
+                        finishProactiveQuietlyLocked(context, requestId, "proactive_silent");
+                        return;
+                    }
+                    proactivePolicy.onSpoken(context.deviceId);
+                    log.info("[ESP32_PROACTIVE_SPOKEN] deviceId={} requestId={} text={}",
+                            context.deviceId, requestId, abbreviate(answer, 80));
+                    ObjectNode spoken = event.deepCopy();
+                    spoken.put("text", answer.trim());
+                    event = spoken;
+                    // 预热的 TTS 连接还没给设备发过 audio_start（正常轮次在首个 delta 时补发）。
+                    if (!context.ttsAnnounced || !requestId.equals(context.ttsRequestId)) {
+                        startTtsLocked(context, requestId);
+                    }
+                    // 走下面正常 text_done 流程：整句送 TTS、记日志、播完开连续对话窗口。
+                } else if ("error".equals(type) || "interrupted".equals(type)) {
+                    logService.markFailed(context.activeLogId, "PROACTIVE_MODEL_ERROR",
+                            abbreviate(event.path("message").asText("模型服务返回错误"), 255),
+                            elapsedMillis(context.turnStartedAt));
+                    finishProactiveQuietlyLocked(context, requestId, "proactive_model_error");
+                    return;
+                }
             }
             if ("text_delta".equals(type)) {
                 String delta = event.path("text").asText(event.path("delta").asText(""));
@@ -1785,6 +1935,9 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private long audioLastSendAt;
         private long audioSentMillis;
         private Long activeLogId;
+        /** 当前在缓存整句回答的主动轮次；非主动轮次为 null。 */
+        private String proactiveRequestId;
+        private final StringBuilder proactiveText = new StringBuilder();
 
         private DeviceContext(WebSocketSession session, String deviceId, String clientIp) {
             this.session = session;
@@ -1810,13 +1963,18 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         /** 无有效语音时释放卡住的采集轮次。 */
         private ScheduledFuture<?> noSpeechTimeoutFuture;
 
-        private TurnBuffer(String requestId, Long logId) {
+        /** 设备空闲后自己拍照发起的轮次：没有语音，模型可选择不开口。 */
+        private final boolean proactive;
+
+        private TurnBuffer(String requestId, Long logId, boolean proactive) {
             this.requestId = requestId;
             this.logId = logId;
+            this.proactive = proactive;
         }
 
         private TurnData snapshot() {
-            return new TurnData(requestId, logId, startedAt, pcm.toByteArray(), new ArrayList<>(images));
+            return new TurnData(requestId, logId, startedAt, pcm.toByteArray(), new ArrayList<>(images),
+                    proactive);
         }
     }
 
@@ -1826,13 +1984,16 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         private final long startedAt;
         private final byte[] pcm;
         private final List<byte[]> images;
+        private final boolean proactive;
 
-        private TurnData(String requestId, Long logId, long startedAt, byte[] pcm, List<byte[]> images) {
+        private TurnData(String requestId, Long logId, long startedAt, byte[] pcm, List<byte[]> images,
+                         boolean proactive) {
             this.requestId = requestId;
             this.logId = logId;
             this.startedAt = startedAt;
             this.pcm = pcm;
             this.images = Collections.unmodifiableList(images);
+            this.proactive = proactive;
         }
     }
 }

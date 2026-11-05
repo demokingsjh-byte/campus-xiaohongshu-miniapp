@@ -112,6 +112,59 @@ class GuideModelClientTest {
         }
     }
 
+    @Test
+    void shouldAskForProactiveCheckInWithTimeAndOnlyRememberSpokenOnes() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        AtomicReference<String> sse = new AtomicReference<>(
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"[SILENT]\"}\n\n"
+                        + "data: {\"type\":\"response.completed\"}\n\n");
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/responses", exchange -> respond(exchange, requestBody, sse.get()));
+        server.start();
+
+        GuideModelClient client = createClient(server);
+        try {
+            sendProactive(client, "req-p1", "device-p");
+            JsonNode body = JsonUtils.getObjectMapper().readTree(requestBody.get());
+            String prompt = body.path("input").get(0).path("content").get(1).path("text").asText();
+            assertTrue(prompt.contains("北京时间"));
+            assertTrue(prompt.contains("【主动搭话】"));
+            assertTrue(prompt.contains("[SILENT]"));
+
+            // 没开口的一轮不进上文；开口的一轮进上文，用户回话时模型知道自己刚问了什么。
+            sse.set("data: {\"type\":\"response.output_text.delta\",\"delta\":\"还在写作业呀？\"}\n\n"
+                    + "data: {\"type\":\"response.completed\"}\n\n");
+            sendProactive(client, "req-p2", "device-p");
+            assertEquals(1, JsonUtils.getObjectMapper().readTree(requestBody.get()).path("input").size());
+            sendOnce(client, "req-p3", "device-p", "对呀");
+            JsonNode input = JsonUtils.getObjectMapper().readTree(requestBody.get()).path("input");
+            assertEquals(3, input.size());
+            assertTrue(input.get(0).path("content").asText().contains("主动搭话"));
+            assertEquals("还在写作业呀？", input.get(1).path("content").asText());
+        } finally {
+            client.destroy();
+            server.stop(0);
+        }
+    }
+
+    private void sendProactive(GuideModelClient client, String requestId, String deviceId) throws Exception {
+        List<JsonNode> events = new ArrayList<>();
+        CountDownLatch done = new CountDownLatch(1);
+        try (GuideModelClient.ModelSession session = client.connect(listener(events, done))) {
+            Map<String, Object> chat = new LinkedHashMap<>();
+            chat.put("type", "chat");
+            chat.put("request_id", requestId);
+            chat.put("question", "");
+            chat.put("proactive", true);
+            chat.put("images", Collections.singletonList("data:image/jpeg;base64,AAAA"));
+            Map<String, Object> context = new LinkedHashMap<>();
+            context.put("device_id", deviceId);
+            chat.put("context", context);
+            assertTrue(session.send(chat));
+            assertTrue(done.await(5, TimeUnit.SECONDS));
+        }
+    }
+
     private void sendOnce(GuideModelClient client, String requestId, String deviceId,
                           String question) throws Exception {
         List<JsonNode> events = new ArrayList<>();

@@ -410,6 +410,12 @@ campus:
     # 上下文记忆：每次附带同一设备最近 N 轮文字问答（不重发旧图片），0 关闭；空闲超过 M 分钟后清空。
     model-history-turns: ${CAMPUS_LLM_HISTORY_TURNS:10}
     model-history-idle-minutes: ${CAMPUS_LLM_HISTORY_IDLE_MINUTES:30}
+    # 主动搭话：设备空闲 N 分钟后拍一张，模型决定开口还是保持安静；北京时间静默时段内不打扰。
+    proactive-enabled: ${CAMPUS_ESP32_PROACTIVE_ENABLED:true}
+    proactive-idle-minutes: ${CAMPUS_ESP32_PROACTIVE_IDLE_MINUTES:30}
+    proactive-min-interval-minutes: ${CAMPUS_ESP32_PROACTIVE_MIN_INTERVAL_MINUTES:60}
+    proactive-quiet-start: ${CAMPUS_ESP32_PROACTIVE_QUIET_START:22:30}
+    proactive-quiet-end: ${CAMPUS_ESP32_PROACTIVE_QUIET_END:08:00}
     # 提交给模型的图片长边上限：缩小视觉 token 数以降低首 token 延迟与成本；0 表示不缩放。
     model-image-max-edge: ${CAMPUS_LLM_IMAGE_MAX_EDGE:1024}
 

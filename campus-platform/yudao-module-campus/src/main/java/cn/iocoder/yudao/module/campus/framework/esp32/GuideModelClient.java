@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 import javax.annotation.PreDestroy;
 import javax.annotation.Resource;
 import java.io.IOException;
+import java.time.ZonedDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -188,7 +189,8 @@ public class GuideModelClient {
                 return true;
             }
             ArkStreamState state = new ArkStreamState(requestId, memoryFor(event),
-                    stringValue(event.get("question")), !collectImages(event).isEmpty());
+                    stringValue(event.get("question")), !collectImages(event).isEmpty(),
+                    isProactive(event));
             Request request = new Request.Builder()
                     .url(properties.getModelUrl())
                     .header("Authorization", "Bearer " + properties.getModelToken())
@@ -362,6 +364,13 @@ public class GuideModelClient {
          * （实测未传图时它会描述出"图书馆、桌子、书本"等并不存在的内容）。
          */
         private String buildQuestionText(Map<String, Object> event, boolean hasImage) {
+            return currentTimeHint() + buildQuestionBody(event, hasImage);
+        }
+
+        private String buildQuestionBody(Map<String, Object> event, boolean hasImage) {
+            if (isProactive(event)) {
+                return Esp32AssistantPromptPolicy.PROACTIVE_PROMPT;
+            }
             String question = stringValue(event.get("question")).trim();
             if (!hasImage) {
                 return question.isEmpty()
@@ -565,18 +574,29 @@ public class GuideModelClient {
             private final ConversationMemory memory;
             private final String question;
             private final boolean hadImages;
+            private final boolean proactive;
 
             private ArkStreamState(String requestId, ConversationMemory memory,
-                                   String question, boolean hadImages) {
+                                   String question, boolean hadImages, boolean proactive) {
                 this.requestId = requestId;
                 this.memory = memory;
                 this.question = question;
                 this.hadImages = hadImages;
+                this.proactive = proactive;
             }
 
-            /** 只有完整播报的问答才写入上文；听不清、报错和被打断的轮次不记。 */
+            /** 只有完整播报的问答才写入上文；听不清、报错、被打断和没开口的主动轮次不记。 */
             private void remember() {
-                if (memory == null || question.isEmpty() || text.length() == 0) {
+                if (memory == null || text.length() == 0) {
+                    return;
+                }
+                if (proactive) {
+                    if (!Esp32AssistantPromptPolicy.isProactiveSilent(text.toString())) {
+                        memory.add("（主人有一阵子没说话，你看了一眼摄像头后主动搭话）", text.toString());
+                    }
+                    return;
+                }
+                if (question.isEmpty()) {
                     return;
                 }
                 String userText = "主人说：" + question + (hadImages ? "（这轮你通过摄像头看到了画面）" : "");
@@ -676,6 +696,21 @@ public class GuideModelClient {
                 completed.set(true);
             }
         }
+    }
+
+    private static final String[] WEEKDAYS = {"一", "二", "三", "四", "五", "六", "日"};
+
+    /** 模型本身不知道现在几点；每轮附上北京时间，问几点、早晚问候才不会乱说。 */
+    static String currentTimeHint() {
+        ZonedDateTime now = ZonedDateTime.now(Esp32ProactivePolicy.BEIJING);
+        return String.format("（现在是北京时间 %d年%d月%d日 星期%s %02d:%02d）\n",
+                now.getYear(), now.getMonthValue(), now.getDayOfMonth(),
+                WEEKDAYS[now.getDayOfWeek().getValue() - 1], now.getHour(), now.getMinute());
+    }
+
+    static boolean isProactive(Map<String, Object> event) {
+        Object value = event.get("proactive");
+        return Boolean.TRUE.equals(value) || "true".equals(stringValue(value));
     }
 
     /** 单个设备的最近若干轮文字问答，线程安全。 */

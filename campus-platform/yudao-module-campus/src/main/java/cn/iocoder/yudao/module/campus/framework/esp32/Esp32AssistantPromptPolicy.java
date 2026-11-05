@@ -44,6 +44,28 @@ final class Esp32AssistantPromptPolicy {
                     + "不要改成介绍画面；短答或追问仅在确有相关上下文时承接，否则询问缺失信息。"
                     + "画面是你亲眼所见，按我看到的口吻说，不提照片、图片或张数。";
 
+    /** 主动搭话时模型决定不开口的标记；网关识别到它就静默结束本轮，绝不送去 TTS。 */
+    static final String PROACTIVE_SILENT = "[SILENT]";
+
+    static final String PROACTIVE_PROMPT =
+            "【主动搭话】主人已经有一阵子没和你说话了，附带的是你摄像头此刻看到的画面。"
+                    + "像住在一起的熟人一样，先判断现在适不适合开口：\n"
+                    + "看不到人、太暗看不清、对方在睡觉、在打电话或视频通话、明显很专注不想被打扰时，"
+                    + "只输出 " + PROACTIVE_SILENT + "，不要输出任何其他字。\n"
+                    + "适合开口时，根据你看到的具体内容自然地搭一句话，不超过25个字："
+                    + "可以好奇问在忙什么、关心一下、提醒休息喝水，或者带点你的小傲娇调侃一句；"
+                    + "结合现在的时间更好。不要说你在看照片，不要描述整个画面，不要用固定开场白，"
+                    + "一次只说一句，不连续追问。";
+
+    /** 模型回答是否表示“这次不开口”（含空回答）。 */
+    static boolean isProactiveSilent(String answer) {
+        if (answer == null) {
+            return true;
+        }
+        String trimmed = answer.trim();
+        return trimmed.isEmpty() || trimmed.toUpperCase().contains("SILENT");
+    }
+
     private Esp32AssistantPromptPolicy() {
     }
 }
