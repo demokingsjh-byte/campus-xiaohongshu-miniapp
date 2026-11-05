@@ -211,6 +211,37 @@ class GuideModelClientTest {
     }
 
     @Test
+    void shouldAttachArkUsageToTextDone() throws Exception {
+        HttpServer server = startSseServer(new AtomicReference<>(),
+                "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp-1\",\"status\":\"in_progress\"}}\n\n"
+                        + "data: {\"type\":\"response.output_text.delta\",\"delta\":\"好\"}\n\n"
+                        + "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-1\","
+                        + "\"usage\":{\"input_tokens\":1200,\"output_tokens\":40,\"total_tokens\":1240,"
+                        + "\"input_tokens_details\":{\"cached_tokens\":800}}}}\n\n");
+
+        GuideModelClient client = createClient(server);
+        List<JsonNode> events = new ArrayList<>();
+        CountDownLatch finished = new CountDownLatch(1);
+        try (GuideModelClient.ModelSession session = client.connect(listener(events, finished))) {
+            Map<String, Object> chat = new LinkedHashMap<>();
+            chat.put("type", "chat");
+            chat.put("request_id", "req-usage");
+            assertTrue(session.send(chat));
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+        } finally {
+            client.destroy();
+            server.stop(0);
+        }
+
+        JsonNode done = events.get(events.size() - 1);
+        assertEquals("text_done", done.path("type").asText());
+        assertEquals("resp-1", done.path("response_id").asText());
+        assertEquals(1200, done.path("usage").path("input_tokens").asInt());
+        assertEquals(800, done.path("usage").path("input_tokens_details").path("cached_tokens").asInt());
+        assertEquals(40, done.path("usage").path("output_tokens").asInt());
+    }
+
+    @Test
     void shouldReportNestedIncompleteReasonFromResponsesStream() throws Exception {
         HttpServer server = startSseServer(new AtomicReference<>(),
                 "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\","

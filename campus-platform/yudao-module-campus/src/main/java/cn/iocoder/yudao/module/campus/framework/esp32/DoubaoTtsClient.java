@@ -187,6 +187,7 @@ public class DoubaoTtsClient {
             audioParams.put("format", "pcm");
             audioParams.put("sample_rate", Esp32ProtocolUtils.OUTPUT_SAMPLE_RATE);
             audioParams.put("speech_rate", 0);
+            audioParams.put("loudness_rate", properties.getResolvedTtsLoudnessRate());
             params.put("audio_params", audioParams);
             Map<String, Object> cacheConfig = new LinkedHashMap<>();
             cacheConfig.put("text_type", 1);

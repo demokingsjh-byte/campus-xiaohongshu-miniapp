@@ -424,3 +424,13 @@ campus:
     # 预置音色使用 TTS 2.0 资源；seed-icl-2.0 仅用于已复刻的音色 ID。
     tts-resource-id: ${CAMPUS_VOLC_TTS_RESOURCE_ID:seed-tts-2.0}
     tts-voice-type: ${CAMPUS_VOLC_TTS_VOICE_TYPE:zh_female_roumeinvyou_uranus_bigtts}
+    # 播报音量：-50（最小）~ 100，0 为原始音量；越小越轻。
+    tts-loudness-rate: ${CAMPUS_VOLC_TTS_LOUDNESS_RATE:-30}
+    # 后台“费用”估算单价（元）。默认为 2026-11 官方后付费标价，不含折扣/资源包/免费额度，
+    # 实付以云厂商账单为准；有折扣时按实际单价覆盖。
+    pricing:
+      model-input-per-million: ${CAMPUS_PRICE_MODEL_INPUT:0.8}
+      model-cached-input-per-million: ${CAMPUS_PRICE_MODEL_CACHED_INPUT:0.16}
+      model-output-per-million: ${CAMPUS_PRICE_MODEL_OUTPUT:2.7}
+      asr-per-hour: ${CAMPUS_PRICE_ASR_PER_HOUR:1.0}
+      tts-per-ten-thousand-chars: ${CAMPUS_PRICE_TTS_PER_10K_CHARS:3.0}

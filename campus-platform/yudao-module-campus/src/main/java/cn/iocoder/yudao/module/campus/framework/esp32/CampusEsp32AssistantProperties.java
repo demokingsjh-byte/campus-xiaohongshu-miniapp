@@ -118,6 +118,13 @@ public class CampusEsp32AssistantProperties {
     private String ttsResourceId = "seed-tts-2.0";
     /** 火山 TTS：如梦音色。可通过 CAMPUS_VOLC_TTS_VOICE_TYPE 覆盖。 */
     private String ttsVoiceType = "zh_female_roumeinvyou_uranus_bigtts";
+    /** 火山 TTS 音量：-50（最小）~ 100，0 为原始音量；ESP32 外放偏响，默认调低。 */
+    private int ttsLoudnessRate = -30;
+
+    /** 限制在火山 TTS 接受的 [-50, 100] 范围内，避免误配导致请求被拒。 */
+    public int getResolvedTtsLoudnessRate() {
+        return Math.max(-50, Math.min(100, ttsLoudnessRate));
+    }
 
     /** 将线上遗留的 Chat + Turbo 配置迁移到当前 Responses + Pro 链路。 */
     public void setModelUrl(String modelUrl) {

@@ -75,6 +75,15 @@
             </div>
           </template>
         </el-table-column>
+        <el-table-column label="费用（元）" width="140" align="right">
+          <template #default="{ row }">
+            <div class="token-table-cell">
+              <strong>{{ formatMoney(row.totalCost) }}</strong>
+              <small>模型 {{ formatMoney(row.modelCost) }}</small>
+              <small>语音 {{ formatMoney(sumMoney(row.asrCost, row.ttsCost)) }}</small>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="115" align="center">
           <template #default="{ row }"><el-tag :type="statusTag(row.status)" effect="light" round>{{ statusText(row.status) }}</el-tag></template>
         </el-table-column>
@@ -178,6 +187,20 @@
         <section class="token-card">
           <div class="section-heading">
             <div>
+              <h3>本轮费用估算</h3>
+              <small>配置单价 × 实际用量；默认官方后付费标价，不含折扣与免费额度，实付以云厂商账单为准</small>
+            </div>
+            <strong class="cost-total">¥ {{ formatMoney(detail.totalCost) }}</strong>
+          </div>
+          <div class="token-overview">
+            <article><small>模型（Token）</small><strong>{{ formatMoney(detail.modelCost) }}</strong></article>
+            <article><small>语音识别 · {{ formatAudioSeconds(detail.asrAudioBytes) }}</small><strong>{{ formatMoney(detail.asrCost) }}</strong></article>
+            <article><small>语音合成 · {{ detail.ttsChars == null ? '-' : `${detail.ttsChars} 字` }}</small><strong>{{ formatMoney(detail.ttsCost) }}</strong></article>
+          </div>
+        </section>
+        <section class="token-card">
+          <div class="section-heading">
+            <div>
               <h3>模型 Token 用量</h3>
               <small>由上游模型 usage 返回，不等同于金额或阿里云最终账单</small>
             </div>
@@ -213,7 +236,7 @@
           <ul class="token-notes">
             <li>输入 Token 可能包含系统提示词、会话历史和本轮多模态输入，不只代表当前一句话。</li>
             <li>横线表示上游没有返回该字段，不按 0 计算；缓存输入已经包含在输入 Token 中。</li>
-            <li>这里只记录模型 usage；ASR、TTS 与异步补录可能单独计费，目前未形成完整账单。</li>
+            <li>这里只记录模型 usage；ASR、TTS 费用见上方“本轮费用估算”，异步补录转写不计入。</li>
           </ul>
           <details v-if="detail.usageJson" class="usage-json">
             <summary>查看上游 usage 计量字段（规范化，不含对话全文）</summary>
@@ -312,6 +335,13 @@ const statusOptions: Array<{ label: string; value: CampusEsp32LogStatus }> = [
 ]
 
 const metrics = computed(() => [
+  {
+    label: '累计费用估算（元）',
+    value: `¥ ${formatMoney(summary.value.totalCost, 2)}`,
+    note: `模型 ${formatMoney(summary.value.totalModelCost, 2)} / 识别 ${formatMoney(summary.value.totalAsrCost, 2)} / 合成 ${formatMoney(summary.value.totalTtsCost, 2)}；按筛选范围`,
+    icon: 'ep:money',
+    color: '#dc2626'
+  },
   { label: '请求总数', value: Number(summary.value.totalCount || 0), icon: 'ep:data-line', color: '#2563eb' },
   { label: '已完成', value: Number(summary.value.completedCount || 0), icon: 'ep:circle-check', color: '#10b981' },
   { label: '失败 / 中断', value: Number(summary.value.failedCount || 0), icon: 'ep:warning', color: '#ef4444' },
@@ -535,6 +565,25 @@ const formatTokens = (value?: number | null) => {
   return Math.max(0, Math.trunc(Number(value))).toLocaleString('zh-CN')
 }
 
+/** 单轮费用通常不足 1 分钱，默认保留 4 位；合计不足 1 元时同样保留 4 位，避免显示成 0.00。 */
+const formatMoney = (value?: number | null, digits = 4) => {
+  if (value == null || !Number.isFinite(Number(value))) return '-'
+  const amount = Math.max(0, Number(value))
+  if (amount > 0 && amount < 0.0001) return '<0.0001'
+  return amount.toFixed(amount >= 1 ? digits : Math.max(digits, 4))
+}
+
+const sumMoney = (...values: Array<number | null | undefined>) => {
+  const present = values.filter((value) => value != null && Number.isFinite(Number(value)))
+  return present.length ? present.reduce<number>((total, value) => total + Number(value), 0) : null
+}
+
+/** ASR 计费依据：16kHz / 16bit / 单声道 PCM，每秒 32000 字节。 */
+const formatAudioSeconds = (bytes?: number | null) => {
+  if (bytes == null || !Number.isFinite(Number(bytes))) return '-'
+  return `${(Number(bytes) / 32000).toFixed(1)} 秒`
+}
+
 const formatUsageJson = (value: string) => {
   try {
     return JSON.stringify(JSON.parse(value), null, 2)
@@ -642,6 +691,7 @@ onMounted(() => void refreshAll())
 .token-overview article { display: grid; gap: 5px; padding: 13px; background: #fff; border: 1px solid #e8e5f4; border-radius: 12px; }
 .token-overview small, .usage-response-id small { color: #837f91; }
 .token-overview strong { font-size: 20px; color: #4c3f78; }
+.cost-total { font-size: 24px; color: #b91c1c; white-space: nowrap; }
 .usage-response-id { display: grid; gap: 4px; min-width: 0; }
 .usage-response-id strong { overflow: hidden; color: #4c3f78; text-overflow: ellipsis; white-space: nowrap; }
 .token-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; background: #e8e5f4; border: 1px solid #e8e5f4; border-radius: 12px; }

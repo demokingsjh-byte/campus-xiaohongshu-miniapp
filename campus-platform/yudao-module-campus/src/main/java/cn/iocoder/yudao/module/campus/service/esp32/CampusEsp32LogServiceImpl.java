@@ -5,12 +5,14 @@ import cn.iocoder.yudao.framework.common.exception.enums.GlobalErrorCodeConstant
 import cn.iocoder.yudao.framework.common.pojo.PageResult;
 import cn.iocoder.yudao.module.campus.controller.admin.esp32.vo.CampusEsp32LogPageReqVO;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Collections;
 import java.util.List;
@@ -31,10 +33,28 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
     private static final String FINISH_USAGE_SQL =
             "usage_status = CASE WHEN usage_status = 'PENDING' THEN 'UNAVAILABLE' ELSE usage_status END";
 
+    private static final String NOT_REALTIME = "COALESCE(pipeline_mode, '') <> 'omni-realtime'";
+    private static final String IS_REALTIME = "pipeline_mode = 'omni-realtime'";
+    private static final String REPORTED = "usage_status = 'REPORTED'";
+    /** 回退链路的流式 ASR 在采集期即接收全部音频，忽略/失败轮也已计费；仅关闭 ASR 时不计。 */
+    private static final String ASR_AUDIO_BYTES_SQL =
+            "CASE WHEN " + NOT_REALTIME + " AND COALESCE(asr_status, '') <> 'DISABLED'"
+                    + " THEN audio_bytes ELSE NULL END";
+    private static final String TTS_CHARS_SQL =
+            "CASE WHEN " + NOT_REALTIME + " THEN CHAR_LENGTH(answer_text) ELSE NULL END";
+
     private final NamedParameterJdbcTemplate jdbcTemplate;
+    private final CampusEsp32CostCalculator costCalculator;
 
     public CampusEsp32LogServiceImpl(NamedParameterJdbcTemplate jdbcTemplate) {
+        this(jdbcTemplate, new CampusEsp32PricingProperties());
+    }
+
+    @Autowired
+    public CampusEsp32LogServiceImpl(NamedParameterJdbcTemplate jdbcTemplate,
+                                     CampusEsp32PricingProperties pricing) {
         this.jdbcTemplate = jdbcTemplate;
+        this.costCalculator = new CampusEsp32CostCalculator(pricing);
     }
 
     @Override
@@ -48,7 +68,9 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                     .addValue("requestId", limit(requestId, 100))
                     .addValue("pipelineMode", limit(pipelineMode, 24))
                     .addValue("modelName", limit(modelName, 128))
-                    .addValue("usageStatus", "omni-realtime".equals(pipelineMode) ? "PENDING" : "UNAVAILABLE");
+                    // 实时与方舟 Responses 都会在终态事件返回 usage；chat 兼容协议暂不采集。
+                    .addValue("usageStatus", "omni-realtime".equals(pipelineMode)
+                            || "responses".equals(pipelineMode) ? "PENDING" : "UNAVAILABLE");
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbcTemplate.update("INSERT INTO " + TABLE
                             + " (session_id, device_id, request_id, client_ip, status, content_recorded,"
@@ -310,6 +332,7 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                 "SELECT COUNT(*) FROM " + TABLE + where, params, Long.class), 0L);
         List<Map<String, Object>> list = safe(() -> jdbcTemplate.queryForList(selectSql() + where
                 + " ORDER BY id DESC LIMIT :offset, :pageSize", params), Collections.emptyList());
+        list.forEach(costCalculator::apply);
         return new PageResult<>(list, total == null ? 0L : total);
     }
 
@@ -321,6 +344,7 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
             throw exception0(GlobalErrorCodeConstants.NOT_FOUND.getCode(), "ESP32 链路日志不存在");
         }
         Map<String, Object> detail = rows.get(0);
+        costCalculator.apply(detail);
         List<Map<String, Object>> images = safe(() -> jdbcTemplate.queryForList(
                 "SELECT id, image_index AS imageIndex, size_bytes AS sizeBytes, mime_type AS mimeType"
                         + " FROM campus_esp32_assistant_log_image"
@@ -343,7 +367,7 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
         fallback.put("totalInputTokens", null);
         fallback.put("totalOutputTokens", null);
         fallback.put("totalTokens", null);
-        return safe(() -> jdbcTemplate.queryForMap("SELECT COUNT(*) AS totalCount,"
+        Map<String, Object> summary = safe(() -> jdbcTemplate.queryForMap("SELECT COUNT(*) AS totalCount,"
                 + " SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) AS completedCount,"
                 + " SUM(CASE WHEN status IN ('FAILED', 'DISCONNECTED', 'INTERRUPTED') THEN 1 ELSE 0 END) AS failedCount,"
                 + " ROUND(AVG(total_ms), 0) AS averageTotalMs,"
@@ -359,8 +383,73 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                 + " COALESCE(SUM(CASE WHEN usage_status = 'UNAVAILABLE' THEN 1 ELSE 0 END), 0) AS tokenUnavailableCount,"
                 + " SUM(CASE WHEN usage_status = 'REPORTED' THEN input_tokens ELSE NULL END) AS totalInputTokens,"
                 + " SUM(CASE WHEN usage_status = 'REPORTED' THEN output_tokens ELSE NULL END) AS totalOutputTokens,"
-                + " SUM(CASE WHEN usage_status = 'REPORTED' THEN total_tokens ELSE NULL END) AS totalTokens"
+                + " SUM(CASE WHEN usage_status = 'REPORTED' THEN total_tokens ELSE NULL END) AS totalTokens,"
+                // 费用按链路拆分聚合：方舟/回退链路与历史 omni 实时链路单价结构不同。
+                + sumIf(REPORTED + " AND " + NOT_REALTIME, "input_tokens", "costArkInputTokens") + ","
+                + sumIf(REPORTED + " AND " + NOT_REALTIME, "input_cached_tokens", "costArkCachedTokens") + ","
+                + sumIf(REPORTED + " AND " + NOT_REALTIME, "output_tokens", "costArkOutputTokens") + ","
+                + sumIf(REPORTED + " AND " + IS_REALTIME, "input_tokens", "costRtInputTokens") + ","
+                + sumIf(REPORTED + " AND " + IS_REALTIME, "output_tokens", "costRtOutputTokens") + ","
+                + sumIf(REPORTED + " AND " + IS_REALTIME, "input_text_tokens", "costRtInputTextTokens") + ","
+                + sumIf(REPORTED + " AND " + IS_REALTIME, "input_audio_tokens", "costRtInputAudioTokens") + ","
+                + sumIf(REPORTED + " AND " + IS_REALTIME, "input_image_tokens", "costRtInputImageTokens") + ","
+                + sumIf(REPORTED + " AND " + IS_REALTIME, "input_video_tokens", "costRtInputVideoTokens") + ","
+                + sumIf(REPORTED + " AND " + IS_REALTIME, "output_text_tokens", "costRtOutputTextTokens") + ","
+                + sumIf(REPORTED + " AND " + IS_REALTIME, "output_audio_tokens", "costRtOutputAudioTokens") + ","
+                + " SUM(" + ASR_AUDIO_BYTES_SQL + ") AS costAsrAudioBytes,"
+                + " SUM(" + TTS_CHARS_SQL + ") AS costTtsChars"
                 + " FROM " + TABLE + where, params), fallback);
+        return applySummaryCost(summary == null ? fallback : new HashMap<>(summary));
+    }
+
+    private static String sumIf(String condition, String column, String alias) {
+        return " SUM(CASE WHEN " + condition + " THEN " + column + " ELSE NULL END) AS " + alias;
+    }
+
+    /** 由聚合用量计算合计费用，并移除内部用量列；公式线性，与逐轮费用之和一致。 */
+    private Map<String, Object> applySummaryCost(Map<String, Object> summary) {
+        Map<String, Object> ark = new HashMap<>();
+        ark.put("aggregated", true);
+        ark.put("pipelineMode", "responses");
+        ark.put("inputTokens", summary.remove("costArkInputTokens"));
+        ark.put("inputCachedTokens", summary.remove("costArkCachedTokens"));
+        ark.put("outputTokens", summary.remove("costArkOutputTokens"));
+        ark.put("asrAudioBytes", summary.remove("costAsrAudioBytes"));
+        ark.put("ttsChars", summary.remove("costTtsChars"));
+        costCalculator.apply(ark);
+
+        Map<String, Object> realtime = new HashMap<>();
+        realtime.put("aggregated", true);
+        realtime.put("pipelineMode", CampusEsp32CostCalculator.REALTIME_PIPELINE);
+        realtime.put("inputTokens", summary.remove("costRtInputTokens"));
+        realtime.put("outputTokens", summary.remove("costRtOutputTokens"));
+        realtime.put("inputTextTokens", summary.remove("costRtInputTextTokens"));
+        realtime.put("inputAudioTokens", summary.remove("costRtInputAudioTokens"));
+        realtime.put("inputImageTokens", summary.remove("costRtInputImageTokens"));
+        realtime.put("inputVideoTokens", summary.remove("costRtInputVideoTokens"));
+        realtime.put("outputTextTokens", summary.remove("costRtOutputTextTokens"));
+        realtime.put("outputAudioTokens", summary.remove("costRtOutputAudioTokens"));
+        costCalculator.apply(realtime);
+
+        summary.put("totalModelCost", addMoney(ark.get("modelCost"), realtime.get("modelCost")));
+        summary.put("totalAsrCost", ark.get("asrCost"));
+        summary.put("totalTtsCost", ark.get("ttsCost"));
+        summary.put("totalCost", addMoney(ark.get("totalCost"), realtime.get("totalCost")));
+        return summary;
+    }
+
+    private static BigDecimal addMoney(Object first, Object second) {
+        if (first == null && second == null) {
+            return null;
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        if (first instanceof BigDecimal) {
+            total = total.add((BigDecimal) first);
+        }
+        if (second instanceof BigDecimal) {
+            total = total.add((BigDecimal) second);
+        }
+        return total;
     }
 
     private String buildWhere(CampusEsp32LogPageReqVO reqVO, MapSqlParameterSource params) {
@@ -421,6 +510,7 @@ public class CampusEsp32LogServiceImpl implements CampusEsp32LogService {
                 + " input_image_tokens AS inputImageTokens, input_video_tokens AS inputVideoTokens,"
                 + " input_cached_tokens AS inputCachedTokens, output_text_tokens AS outputTextTokens,"
                 + " output_audio_tokens AS outputAudioTokens, " + usageExpression + " AS usageJson,"
+                + " " + ASR_AUDIO_BYTES_SQL + " AS asrAudioBytes, " + TTS_CHARS_SQL + " AS ttsChars,"
                 + " model_first_token_ms AS modelFirstTokenMs, model_total_ms AS modelTotalMs,"
                 + " tts_first_audio_ms AS ttsFirstAudioMs, tts_audio_ms AS ttsAudioMs, total_ms AS totalMs,"
                 + " error_code AS errorCode, error_message AS errorMessage, create_time AS createTime,"

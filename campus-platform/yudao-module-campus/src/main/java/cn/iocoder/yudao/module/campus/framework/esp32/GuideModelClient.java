@@ -372,6 +372,7 @@ public class GuideModelClient {
                     return;
                 }
                 String eventType = chunk.path("type").asText();
+                state.captureUsage(chunk);
                 if ("response.output_text.delta".equals(eventType)) {
                     state.emitDelta(chunk.path("delta").asText(""));
                     return;
@@ -517,9 +518,37 @@ public class GuideModelClient {
             private final StringBuilder text = new StringBuilder();
             private final AtomicBoolean completed = new AtomicBoolean();
             private volatile long firstTokenAt;
+            private volatile JsonNode usage;
+            private volatile String responseId;
 
             private ArkStreamState(String requestId) {
                 this.requestId = requestId;
+            }
+
+            /** Responses 终态事件在 response.usage 返回实际计量；缺失时不估算。 */
+            private void captureUsage(JsonNode chunk) {
+                JsonNode response = chunk.path("response");
+                if (!response.isObject()) {
+                    return;
+                }
+                String id = response.path("id").asText("");
+                if (!id.isEmpty()) {
+                    responseId = id;
+                }
+                if (response.path("usage").isObject()) {
+                    usage = response.path("usage");
+                }
+            }
+
+            /** 计量随 text_done / error 交给网关落库；网关下发设备前会移除。 */
+            private void attachUsage(ObjectNode event) {
+                JsonNode current = usage;
+                if (current != null) {
+                    event.set("usage", current.deepCopy());
+                }
+                if (responseId != null) {
+                    event.put("response_id", responseId);
+                }
             }
 
             private void emitDelta(String delta) {
@@ -552,6 +581,7 @@ public class GuideModelClient {
                 } else {
                     stats.put("first_token_ms", elapsedMillis(startedAt, firstTokenAt));
                 }
+                attachUsage(event);
                 eventListener.onEvent(event);
             }
 
@@ -569,6 +599,7 @@ public class GuideModelClient {
                 event.put("code", code);
                 event.put("message", message == null || message.isEmpty()
                         ? "火山方舟请求失败" : message);
+                attachUsage(event);
                 eventListener.onEvent(event);
             }
 

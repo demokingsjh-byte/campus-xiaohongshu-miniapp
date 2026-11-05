@@ -774,6 +774,16 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     private void handleModelEvent(DeviceContext context, JsonNode event) {
         String type = event.path("type").asText();
         String requestId = event.path("request_id").asText(context.activeRequestId);
+        if (event.isObject() && (event.has("usage") || event.has("response_id"))) {
+            // 方舟计量只落后台日志，不透传给设备；须在 error 分支清空 activeLogId 之前记录。
+            Esp32TokenUsage usage = Esp32TokenUsage.parse(event.path("usage"));
+            recordOmniUsage(context, requestId, event.path("response_id").asText(null),
+                    usage.getTokens(), usage.getUsageJson());
+            ObjectNode deviceEvent = event.deepCopy();
+            deviceEvent.remove("usage");
+            deviceEvent.remove("response_id");
+            event = deviceEvent;
+        }
         synchronized (context.lock) {
             if ("pong".equals(type)) {
                 sendTextLocked(context, event.toString());

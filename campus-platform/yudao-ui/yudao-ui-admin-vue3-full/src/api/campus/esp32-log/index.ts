@@ -47,6 +47,14 @@ export interface CampusEsp32Log {
   inputCachedTokens?: number | null
   outputTextTokens?: number | null
   outputAudioTokens?: number | null
+  /** 估算费用（元），按配置单价 × 实际用量；null 表示该项无计费用量或未返回计量 */
+  modelCost?: number | null
+  asrCost?: number | null
+  ttsCost?: number | null
+  totalCost?: number | null
+  /** 计费依据：ASR 上传音频字节（16kHz PCM）与 TTS 回答字数 */
+  asrAudioBytes?: number | null
+  ttsChars?: number | null
   questionText?: string | null
   answerText?: string | null
   asrStatus?: CampusEsp32AsrStatus | null
@@ -99,6 +107,10 @@ export interface CampusEsp32LogSummary {
   totalInputTokens: number | null
   totalOutputTokens: number | null
   totalTokens: number | null
+  totalCost?: number | null
+  totalModelCost?: number | null
+  totalAsrCost?: number | null
+  totalTtsCost?: number | null
   lastTime?: string | number
 }
 
