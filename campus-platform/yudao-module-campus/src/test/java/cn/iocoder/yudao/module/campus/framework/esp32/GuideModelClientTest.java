@@ -174,14 +174,14 @@ class GuideModelClientTest {
         assertEquals("text", userContent.get(0).path("type").asText());
         String prompt = userContent.get(0).path("text").asText();
         assertTrue(prompt.contains("这是什么楼？"));
-        assertTrue(prompt.contains("没有画面"));
-        // 系统提示词必须限制回答长度、保持通用人设，并遵守两条产品规则：
-        // 称呼用户为「主人」、默认不主动分析画面
+        assertTrue(prompt.contains("本轮没有图片"));
+        // 系统提示词必须限制回答长度、保持通用陪伴人设，并遵守两条产品规则：
+        // 不固定称呼「主人」、只在用户明确询问时才描述画面
         String systemPrompt = body.path("messages").get(0).path("content").asText();
-        assertTrue(systemPrompt.contains("50 字"));
-        assertTrue(systemPrompt.contains("陪伴"));
-        assertTrue(systemPrompt.contains("主人"));
-        assertTrue(systemPrompt.contains("默认不要主动描述"));
+        assertTrue(systemPrompt.contains("一两句话"));
+        assertTrue(systemPrompt.contains("陪伴助手小美"));
+        assertTrue(systemPrompt.contains("不固定称呼主人"));
+        assertTrue(systemPrompt.contains("只有用户明确询问当前画面"));
         assertTrue(systemPrompt.indexOf("校园") < 0);
     }
 
