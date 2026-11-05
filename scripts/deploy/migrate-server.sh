@@ -132,11 +132,11 @@ migrations=(
   campus-wechat-pay-upgrade.sql
   campus-trade-order-upgrade.sql
   campus-trade-chat-upgrade.sql
+  campus-errand-order-upgrade.sql
   campus-inventory-upgrade.sql
   campus-job-audit-upgrade.sql
   campus-groupbuy-address-upgrade.sql
   campus-trade-refund-upgrade.sql
-  campus-errand-order-upgrade.sql
   campus-errand-audit-policy-upgrade.sql
   campus-errand-confirmation-upgrade.sql
 )
