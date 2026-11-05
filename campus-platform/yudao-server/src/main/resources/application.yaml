@@ -412,7 +412,8 @@ campus:
     model-history-idle-minutes: ${CAMPUS_LLM_HISTORY_IDLE_MINUTES:30}
     # 主动搭话：设备空闲 N 分钟后拍一张，模型决定开口还是保持安静；北京时间静默时段内不打扰。
     proactive-enabled: ${CAMPUS_ESP32_PROACTIVE_ENABLED:true}
-    proactive-idle-minutes: ${CAMPUS_ESP32_PROACTIVE_IDLE_MINUTES:30}
+    # TODO(2026-11-05) 临时 2 分钟用于联调主动搭话，测完改回 30。
+    proactive-idle-minutes: ${CAMPUS_ESP32_PROACTIVE_IDLE_MINUTES:2}
     proactive-min-interval-minutes: ${CAMPUS_ESP32_PROACTIVE_MIN_INTERVAL_MINUTES:60}
     proactive-quiet-start: ${CAMPUS_ESP32_PROACTIVE_QUIET_START:22:30}
     proactive-quiet-end: ${CAMPUS_ESP32_PROACTIVE_QUIET_END:08:00}
