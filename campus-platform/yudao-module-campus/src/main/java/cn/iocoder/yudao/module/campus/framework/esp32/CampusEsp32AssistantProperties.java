@@ -101,6 +101,13 @@ public class CampusEsp32AssistantProperties {
      */
     private int modelMaxTokens = 200;
     /**
+     * HTTP 模型链路（方舟 Responses / Chat）每次随请求附带的最近对话轮数，
+     * 让模型记得上文；只带文字不重发旧图片。设为 0 关闭上下文记忆。
+     */
+    private int modelHistoryTurns = 10;
+    /** 同一设备超过该分钟数没有对话后，清空上下文记忆，开始新话题。 */
+    private int modelHistoryIdleMinutes = 30;
+    /**
      * 提交给模型的图片长边上限（像素）。超过则服务端等比缩小后再编码，
      * 用于降低模型首 token 延迟与视觉 token 成本；设为 0 或负数表示不缩放。
      */

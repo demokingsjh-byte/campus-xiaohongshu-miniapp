@@ -407,6 +407,9 @@ campus:
     model-token: ${CAMPUS_LLM_API_KEY:}
     # 单轮回答上限：语音播报场景，收紧到 200 token（约 80~150 汉字），避免用户长时间等待。
     model-max-tokens: ${CAMPUS_LLM_MAX_TOKENS:200}
+    # 上下文记忆：每次附带同一设备最近 N 轮文字问答（不重发旧图片），0 关闭；空闲超过 M 分钟后清空。
+    model-history-turns: ${CAMPUS_LLM_HISTORY_TURNS:10}
+    model-history-idle-minutes: ${CAMPUS_LLM_HISTORY_IDLE_MINUTES:30}
     # 提交给模型的图片长边上限：缩小视觉 token 数以降低首 token 延迟与成本；0 表示不缩放。
     model-image-max-edge: ${CAMPUS_LLM_IMAGE_MAX_EDGE:1024}
 

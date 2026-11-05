@@ -20,9 +20,12 @@ import org.springframework.stereotype.Component;
 import javax.annotation.PreDestroy;
 import javax.annotation.Resource;
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -39,7 +42,7 @@ public class GuideModelClient {
     private static final MediaType JSON_MEDIA_TYPE =
             MediaType.parse("application/json; charset=utf-8");
 
-    /** 与实时链路共用任务优先规则；HTTP 回退本身不因此新增多轮历史。 */
+    /** 与实时链路共用任务优先规则；多轮上文由 {@link ConversationMemory} 按设备附带。 */
     private static final String SYSTEM_PROMPT = Esp32AssistantPromptPolicy.INSTRUCTIONS;
 
     private static final String IMAGE_ONLY_PROMPT =
@@ -53,6 +56,9 @@ public class GuideModelClient {
 
     @Resource
     private CampusEsp32AssistantProperties properties;
+
+    /** 按设备保存的最近问答；设备重连后仍能接上话题，空闲超时后自动清空。 */
+    private final Map<String, ConversationMemory> memories = new ConcurrentHashMap<>();
 
     private final OkHttpClient httpClient = new OkHttpClient.Builder()
             .connectTimeout(8, TimeUnit.SECONDS)
@@ -181,7 +187,8 @@ public class GuideModelClient {
                 emitArkError(requestId, "ARK_REQUEST_BUILD_FAILED", exception.getMessage());
                 return true;
             }
-            ArkStreamState state = new ArkStreamState(requestId);
+            ArkStreamState state = new ArkStreamState(requestId, memoryFor(event),
+                    stringValue(event.get("question")), !collectImages(event).isEmpty());
             Request request = new Request.Builder()
                     .url(properties.getModelUrl())
                     .header("Authorization", "Bearer " + properties.getModelToken())
@@ -252,6 +259,7 @@ public class GuideModelClient {
             body.put("instructions", SYSTEM_PROMPT);
 
             ArrayNode input = body.putArray("input");
+            appendHistory(input, event);
             ObjectNode user = input.addObject();
             user.put("role", "user");
             ArrayNode content = user.putArray("content");
@@ -283,6 +291,7 @@ public class GuideModelClient {
             ObjectNode system = messages.addObject();
             system.put("role", "system");
             system.put("content", SYSTEM_PROMPT);
+            appendHistory(messages, event);
 
             ObjectNode user = messages.addObject();
             user.put("role", "user");
@@ -299,6 +308,39 @@ public class GuideModelClient {
             prompt.put("type", "text");
             prompt.put("text", buildQuestionText(event, !images.isEmpty()));
             return body;
+        }
+
+        /** 旧轮次只带文字（user/assistant 字符串消息），两种协议格式相同。 */
+        private void appendHistory(ArrayNode target, Map<String, Object> event) {
+            ConversationMemory memory = memoryFor(event);
+            if (memory == null) {
+                return;
+            }
+            for (String[] turn : memory.snapshot()) {
+                ObjectNode user = target.addObject();
+                user.put("role", "user");
+                user.put("content", turn[0]);
+                ObjectNode assistant = target.addObject();
+                assistant.put("role", "assistant");
+                assistant.put("content", turn[1]);
+            }
+        }
+
+        private ConversationMemory memoryFor(Map<String, Object> event) {
+            int maxTurns = properties.getModelHistoryTurns();
+            if (maxTurns <= 0) {
+                return null;
+            }
+            String deviceId = "";
+            Object context = event.get("context");
+            if (context instanceof Map<?, ?>) {
+                deviceId = stringValue(((Map<?, ?>) context).get("device_id"));
+            }
+            String key = deviceId.isEmpty() ? "session:" + System.identityHashCode(this) : deviceId;
+            long idleMillis = TimeUnit.MINUTES.toMillis(Math.max(1, properties.getModelHistoryIdleMinutes()));
+            long now = System.currentTimeMillis();
+            memories.values().removeIf(memory -> memory.isIdle(now, idleMillis));
+            return memories.computeIfAbsent(key, ignored -> new ConversationMemory(maxTurns));
         }
 
         private List<String> collectImages(Map<String, Object> event) {
@@ -520,9 +562,25 @@ public class GuideModelClient {
             private volatile long firstTokenAt;
             private volatile JsonNode usage;
             private volatile String responseId;
+            private final ConversationMemory memory;
+            private final String question;
+            private final boolean hadImages;
 
-            private ArkStreamState(String requestId) {
+            private ArkStreamState(String requestId, ConversationMemory memory,
+                                   String question, boolean hadImages) {
                 this.requestId = requestId;
+                this.memory = memory;
+                this.question = question;
+                this.hadImages = hadImages;
+            }
+
+            /** 只有完整播报的问答才写入上文；听不清、报错和被打断的轮次不记。 */
+            private void remember() {
+                if (memory == null || question.isEmpty() || text.length() == 0) {
+                    return;
+                }
+                String userText = "主人说：" + question + (hadImages ? "（这轮你通过摄像头看到了画面）" : "");
+                memory.add(userText, text.toString());
             }
 
             /** Responses 终态事件在 response.usage 返回实际计量；缺失时不估算。 */
@@ -582,6 +640,7 @@ public class GuideModelClient {
                     stats.put("first_token_ms", elapsedMillis(startedAt, firstTokenAt));
                 }
                 attachUsage(event);
+                remember();
                 eventListener.onEvent(event);
             }
 
@@ -616,6 +675,33 @@ public class GuideModelClient {
             private void cancelSilently() {
                 completed.set(true);
             }
+        }
+    }
+
+    /** 单个设备的最近若干轮文字问答，线程安全。 */
+    static final class ConversationMemory {
+        private final int maxTurns;
+        private final Deque<String[]> turns = new ArrayDeque<>();
+        private volatile long lastAt = System.currentTimeMillis();
+
+        ConversationMemory(int maxTurns) {
+            this.maxTurns = Math.max(1, maxTurns);
+        }
+
+        synchronized void add(String user, String assistant) {
+            turns.addLast(new String[]{user, assistant});
+            while (turns.size() > maxTurns) {
+                turns.removeFirst();
+            }
+            lastAt = System.currentTimeMillis();
+        }
+
+        synchronized List<String[]> snapshot() {
+            return new ArrayList<>(turns);
+        }
+
+        boolean isIdle(long now, long idleMillis) {
+            return now - lastAt > idleMillis;
         }
     }
 

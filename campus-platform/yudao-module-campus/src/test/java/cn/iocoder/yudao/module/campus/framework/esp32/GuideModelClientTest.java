@@ -84,6 +84,53 @@ class GuideModelClientTest {
     }
 
     @Test
+    void shouldRememberPreviousTurnsForSameDeviceAcrossReconnect() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        HttpServer server = startSseServer(requestBody,
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"3加5等于几？\"}\n\n"
+                        + "data: {\"type\":\"response.completed\"}\n\n");
+
+        GuideModelClient client = createClient(server);
+        try {
+            sendOnce(client, "req-a", "device-1", "给我出一道题");
+            // 新连接 = 设备重连，同一设备号仍应带上上一轮。
+            sendOnce(client, "req-b", "device-1", "等于八");
+            JsonNode input = JsonUtils.getObjectMapper().readTree(requestBody.get()).path("input");
+            assertEquals(3, input.size());
+            assertEquals("user", input.get(0).path("role").asText());
+            assertTrue(input.get(0).path("content").asText().contains("给我出一道题"));
+            assertEquals("assistant", input.get(1).path("role").asText());
+            assertEquals("3加5等于几？", input.get(1).path("content").asText());
+            assertTrue(input.get(2).path("content").get(0).path("text").asText().contains("等于八"));
+
+            // 其他设备互不串话。
+            sendOnce(client, "req-c", "device-2", "你好");
+            assertEquals(1, JsonUtils.getObjectMapper().readTree(requestBody.get()).path("input").size());
+        } finally {
+            client.destroy();
+            server.stop(0);
+        }
+    }
+
+    private void sendOnce(GuideModelClient client, String requestId, String deviceId,
+                          String question) throws Exception {
+        List<JsonNode> events = new ArrayList<>();
+        CountDownLatch done = new CountDownLatch(1);
+        try (GuideModelClient.ModelSession session = client.connect(listener(events, done))) {
+            Map<String, Object> chat = new LinkedHashMap<>();
+            chat.put("type", "chat");
+            chat.put("request_id", requestId);
+            chat.put("question", question);
+            chat.put("images", Collections.emptyList());
+            Map<String, Object> context = new LinkedHashMap<>();
+            context.put("device_id", deviceId);
+            chat.put("context", context);
+            assertTrue(session.send(chat));
+            assertTrue(done.await(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
     void shouldSwitchToChatProtocolForThirdPartyEndpoint() throws Exception {
         CampusEsp32AssistantProperties properties = new CampusEsp32AssistantProperties();
         properties.setModelUrl("http://127.0.0.1:8000/api/predict/glm/v1/chat/completions");
