@@ -364,7 +364,7 @@ CAMPUS_VOLC_ASR_ACCESS_TOKEN=<火山 AccessToken>
 CAMPUS_VOLC_TTS_APP_ID=<火山 AppId>
 CAMPUS_VOLC_TTS_ACCESS_TOKEN=<火山 AccessToken>
 CAMPUS_VOLC_TTS_RESOURCE_ID=seed-tts-2.0
-CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_roumeinvyou_uranus_bigtts
+CAMPUS_VOLC_TTS_VOICE_TYPE=zh_female_xiaohe_uranus_bigtts
 ```
 
 - `model-protocol: auto` 只推断非实时 `model-url`：包含 `/chat/completions` 走 OpenAI 兼容 Chat，其余走 Responses；它不会自动启用 Omni Realtime。

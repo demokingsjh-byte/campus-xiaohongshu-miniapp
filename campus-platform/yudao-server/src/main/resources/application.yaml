@@ -423,7 +423,7 @@ campus:
     tts-access-token: ${CAMPUS_VOLC_TTS_ACCESS_TOKEN:L4BzfT6j8PzqV8HbVEawdygGsrT8llg4}
     # 预置音色使用 TTS 2.0 资源；seed-icl-2.0 仅用于已复刻的音色 ID。
     tts-resource-id: ${CAMPUS_VOLC_TTS_RESOURCE_ID:seed-tts-2.0}
-    tts-voice-type: ${CAMPUS_VOLC_TTS_VOICE_TYPE:zh_female_roumeinvyou_uranus_bigtts}
+    tts-voice-type: ${CAMPUS_VOLC_TTS_VOICE_TYPE:zh_female_xiaohe_uranus_bigtts}
     # 播报音量：-50（最小）~ 100，0 为原始音量；越小越轻。
     tts-loudness-rate: ${CAMPUS_VOLC_TTS_LOUDNESS_RATE:-30}
     # 后台“费用”估算单价（元）。默认为 2026-11 官方后付费标价，不含折扣/资源包/免费额度，
