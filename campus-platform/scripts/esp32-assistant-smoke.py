@@ -206,7 +206,7 @@ def main():
                 elif event_type == "text_done" and not text_parts:
                     text_parts.append(event.get("text", ""))
                 elif event_type == "error":
-                    raise RuntimeError(f"{event.get('code')}: {event.get('msg')}")
+                    raise RuntimeError(f"{event.get('code')}: {event.get('message', event.get('msg'))}")
                 elif event_type == "turn_done":
                     done = True
                     if args.show_text:

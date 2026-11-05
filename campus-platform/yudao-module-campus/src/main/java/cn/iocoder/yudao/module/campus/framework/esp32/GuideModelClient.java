@@ -246,6 +246,9 @@ public class GuideModelClient {
             body.put("model", properties.getModelName());
             body.put("stream", true);
             body.put("max_output_tokens", properties.getModelMaxTokens());
+            // doubao-seed 系列默认开启深度思考，思考 token 计入 max_output_tokens；
+            // 语音播报预算仅约 200 token，开启时会被思考耗尽而无正文（response.incomplete）。
+            body.putObject("thinking").put("type", "disabled");
             body.put("instructions", SYSTEM_PROMPT);
 
             ArrayNode input = body.putArray("input");
@@ -407,6 +410,14 @@ public class GuideModelClient {
         private String errorMessage(JsonNode node) {
             if (node == null || node.isMissingNode() || node.isNull()) {
                 return "模型返回错误";
+            }
+            // Responses 流式事件把 error / incomplete_details 嵌在 response 对象里。
+            JsonNode response = node.path("response");
+            if (response.isObject()) {
+                String nested = errorMessage(response);
+                if (!"模型返回错误".equals(nested)) {
+                    return nested;
+                }
             }
             String message = node.path("message").asText("");
             if (!message.isEmpty()) {

@@ -67,6 +67,7 @@ class GuideModelClientTest {
         assertEquals("ep-test", body.path("model").asText());
         assertTrue(body.path("stream").asBoolean());
         assertEquals(200, body.path("max_output_tokens").asInt());
+        assertEquals("disabled", body.path("thinking").path("type").asText());
         JsonNode content = body.path("input").get(0).path("content");
         assertEquals(2, content.size());
         assertEquals("input_image", content.get(0).path("type").asText());
@@ -207,6 +208,54 @@ class GuideModelClientTest {
         assertEquals("error", last.path("type").asText());
         assertEquals("bad request", last.path("message").asText());
         assertTrue(events.stream().noneMatch(event -> "text_done".equals(event.path("type").asText())));
+    }
+
+    @Test
+    void shouldReportNestedIncompleteReasonFromResponsesStream() throws Exception {
+        HttpServer server = startSseServer(new AtomicReference<>(),
+                "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\","
+                        + "\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n");
+
+        GuideModelClient client = createClient(server);
+        List<JsonNode> events = new ArrayList<>();
+        CountDownLatch finished = new CountDownLatch(1);
+        try (GuideModelClient.ModelSession session = client.connect(listener(events, finished))) {
+            Map<String, Object> chat = new LinkedHashMap<>();
+            chat.put("type", "chat");
+            chat.put("request_id", "req-incomplete");
+            assertTrue(session.send(chat));
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+        } finally {
+            client.destroy();
+            server.stop(0);
+        }
+
+        JsonNode last = events.get(events.size() - 1);
+        assertEquals("error", last.path("type").asText());
+        assertEquals("模型返回不完整：max_output_tokens", last.path("message").asText());
+    }
+
+    @Test
+    void shouldReportNestedFailedErrorFromResponsesStream() throws Exception {
+        HttpServer server = startSseServer(new AtomicReference<>(),
+                "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\","
+                        + "\"error\":{\"code\":\"InvalidParameter\",\"message\":\"image too large\"}}}\n\n");
+
+        GuideModelClient client = createClient(server);
+        List<JsonNode> events = new ArrayList<>();
+        CountDownLatch finished = new CountDownLatch(1);
+        try (GuideModelClient.ModelSession session = client.connect(listener(events, finished))) {
+            Map<String, Object> chat = new LinkedHashMap<>();
+            chat.put("type", "chat");
+            chat.put("request_id", "req-failed");
+            assertTrue(session.send(chat));
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+        } finally {
+            client.destroy();
+            server.stop(0);
+        }
+
+        assertEquals("image too large", events.get(events.size() - 1).path("message").asText());
     }
 
     private static HttpServer startSseServer(AtomicReference<String> requestBody, String sseBody) throws IOException {
