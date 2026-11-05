@@ -1,0 +1,3 @@
+# Wi-Fi 配网口令与设备令牌，只保留在本机
+device_config.h
+build/
