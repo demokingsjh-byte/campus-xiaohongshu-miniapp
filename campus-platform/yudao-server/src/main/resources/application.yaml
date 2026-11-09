@@ -419,6 +419,8 @@ campus:
     proactive-quiet-end: ${CAMPUS_ESP32_PROACTIVE_QUIET_END:08:00}
     # 提交给模型的图片长边上限：缩小视觉 token 数以降低首 token 延迟与成本；0 表示不缩放。
     model-image-max-edge: ${CAMPUS_LLM_IMAGE_MAX_EDGE:1024}
+    # 按需带图：只有用户这句话涉及画面（看、这是什么、题目等）时才把摄像头图片发给模型。
+    model-image-on-demand: ${CAMPUS_LLM_IMAGE_ON_DEMAND:true}
 
     # 以下 ASR/TTS 仅供 chat/responses 回退链路使用；omni-realtime 不依赖它们回答。
     asr-enabled: ${CAMPUS_ESP32_ASR_ENABLED:true}

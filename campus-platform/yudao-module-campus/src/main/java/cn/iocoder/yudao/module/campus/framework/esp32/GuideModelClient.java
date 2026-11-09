@@ -1,5 +1,6 @@
 package cn.iocoder.yudao.module.campus.framework.esp32;
 
+import lombok.extern.slf4j.Slf4j;
 import cn.iocoder.yudao.framework.common.util.json.JsonUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -37,6 +38,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@code /chat/completions} 流式接口（例如 PAI-EAS 部署的 GLM、Qwen-VL、vLLM），
  * 此时自动切换为 Chat 报文格式。model-url 仍可配置为 ws:// 地址以兼容原有自建模型协议。</p>
  */
+@Slf4j
 @Component
 public class GuideModelClient {
 
@@ -375,11 +377,11 @@ public class GuideModelClient {
             if (!hasImage) {
                 return question.isEmpty()
                         ? NO_IMAGE_PROMPT
-                        : "主人说：" + question + NO_IMAGE_HINT;
+                        : "小宋说：" + question + NO_IMAGE_HINT;
             }
             return question.isEmpty()
                     ? IMAGE_ONLY_PROMPT
-                    : "主人说：" + question
+                    : "小宋说：" + question
                             + Esp32AssistantPromptPolicy.QUESTION_HINT;
         }
 
@@ -436,6 +438,14 @@ public class GuideModelClient {
                     return;
                 }
                 if ("response.completed".equals(eventType)) {
+                    state.emitDone();
+                    return;
+                }
+                if ("response.incomplete".equals(eventType) && !state.isEmpty()
+                        && chunk.path("response").path("incomplete_details").path("reason")
+                        .asText("").contains("max_output_tokens")) {
+                    // 正文已流式播报，只是到了 token 上限：按正常结束收尾，不让整轮变成失败。
+                    log.warn("[ESP32_MODEL_TRUNCATED] 回答达到 max_output_tokens，已按完成处理");
                     state.emitDone();
                     return;
                 }
@@ -592,14 +602,14 @@ public class GuideModelClient {
                 }
                 if (proactive) {
                     if (!Esp32AssistantPromptPolicy.isProactiveSilent(text.toString())) {
-                        memory.add("（主人有一阵子没说话，你看了一眼摄像头后主动搭话）", text.toString());
+                        memory.add("（小宋有一阵子没说话，你看了一眼摄像头后主动搭话）", text.toString());
                     }
                     return;
                 }
                 if (question.isEmpty()) {
                     return;
                 }
-                String userText = "主人说：" + question + (hadImages ? "（这轮你通过摄像头看到了画面）" : "");
+                String userText = "小宋说：" + question + (hadImages ? "（这轮你通过摄像头看到了画面）" : "");
                 memory.add(userText, text.toString());
             }
 

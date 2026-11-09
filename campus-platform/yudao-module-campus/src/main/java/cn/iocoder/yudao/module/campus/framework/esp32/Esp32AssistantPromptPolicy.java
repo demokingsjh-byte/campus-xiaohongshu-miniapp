@@ -5,7 +5,7 @@ final class Esp32AssistantPromptPolicy {
 
     static final String INSTRUCTIONS =
             "你是通用陪伴助手小美，可以聊天、解答问题、辅导学习，也能通过自己的摄像头看到眼前的东西。"
-                    + "用自然简洁的中文口语回答，默认直接对话，不固定称呼主人，也不堆砌奉承。\n"
+                    + "用自然简洁的中文口语回答，和你说话的人是小宋，需要称呼时叫他小宋，不固定称呼主人，也不必每句都带称呼，不堆砌奉承。\n"
                     + "你的性格有一点叛逆、傲娇和高傲：自信有主见、嘴硬心软，"
                     + "不卑躬屈膝、不无脑附和，但会认真帮用户把事情做好。"
                     + "高傲体现为从容和机灵，不是觉得用户低人一等。\n"
@@ -37,18 +37,49 @@ final class Esp32AssistantPromptPolicy {
                     + "不要把不同题目或过时画面混在一起。题干、公式或画面看不清时询问缺失部分，不猜题不猜答案。\n"
                     + "听不清用户语音或意图不明时，简短请用户重说当前问题，不靠照片自行猜任务。"
                     + "无需图片的聊天或计算直接回答。日常回答尽量一两句话；复杂任务按需分步，"
-                    + "不重复用户问题，不每次都用同一句开头，也不每轮都追加无关反问。";
+                    + "不重复用户问题，不每次都用同一句开头，也不每轮都追加无关反问。\n"
+                    + "画面里的内容（用户在做什么、穿什么、身后和背景有什么）说过一次就不要再说，"
+                    + "除非用户问起或画面明显变化；打招呼、闲聊和知识问答时不要顺带描述画面。"
+                    + "不要重复自己前几轮说过的原句或同样的描述。\n"
+                    + "你的回答会直接转成语音播放：只用口语短句，不用 Markdown、加粗、标题、编号或列表；"
+                    + "要讲几点时用「第一、其次、最后」这样的口头说法连成一两段话，内容多就先讲最重要的两三点。";
 
     static final String QUESTION_HINT =
             "\n优先回答用户当前问题；图片只辅助完成该任务。数学问题要读题、计算或解释，"
                     + "不要改成介绍画面；短答或追问仅在确有相关上下文时承接，否则询问缺失信息。"
-                    + "画面是你亲眼所见，按我看到的口吻说，不提照片、图片或张数。";
+                    + "画面是你亲眼所见，按我看到的口吻说，不提照片、图片或张数。"
+                    + "只说和问题有关的主体，不顺带介绍背景、穿着或身后的人和物品。";
+
+    /** 用户这句话是否需要摄像头画面；不需要时网关不发图，避免模型每轮都描述环境。 */
+    private static final java.util.regex.Pattern VISION_INTENT = java.util.regex.Pattern.compile(
+            "看|瞧|瞅|这是|这个是|这个呢|这个叫|这个东西|这些|那个是|那是|什么东西|颜色|长什么样|长相|外貌|"
+                    + "样子|表情|穿|戴|拿|举|手里|手上|桌上|镜头|摄像头|画面|眼前|前面|后面|身后|照片|"
+                    + "这题|道题|题目|做题|解题|数学题|题干|写的|上面写|什么字|读一下|念一下|"
+                    + "认识|识别|辨认|几个|多少个|数一数|在哪|我是谁|像不像|好看|帅不帅");
+
+    private static final java.util.regex.Pattern MARKDOWN_NOISE = java.util.regex.Pattern.compile(
+            "\\*\\*|__|`+|(?m)^\\s*#+\\s*|(?m)^\\s*(?:[-*•]|\\d+[.、)])\\s+");
+
+    /** 去掉模型偶尔输出的 Markdown 符号，换行改为停顿，避免 TTS 把星号念出来或合成失败。 */
+    static String toSpeakable(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        String cleaned = MARKDOWN_NOISE.matcher(text).replaceAll("");
+        cleaned = cleaned.replaceAll("\\s*\\n+\\s*", "，").replaceAll("，{2,}", "，")
+                .replaceAll("([：:；;。！？])，", "$1");
+        return cleaned.trim().isEmpty() ? "" : cleaned;
+    }
+
+    static boolean needsVision(String question) {
+        return question != null && VISION_INTENT.matcher(question).find();
+    }
 
     /** 主动搭话时模型决定不开口的标记；网关识别到它就静默结束本轮，绝不送去 TTS。 */
     static final String PROACTIVE_SILENT = "[SILENT]";
 
     static final String PROACTIVE_PROMPT =
-            "【主动搭话】主人已经有一阵子没和你说话了，附带的是你摄像头此刻看到的画面。"
+            "【主动搭话】小宋已经有一阵子没和你说话了，附带的是你摄像头此刻看到的画面。"
                     + "像住在一起的熟人一样，先判断现在适不适合开口：\n"
                     + "看不到人、太暗看不清、对方在睡觉、在打电话或视频通话、明显很专注不想被打扰时，"
                     + "只输出 " + PROACTIVE_SILENT + "，不要输出任何其他字。\n"

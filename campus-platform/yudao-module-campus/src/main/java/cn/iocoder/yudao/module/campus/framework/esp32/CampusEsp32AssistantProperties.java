@@ -124,6 +124,8 @@ public class CampusEsp32AssistantProperties {
      * 用于降低模型首 token 延迟与视觉 token 成本；设为 0 或负数表示不缩放。
      */
     private int modelImageMaxEdge = 1024;
+    /** 按需带图：仅当用户这句话涉及画面（看、这是什么、题目等）时才把图片发给模型。 */
+    private boolean modelImageOnDemand = true;
 
     private String asrUrl = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
     private boolean asrEnabled = true;

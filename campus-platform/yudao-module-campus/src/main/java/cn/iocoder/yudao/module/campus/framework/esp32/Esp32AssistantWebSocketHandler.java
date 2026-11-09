@@ -753,7 +753,12 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
             transcript = transcribe(context, turn, wav, asrStream, startedAt);
             transcript = transcript == null ? "" : transcript.trim();
             if (transcript.isEmpty()) {
-                throw new IllegalStateException("火山 ASR 未返回转写文字");
+                // 续聊窗口里常把环境声或自身播报尾音录成一轮：没有人声就安静回到聆听，
+                // 不按服务异常处理（设备收到 error 会走重连恢复，反复打断对话）。
+                log.info("[ESP32_ASR_EMPTY] deviceId={} requestId={} elapsedMs={} audioBytes={}",
+                        context.deviceId, turn.requestId, elapsedMillis(startedAt), turn.pcm.length);
+                ignoreWithoutSpeech(context, turn);
+                return;
             }
             long asrMs = elapsedMillis(startedAt);
             logService.markAsr(turn.logId, asrMs, true, transcript);
@@ -777,9 +782,16 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         Map<String, Object> chat = event("chat", "request_id", turn.requestId);
         chat.put("question", transcript);
         List<String> images = new ArrayList<>();
-        for (byte[] image : turn.images) {
-            byte[] payload = downscaleForModel(image);
-            images.add("data:image/jpeg;base64," + Base64.getEncoder().encodeToString(payload));
+        boolean sendImages = !properties.isModelImageOnDemand()
+                || Esp32AssistantPromptPolicy.needsVision(transcript);
+        if (sendImages) {
+            for (byte[] image : turn.images) {
+                byte[] payload = downscaleForModel(image);
+                images.add("data:image/jpeg;base64," + Base64.getEncoder().encodeToString(payload));
+            }
+        } else if (!turn.images.isEmpty()) {
+            log.info("[ESP32_IMAGES_SKIPPED] deviceId={} requestId={} imageCount={} reason=no_vision_intent",
+                    context.deviceId, turn.requestId, turn.images.size());
         }
         chat.put("images", images);
         chat.put("output_audio", false);
@@ -860,6 +872,24 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         ignored.put("reason", reason);
         sendJsonLocked(context, ignored);
         setStateLocked(context, DeviceState.LISTENING, requestId, "可以提问了");
+    }
+
+    /** 本轮没有识别出人声：记为 IGNORED，下发 turn_ignored，设备直接回到聆听。 */
+    private void ignoreWithoutSpeech(DeviceContext context, TurnData turn) {
+        synchronized (context.lock) {
+            if (!turn.requestId.equals(context.activeRequestId)) {
+                return;
+            }
+            logService.markIgnored(turn.logId, turn.pcm.length, turn.images.size(), "asr_empty");
+            closeTtsLocked(context);
+            closeAsrLocked(context);
+            Map<String, Object> ignored = event("turn_ignored", "request_id", turn.requestId);
+            ignored.put("reason", "asr_empty");
+            sendJsonLocked(context, ignored);
+            context.activeRequestId = "";
+            context.activeLogId = null;
+            setStateLocked(context, DeviceState.LISTENING, turn.requestId, "可以提问了");
+        }
     }
 
     private void failBeforeModel(DeviceContext context, TurnData turn, String code, String message) {
@@ -1073,8 +1103,11 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 && "，。！？；,.!?;".indexOf(last) < 0) {
             return;
         }
-        String text = context.pendingTtsText.toString();
+        String text = Esp32AssistantPromptPolicy.toSpeakable(context.pendingTtsText.toString());
         context.pendingTtsText.setLength(0);
+        if (text.isEmpty()) {
+            return;
+        }
         context.ttsHasText = true;
         context.tts.appendText(text);
     }

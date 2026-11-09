@@ -367,6 +367,31 @@ class GuideModelClientTest {
     }
 
     @Test
+    void shouldFinishNormallyWhenAnswerHitsTokenLimitAfterText() throws Exception {
+        HttpServer server = startSseServer(new AtomicReference<>(),
+                "data: {\"type\":\"response.output_text.delta\",\"delta\":\"第一点是常识\"}\n\n"
+                        + "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\","
+                        + "\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n");
+
+        GuideModelClient client = createClient(server);
+        List<JsonNode> events = new ArrayList<>();
+        CountDownLatch finished = new CountDownLatch(1);
+        try (GuideModelClient.ModelSession session = client.connect(listener(events, finished))) {
+            Map<String, Object> chat = new LinkedHashMap<>();
+            chat.put("type", "chat");
+            chat.put("request_id", "req-truncated");
+            assertTrue(session.send(chat));
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+        } finally {
+            client.destroy();
+            server.stop(0);
+        }
+
+        JsonNode last = events.get(events.size() - 1);
+        assertEquals("text_done", last.path("type").asText());
+    }
+
+    @Test
     void shouldReportNestedFailedErrorFromResponsesStream() throws Exception {
         HttpServer server = startSseServer(new AtomicReference<>(),
                 "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\","
