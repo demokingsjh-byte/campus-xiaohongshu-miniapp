@@ -66,7 +66,8 @@ static constexpr int32_t AUTO_VAD_PEAK_THRESHOLD = 200;
 static constexpr uint32_t FOLLOW_UP_ONSET_MS = 96;
 static constexpr uint32_t AUTO_MIN_SPEECH_MS = 300;
 static constexpr uint32_t AUTO_VOICE_RESUME_MS = 96;
-static constexpr uint32_t AUTO_SILENCE_COMMIT_MS = 700;
+// 700ms 会把句中换气/思考停顿当成说完；1100ms 多等约 0.4 秒，换来不抢话。
+static constexpr uint32_t AUTO_SILENCE_COMMIT_MS = 1100;
 static constexpr uint32_t AUTO_NO_SPEECH_TIMEOUT_MS = 500;
 // WakeNet finishes the wake phrase before a turn starts. The longer timeout
 // leaves enough time to begin the actual question after the LED acknowledgement.
@@ -162,6 +163,8 @@ static int16_t *wakeSamples = nullptr;
 static size_t wakeChunk = 0;
 static volatile bool wakeReady = false;
 static volatile bool wakePending = false;
+// 播报/思考期间检测到“你好小智”：由主循环执行打断，麦克风任务只置位。
+static volatile bool bargeInRequested = false;
 static volatile bool followUpPending = false;
 static volatile bool wakeTurn = false;
 /* 主动搭话：服务端在 connected.features.proactive.idle_ms 下发空闲阈值，0 表示关闭。
@@ -720,6 +723,10 @@ static void microphoneTask(void *parameter) {
     bool wakeDetectedThisChunk = false;
     const bool listening = wakeReady && localListening &&
                            !wakePending && wakeWarmup == 0 && now - listenSince > 250;
+    // 半双工没有回声消除，不能靠音量判断用户插话；只认唤醒词，喇叭回采不会念出“你好小智”。
+    const bool bargeInListening = wakeReady && !wakePending && !bargeInRequested &&
+                                  wakeWarmup == 0 &&
+                                  (phase == DevicePhase::THINKING || phase == DevicePhase::SPEAKING);
     if (wakeWarmup && wakeReady && wakeEngine && wakeModel) {
       // One zero block per real MIC read: no tight reset loop and no PCM mutation.
       // Usually finishes during capture/playback; VAD and pre-roll below stay live.
@@ -731,13 +738,20 @@ static void microphoneTask(void *parameter) {
         Serial.printf("[唤醒] 静音历史清理完成，累计唤醒 %u 次\n",
                       static_cast<unsigned>(wakeLastResetCount));
       }
-    } else if (listening) {
+    } else if (listening || bargeInListening) {
       if (!wasListening) { wakeUsed = 0; }
       for (size_t i = 0; i < sampleCount; ++i) {
         wakeSamples[wakeUsed++] = pcmSamples[i];
         if (wakeUsed == wakeChunk) {
           wakeUsed = 0;
           const int detected = wakeEngine->detect(wakeModel, wakeSamples);
+          if (detected > 0 && bargeInListening) {
+            bargeInRequested = true;
+            ++wakeDetectionCount;
+            wakeWarmup = WAKE_HISTORY_SILENCE_CHUNKS;
+            Serial.println("[唤醒] 播报中检测到你好小智，请求打断");
+            break;
+          }
           if (detected > 0) {
             resetPreRoll();
             wakeSkipChunks = 0;  // 当前检测块已排除；保留后续问题的第一个音节。
@@ -751,7 +765,7 @@ static void microphoneTask(void *parameter) {
         }
       }
     } else { wakeUsed = 0; }
-    wasListening = listening;
+    wasListening = listening || bargeInListening;
 
     /* 回答后的一小段连续追问窗口：不需要再次说唤醒词。 */
     const bool followUpListening = localListening &&
@@ -1865,6 +1879,12 @@ void loop() {
     lastInteractionAt = millis();  // 本次被拒或开不了口，也要再等一个完整空闲周期。
   }
   updateButton();
+  if (bargeInRequested) {
+    bargeInRequested = false;
+    if (phase == DevicePhase::THINKING || phase == DevicePhase::SPEAKING) {
+      interruptTurn();  // 打断后进入续聊窗口，直接说问题即可，无需再喊唤醒词。
+    }
+  }
   if (microphoneCaptureEnabled && phase == DevicePhase::CAPTURING) {
     const uint32_t now = millis();
     if (speechSeen && cameraTargetCount >= 2 &&
