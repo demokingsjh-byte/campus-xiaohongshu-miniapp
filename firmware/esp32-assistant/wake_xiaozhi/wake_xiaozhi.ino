@@ -21,6 +21,7 @@
 
 #include "esp32_ai_guide_protocol.h"
 #include "device_config.h"
+#include "face_display.h"
 
 /* Seeed Studio XIAO ESP32S3 Sense 摄像头引脚。 */
 static constexpr int CAMERA_PIN_PWDN = -1;
@@ -343,6 +344,16 @@ static void setLocalPhase(DevicePhase value, const char *reason = nullptr) {
   }
   phase = value;
   setStatusLed(value == DevicePhase::LISTENING || value == DevicePhase::CAPTURING);
+  switch (value) {
+    case DevicePhase::LISTENING:    faceSetMood(FaceMood::IDLE); break;
+    case DevicePhase::REQUESTING:
+    case DevicePhase::CAPTURING:    faceSetMood(FaceMood::ATTENTIVE); break;
+    case DevicePhase::THINKING:     faceSetMood(FaceMood::THINKING); break;
+    case DevicePhase::SPEAKING:
+    case DevicePhase::COOLDOWN:     faceSetMood(FaceMood::SPEAKING); break;
+    case DevicePhase::ERROR_STATE:  faceSetMood(FaceMood::ERROR_FACE); break;
+    case DevicePhase::DISCONNECTED: faceSetMood(FaceMood::SLEEPY); break;
+  }
   Serial.printf("[状态] %s", phaseName(value));
   if (reason && reason[0]) {
     Serial.printf("：%s", reason);
@@ -1735,6 +1746,7 @@ void setup() {
     return;
   }
 
+  faceBegin();  // 先点亮屏幕：启动和联网期间显示睡眼
   const bool microphoneReady = initMicrophone();
   speakerReady = initSpeaker();
   cameraReady = initCamera();
