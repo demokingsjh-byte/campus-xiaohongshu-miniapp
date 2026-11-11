@@ -55,3 +55,19 @@ esptool --chip esp32s3 --port COM9 --baud 921600 read-flash 0 0x800000 board_ful
 ```
 
 打开串口会让板子复位一次，属正常现象。
+
+## 屏幕接线（1.28 寸 GC9A01 圆屏，可选）
+
+表情显示在 `face_display.cpp`，依赖库 **GFX Library for Arduino**（已验证 1.6.9，编译前需安装）。
+
+| 屏幕引脚 | XIAO | GPIO |
+|---|---|---|
+| VCC / GND | 3V3 / GND | — |
+| BL（背光） | D1 | 2 |
+| CS | D2 | 3 |
+| DC | D3 | 4 |
+| RST | D4 | 5 |
+| SCL / SCK | D6 | 43 |
+| SDA / MOSI | D7 | 44 |
+
+D0（GPIO1）预留电池电压检测，D5（GPIO6）预留外置按键。屏幕颜色反相时把 `FACE_PANEL_IPS` 改为 `false`。
