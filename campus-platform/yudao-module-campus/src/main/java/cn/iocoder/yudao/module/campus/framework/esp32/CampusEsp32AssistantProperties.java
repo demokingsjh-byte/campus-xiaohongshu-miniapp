@@ -126,6 +126,10 @@ public class CampusEsp32AssistantProperties {
     private int modelImageMaxEdge = 1024;
     /** 按需带图：仅当用户这句话涉及画面（看、这是什么、题目等）时才把图片发给模型。 */
     private boolean modelImageOnDemand = true;
+    /** 提交模型后超过该毫秒数仍无首字，先播一句“我想想”垫话；0 关闭。 */
+    private int thinkingFillerMillis = 1000;
+    /** 语音指令（调音量、别说了）由网关直接处理，不经过大模型。 */
+    private boolean voiceCommandEnabled = true;
 
     private String asrUrl = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
     private boolean asrEnabled = true;

@@ -166,6 +166,21 @@ static volatile bool wakeReady = false;
 static volatile bool wakePending = false;
 // 播报/思考期间检测到“你好小智”：由主循环执行打断，麦克风任务只置位。
 static volatile bool bargeInRequested = false;
+/* 软件音量（MAX98357A 没有音量接口）：0~100，100 为原始响度；存 NVS，重启后保持。 */
+static constexpr uint8_t VOLUME_STEP = 20;
+static constexpr uint8_t VOLUME_MIN_AUDIBLE = 20;
+static volatile uint8_t speakerVolume = 100;
+static uint8_t volumeBeforeMute = 100;
+
+static void applyVolume(int level) {
+  level = constrain(level, 0, 100);
+  speakerVolume = static_cast<uint8_t>(level);
+  Preferences volumePrefs;
+  volumePrefs.begin("ai-guide", false);
+  volumePrefs.putUChar("volume", speakerVolume);
+  volumePrefs.end();
+  Serial.printf("[音量] %u%%\n", static_cast<unsigned>(speakerVolume));
+}
 static volatile bool followUpPending = false;
 static volatile bool wakeTurn = false;
 /* 主动搭话：服务端在 connected.features.proactive.idle_ms 下发空闲阈值，0 表示关闭。
@@ -506,7 +521,7 @@ static void playPcmChunkDirect(const uint8_t *data, size_t length) {
     sum += raw;
     sumSquares += static_cast<uint64_t>(raw * static_cast<int64_t>(raw));
 
-    int32_t amplified = raw * 4;
+    int32_t amplified = raw * 4 * static_cast<int32_t>(speakerVolume) / 100;
     if (amplified > 32767) {
       amplified = 32767;
       ++clipped;
@@ -1414,6 +1429,7 @@ static void handleTextMessage(uint8_t *payload, size_t length) {
   filter["silence_ms"] = true;
   filter["command"] = true;
   filter["action"] = true;
+  filter["level"] = true;
   filter["features"]["playback_finished"] = true;
   filter["features"]["proactive"]["idle_ms"] = true;
   filter["retryable"] = true;
@@ -1576,6 +1592,18 @@ static void handleTextMessage(uint8_t *payload, size_t length) {
     Serial.printf("[设备命令] %s\n", command);
     if (strcmp(command, "sleep") == 0 || strcmp(command, "shutdown") == 0) {
       enterDeepSleep("收到服务端休眠命令");
+    } else if (strcmp(command, "volume") == 0) {
+      applyVolume(doc["level"] | static_cast<int>(speakerVolume));
+    } else if (strcmp(command, "volume_up") == 0) {
+      applyVolume(max<int>(speakerVolume, VOLUME_MIN_AUDIBLE - VOLUME_STEP) + VOLUME_STEP);
+    } else if (strcmp(command, "volume_down") == 0) {
+      // 语音说“小一点”不应一路降到听不见；静音用单独的 mute。
+      applyVolume(max<int>(VOLUME_MIN_AUDIBLE, speakerVolume - VOLUME_STEP));
+    } else if (strcmp(command, "mute") == 0) {
+      if (speakerVolume > 0) volumeBeforeMute = speakerVolume;
+      applyVolume(0);
+    } else if (strcmp(command, "unmute") == 0) {
+      if (speakerVolume == 0) applyVolume(max<int>(volumeBeforeMute, VOLUME_MIN_AUDIBLE));
     }
   } else if (strcmp(type, "error") == 0) {
     const char *code = doc["code"] | "UNKNOWN";
@@ -1791,6 +1819,8 @@ void setup() {
     preferences.putBool("wifi_init", true);
     Serial.println("[配网] 已清理旧固件遗留的 Wi-Fi 配置");
   }
+  speakerVolume = preferences.getUChar("volume", 100);
+  if (speakerVolume > 100) speakerVolume = 100;
   preferences.end();
   /* 0 表示配网热点不超时；固定信道 1，提高手机兼容性。 */
   wifiManager.setConfigPortalTimeout(0);

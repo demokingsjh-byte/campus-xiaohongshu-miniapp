@@ -757,7 +757,7 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
                 // 不按服务异常处理（设备收到 error 会走重连恢复，反复打断对话）。
                 log.info("[ESP32_ASR_EMPTY] deviceId={} requestId={} elapsedMs={} audioBytes={}",
                         context.deviceId, turn.requestId, elapsedMillis(startedAt), turn.pcm.length);
-                ignoreWithoutSpeech(context, turn);
+                ignoreWithoutSpeech(context, turn, "asr_empty");
                 return;
             }
             long asrMs = elapsedMillis(startedAt);
@@ -776,6 +776,13 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         synchronized (context.lock) {
             if (!turn.requestId.equals(context.activeRequestId)
                     || context.interruptedRequests.contains(turn.requestId)) {
+                return;
+            }
+        }
+        if (properties.isVoiceCommandEnabled()) {
+            Esp32VoiceCommand command = Esp32VoiceCommand.match(transcript);
+            if (command != null) {
+                runVoiceCommand(context, turn, command, captureMs, speechEndMs, speechEndToCommitMs);
                 return;
             }
         }
@@ -818,7 +825,69 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
         log.info("[ESP32_TURN_SUBMITTED] deviceId={} requestId={} audioBytes={} imageCount={} submitMs={}",
                 context.deviceId, turn.requestId, turn.pcm.length, turn.images.size(),
                 submitMs);
+        if (properties.getThinkingFillerMillis() > 0) {
+            scheduler.schedule(() -> speakThinkingFiller(context, turn.requestId),
+                    properties.getThinkingFillerMillis(), TimeUnit.MILLISECONDS);
+        }
+    }
 
+    /**
+     * 模型超过阈值仍没有首字时先垫一句“我想想”。垫话直接写进本轮的 TTS 会话，
+     * 之后模型回答接在同一会话后面，音色一致、顺序天然正确；回答已经开始则不再插入。
+     */
+    private void speakThinkingFiller(DeviceContext context, String requestId) {
+        synchronized (context.lock) {
+            if (!requestId.equals(context.activeRequestId)
+                    || context.interruptedRequests.contains(requestId)
+                    || context.state != DeviceState.THINKING
+                    || (context.ttsAnnounced && requestId.equals(context.ttsRequestId))) {
+                return;
+            }
+            startTtsLocked(context, requestId);
+            if (context.tts != null) {
+                String filler = Esp32AssistantPromptPolicy.randomThinkingFiller();
+                context.tts.appendText(filler);
+                log.info("[ESP32_THINKING_FILLER] deviceId={} requestId={} text={}",
+                        context.deviceId, requestId, filler);
+            }
+        }
+    }
+
+    /** 调音量、别说了等指令：先下发设备命令，再用一句短确认收尾，不经过大模型。 */
+    private void runVoiceCommand(DeviceContext context, TurnData turn, Esp32VoiceCommand command,
+                                 long captureMs, Long speechEndMs, Long speechEndToCommitMs) {
+        log.info("[ESP32_VOICE_COMMAND] deviceId={} requestId={} command={} level={}",
+                context.deviceId, turn.requestId, command.getCommand(), command.getLevel());
+        logService.markSubmitted(turn.logId, turn.pcm.length, turn.images.size(), captureMs, 0L,
+                speechEndMs, speechEndToCommitMs);
+        if (command.getCommand() != null) {
+            synchronized (context.lock) {
+                Map<String, Object> deviceCommand = event("device_command", "command", command.getCommand());
+                if (command.getLevel() != null) {
+                    deviceCommand.put("level", command.getLevel());
+                }
+                sendJsonLocked(context, deviceCommand);
+            }
+        }
+        if (command.getReply() == null) {
+            // 静音、别说了：不出声，安静回到聆听。
+            ignoreWithoutSpeech(context, turn, "voice_command");
+            return;
+        }
+        synchronized (context.lock) {
+            if (!turn.requestId.equals(context.activeRequestId)) {
+                return;
+            }
+            // 预热的 TTS 连接还没给设备发过 audio_start（正常轮次在首个 delta 时补发）。
+            if (!context.ttsAnnounced || !turn.requestId.equals(context.ttsRequestId)) {
+                startTtsLocked(context, turn.requestId);
+            }
+        }
+        ObjectNode done = JsonUtils.getObjectMapper().createObjectNode();
+        done.put("type", "text_done");
+        done.put("request_id", turn.requestId);
+        done.put("text", command.getReply());
+        handleModelEvent(context, done);
     }
 
     /** 主动搭话：没有语音，直接把抓拍交给模型；回答先整句缓存，确认要开口才送 TTS。 */
@@ -875,16 +944,16 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     }
 
     /** 本轮没有识别出人声：记为 IGNORED，下发 turn_ignored，设备直接回到聆听。 */
-    private void ignoreWithoutSpeech(DeviceContext context, TurnData turn) {
+    private void ignoreWithoutSpeech(DeviceContext context, TurnData turn, String reason) {
         synchronized (context.lock) {
             if (!turn.requestId.equals(context.activeRequestId)) {
                 return;
             }
-            logService.markIgnored(turn.logId, turn.pcm.length, turn.images.size(), "asr_empty");
+            logService.markIgnored(turn.logId, turn.pcm.length, turn.images.size(), reason);
             closeTtsLocked(context);
             closeAsrLocked(context);
             Map<String, Object> ignored = event("turn_ignored", "request_id", turn.requestId);
-            ignored.put("reason", "asr_empty");
+            ignored.put("reason", reason);
             sendJsonLocked(context, ignored);
             context.activeRequestId = "";
             context.activeLogId = null;
@@ -1731,6 +1800,14 @@ public class Esp32AssistantWebSocketHandler extends AbstractWebSocketHandler {
     /** 同时满足「发送速率上限」与「缓冲领先量上限」两个条件的等待。 */
     private void waitForSendWindow(DeviceContext context, long minIntervalNanos, long leadTargetMillis)
             throws InterruptedException {
+        // TTS 句间停顿或合成变慢时设备会播空缓冲。若仍按「首包以来流逝时间」计算领先量，
+        // 欠账会变成负数，下一段音频就以倍速一口气补发数秒，长回答时撑爆设备 128KiB 播放队列，
+        // 设备判定溢出并取消本轮（表现为“说多了就中断”）。缓冲已空时把基线前移，领先量从 0 重新累积。
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - context.audioStartedAt);
+        if (context.audioSentMillis < elapsedMillis) {
+            context.audioStartedAt = System.nanoTime()
+                    - TimeUnit.MILLISECONDS.toNanos(context.audioSentMillis);
+        }
         while (true) {
             long current = System.nanoTime();
             long sinceLastSend = current - context.audioLastSendAt;
